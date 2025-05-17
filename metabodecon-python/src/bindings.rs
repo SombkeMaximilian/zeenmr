@@ -1,3 +1,9 @@
+mod alignment;
+pub(crate) use alignment::Alignment;
+
+mod aligner;
+pub(crate) use aligner::Aligner;
+
 mod deconvoluter;
 pub(crate) use deconvoluter::Deconvoluter;
 

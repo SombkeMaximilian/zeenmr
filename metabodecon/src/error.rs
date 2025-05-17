@@ -1,4 +1,4 @@
-use crate::{deconvolution, spectrum};
+use crate::{alignment, deconvolution, spectrum};
 
 /// A specialized [`Result`] type for the Metabodecon library.
 ///
@@ -19,6 +19,8 @@ pub enum Error {
     Spectrum(spectrum::error::Error),
     /// An error that occurred during the [`deconvolution`] process.
     Deconvolution(deconvolution::error::Error),
+    /// An error that occurred during the [`alignment`] process.
+    Alignment(alignment::error::Error),
     /// Wrapper for errors from [`std::io`].
     IoError(std::io::Error),
 }
@@ -37,6 +39,12 @@ impl From<deconvolution::error::Error> for Error {
     }
 }
 
+impl From<alignment::error::Error> for Error {
+    fn from(value: alignment::error::Error) -> Self {
+        Error::Alignment(value)
+    }
+}
+
 impl From<std::io::Error> for Error {
     fn from(value: std::io::Error) -> Self {
         Error::IoError(value)
@@ -48,6 +56,7 @@ impl core::fmt::Display for Error {
         match *self {
             Error::Spectrum(ref e) => e.fmt(f),
             Error::Deconvolution(ref e) => e.fmt(f),
+            Error::Alignment(ref e) => e.fmt(f),
             Error::IoError(ref e) => e.fmt(f),
         }
     }

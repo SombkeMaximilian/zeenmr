@@ -3,6 +3,36 @@ import numpy as np
 __version__: str
 
 
+class Aligner:
+    def __init__(self) -> None:
+        ...
+
+    def set_reference_alignment(self, reference: int) -> None:
+        ...
+
+    def set_pairwise_alignment(self) -> None:
+        ...
+
+    def set_distance_similarity_filter(self, max_distance: float, min_similarity: float) -> None:
+        ...
+
+    def set_linear_programming_solver(self) -> None:
+        ...
+
+    def set_threads(self, threads: int) -> None:
+        ...
+
+    def clear_threads(self) -> None:
+        ...
+
+    def align_deconvolutions(self, deconvolutions: list["Deconvolution"]) -> "Alignment":
+        ...
+
+
+class Alignment:
+    deconvolutions: list["Deconvolution"]
+
+
 class Deconvoluter:
     def __init__(self) -> None:
         ...

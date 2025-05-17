@@ -271,6 +271,69 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! The [`Aligner`] can be used to align these [`Deconvolution`]s for further
+//! analysis, returning an [`Alignment`] object that contains the aligned
+//! deconvolutions.
+//!
+//! [`Aligner`]: alignment::Aligner
+//! [`Alignment`]: alignment::Alignment
+//!
+//! ```
+//! use metabodecon::alignment::Aligner;
+//! use metabodecon::deconvolution::Deconvoluter;
+//! use metabodecon::spectrum::Bruker;
+//!
+//! # fn main() -> metabodecon::Result<()> {
+//! // Read all spectra from Bruker TopSpin format directories within the root.
+//! let path = "path/to/root";
+//! # let path = "../data/bruker/blood";
+//! let spectra = Bruker::read_spectra(
+//!     path,
+//!     // Experiment number
+//!     10,
+//!     // Processing number
+//!     10,
+//!     // Signal boundaries
+//!     (-2.2, 11.8),
+//! )?;
+//!
+//! // Deconvolute the spectra in parallel.
+//! let deconvoluter = Deconvoluter::default();
+//! let deconvolutions = deconvoluter.par_deconvolute_spectra(&spectra)?;
+//!
+//! // Align the deconvolutions using the default settings.
+//! let aligner = Aligner::default();
+//! let alignment = aligner.align_deconvolutions(&deconvolutions);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! [`Aligner`] can be configured with different strategies, filtering settings,
+//! and solving methods independently, though currently only a few options are
+//! available for the filtering settings, while alignment strategy and solving
+//! method have one option each.
+//!
+//! [`Aligner`]: alignment::Aligner
+//!
+//! ```
+//! use metabodecon::alignment::{
+//!     Aligner, AlignmentStrategy, FilteringSettings, SimilarityMetric, SolvingSettings,
+//! };
+//!
+//! # fn main() -> metabodecon::Result<()> {
+//! let aligner = Aligner::new(
+//!     AlignmentStrategy::Pairwise,
+//!     FilteringSettings::DistanceSimilarity {
+//!         similarity_metric: SimilarityMetric::ShapeDistance,
+//!         max_distance: 0.035,
+//!         min_similarity: 0.6,
+//!     },
+//!     SolvingSettings::LinearProgramming,
+//! )?;
+//! # Ok(())
+//! # }
+//! ```
 
 #[macro_use]
 pub(crate) mod macros;
@@ -282,6 +345,9 @@ pub(crate) use settings::Settings;
 pub mod spectrum;
 
 pub mod deconvolution;
+
+#[cfg(feature = "alignment")]
+pub mod alignment;
 
 mod error;
 pub use error::{Error, Result};

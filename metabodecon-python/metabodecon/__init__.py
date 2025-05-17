@@ -1,4 +1,6 @@
 from ._metabodecon import (
+    Aligner,
+    Alignment,
     Deconvoluter,
     Deconvolution,
     Lorentzian,
@@ -9,6 +11,8 @@ from . import exceptions
 
 __all__ = [
     "__version__",
+    "Aligner",
+    "Alignment",
     "Deconvoluter",
     "Deconvolution",
     "Lorentzian",

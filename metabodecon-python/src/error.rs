@@ -27,6 +27,11 @@ create_exception!(metabodecon, NoPeaksDetected, DeconvolutionError);
 create_exception!(metabodecon, EmptySignalRegion, DeconvolutionError);
 create_exception!(metabodecon, EmptySignalFreeRegion, DeconvolutionError);
 
+create_exception!(metabodecon, AlignmentError, Error);
+create_exception!(metabodecon, InvalidAlignmentStrategy, AlignmentError);
+create_exception!(metabodecon, InvalidFilteringSettings, AlignmentError);
+create_exception!(metabodecon, InvalidSolvingSettings, AlignmentError);
+
 pub(crate) struct MetabodeconError(metabodecon::Error);
 
 impl std::fmt::Display for MetabodeconError {
@@ -43,6 +48,7 @@ impl From<metabodecon::Error> for MetabodeconError {
 
 impl From<MetabodeconError> for PyErr {
     fn from(value: MetabodeconError) -> PyErr {
+        use metabodecon::alignment::error::Kind as AlignErrKind;
         use metabodecon::deconvolution::error::Kind as DecErrKind;
         use metabodecon::spectrum::error::Kind as SpecErrKind;
 
@@ -86,6 +92,18 @@ impl From<MetabodeconError> for PyErr {
                 DecErrKind::EmptySignalRegion => EmptySignalRegion::new_err(inner.to_string()),
                 DecErrKind::EmptySignalFreeRegion => {
                     EmptySignalFreeRegion::new_err(inner.to_string())
+                }
+                _ => UnexpectedError::new_err(format!("unexpected error: {}", value)),
+            },
+            metabodecon::Error::Alignment(ref inner) => match inner.kind() {
+                AlignErrKind::InvalidAlignmentStrategy { .. } => {
+                    InvalidAlignmentStrategy::new_err(inner.to_string())
+                }
+                AlignErrKind::InvalidFilteringSettings { .. } => {
+                    InvalidFilteringSettings::new_err(inner.to_string())
+                }
+                AlignErrKind::InvalidSolvingSettings { .. } => {
+                    InvalidSolvingSettings::new_err(inner.to_string())
                 }
                 _ => UnexpectedError::new_err(format!("unexpected error: {}", value)),
             },

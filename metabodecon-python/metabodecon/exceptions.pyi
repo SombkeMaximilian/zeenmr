@@ -162,3 +162,35 @@ class EmptySignalFreeRegion(DeconvolutionError):
     """
 
     ...
+
+
+class AlignmentError(Error):
+    """
+    An exception raised for errors during the alignment process.
+    """
+
+    ...
+
+
+class InvalidAlignmentStrategy(AlignmentError):
+    """
+    An exception raised when an invalid alignment strategy is provided.
+    """
+
+    ...
+
+
+class InvalidFilteringSettings(AlignmentError):
+    """
+    An exception raised when invalid filtering settings are provided.
+    """
+
+    ...
+
+
+class InvalidSolvingSettings(AlignmentError):
+    """
+    An exception raised when invalid solving settings are provided.
+    """
+
+    ...
