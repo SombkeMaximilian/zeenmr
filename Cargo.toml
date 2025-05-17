@@ -1,0 +1,25 @@
+[workspace]
+resolver = "2"
+members = [
+    "metabodecon",
+    "metabodecon-python",
+
+    # Internal crates
+    "benches",
+]
+
+[profile.release]
+lto = true
+
+[profile.bench]
+lto = true
+
+[workspace.lints.rust]
+unknown_lints = "allow"
+unused_imports = "warn"
+unreachable_pub = "warn"
+2018_idioms = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+module_inception = "allow"

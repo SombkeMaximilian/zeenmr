@@ -1,0 +1,28 @@
+[package]
+name = "benches"
+version = "0.0.0"
+publish = false
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+metabodecon = { path = "../metabodecon", features = ["full"] }
+criterion = "0.5.1"
+
+[lints]
+workspace = true
+
+[[bench]]
+name = "deconvoluter"
+path = "deconvoluter.rs"
+harness = false
+
+[[bench]]
+name = "read_bruker"
+path = "read_bruker.rs"
+harness = false
+
+[[bench]]
+name = "read_jcampdx"
+path = "read_jcampdx.rs"
+harness = false
