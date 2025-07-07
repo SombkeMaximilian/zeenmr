@@ -26,7 +26,7 @@ Current planned and implemented features include (additional suggestions are wel
 - [x] Fitting of peaks to deconvolute 1D NMR spectra
    - [x] Lorentzian functions
      - [x] Analytical solution to the system of equations for the Lorentzian parameters using the detected peaks
-- [ ] Alignment of 1D NMR spectra using the deconvoluted signals
+- [x] Alignment of 1D NMR spectra using the deconvoluted signals
 - [ ] Python bindings
    - [x] Basic bindings
    - [ ] Complete Python package
