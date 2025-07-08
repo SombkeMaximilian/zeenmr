@@ -1,5 +1,5 @@
 use criterion::{Criterion, criterion_group, criterion_main};
-use metabodecon::spectrum::JcampDx;
+use zeenmr::spectrum::JcampDx;
 
 mod workspace_dir;
 use workspace_dir::workspace_dir;

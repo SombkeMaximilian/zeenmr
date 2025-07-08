@@ -6,7 +6,7 @@ edition = "2021"
 license = "MIT"
 
 [dependencies]
-metabodecon = { path = "../metabodecon", features = ["full"] }
+zeenmr = { path = "../zeenmr", features = ["full"] }
 criterion = "0.5.1"
 
 [lints]

@@ -1,8 +1,8 @@
 [workspace]
 resolver = "2"
 members = [
-    "metabodecon",
-    "metabodecon-python",
+    "zeenmr",
+    "zeenmr-python",
 
     # Internal crates
     "benches",

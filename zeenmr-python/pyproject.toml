@@ -1,0 +1,26 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "zeenmr"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+    "License :: OSI Approved :: MIT License",
+]
+dependencies = [
+    "numpy >=2.0.0",
+]
+dynamic = [
+    "version",
+    "readme",
+    "description",
+]
+
+[tool.maturin]
+bindings = "pyo3"
+module-name = "zeenmr._zeenmr"
+features = ["pyo3/extension-module"]

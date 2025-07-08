@@ -1,16 +1,11 @@
-# Metabodecon-Rust
+# ZeeNMR
 
-Development was moved to [spang-lab/zeenmr](https://github.com/spang-lab/zeenmr).
-
-Metabodecon is a work-in-progress project that provides functionality for handling and processing 1D NMR spectra. A more
-limited version of this was already implemented in R [here](https://github.com/spang-lab/metabodecon/). This project
-aims to improve on that by providing a more efficient and flexible implementation in Rust as well as additional features
-that are not present in the R version.
+ZeeNMR is a work-in-progress project that provides functionality for handling and processing NMR spectra.
 
 [![Build status][build-badge]][build-link]
 
-[build-badge]: https://github.com/SombkeMaximilian/metabodecon-rust/actions/workflows/rust.yml/badge.svg
-[build-link]: https://github.com/SombkeMaximilian/metabodecon-rust/actions
+[build-badge]: https://github.com/spang-lab/zeenmr/actions/workflows/rust.yml/badge.svg
+[build-link]: https://github.com/spang-lab/zeenmr/actions
 
 ## Features
 
@@ -45,13 +40,13 @@ adding the following to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-metabodecon = { git = "https://github.com/SombkeMaximilian/metabodecon-rust" }
+zeenmr = { git = "https://github.com/spang-lab/zeenmr" }
 ```
 
-To install the Python bindings, follow these steps:
+To test the Python bindings, follow these steps:
 - activate your virtual environment
 - install the `maturin` package using `pip install maturin`
-- navigate to the `metabodecon-python` crate and run the following command:
+- navigate to the `zeenmr-python` crate and run the following command:
 
   ```shell
   maturin develop --release
@@ -62,9 +57,10 @@ To install the Python bindings, follow these steps:
 Here is a simple example of how to use the library in Rust:
 
 ```rust
-use metabodecon::{deconvolution, spectrum};
+use zeenmr::deconvolution::Deconvoluter;
+use zeenmr::spectrum::Bruker;
 
-fn main() -> metabodecon::Result<()> {
+fn main() -> zeenmr::Result<()> {
     // Read a spectrum from Bruker TopSpin format
     let spectrum = Bruker::read_spectrum(
         "data/bruker/blood/blood_01",
@@ -93,10 +89,10 @@ Here is a simple example of how to use the library in Python:
 
 ```python
 import matplotlib.pyplot as plt
-import metabodecon as md
+import zeenmr as zn
 
 # Read a spectrum from Bruker TopSpin format
-spectrum = md.Spectrum.read_bruker(
+spectrum = zn.Spectrum.read_bruker(
     "data/bruker/blood/blood_01",
     # Experiment Number
     10,
@@ -107,7 +103,7 @@ spectrum = md.Spectrum.read_bruker(
 )
 
 # Deconvoluter with default options
-deconvoluter = md.Deconvoluter()
+deconvoluter = zn.Deconvoluter()
 
 # Ignore the water artifact
 deconvoluter.add_ignore_region((4.7, 4.9))
@@ -166,8 +162,7 @@ Run benchmarks:
 
 ## Contributing
 
-Currently not accepting contributions, as this is part of my thesis. However, feel free to use it and open issues for
-suggestions and bug reports. I will get back to them after my thesis is done.
+WIP
 
 ## References
 
@@ -175,9 +170,6 @@ suggestions and bug reports. I will get back to them after my thesis is done.
   spectroscopy”.
   [[DOI]](https://doi.org/10.1016/j.jmr.2009.09.003)
   [[ScienceDirect]](https://www.sciencedirect.com/science/article/pii/S1090780709002584)
-- Martina Häckl et al. “An R-Package for the Deconvolution and Integration of 1D NMR Data: MetaboDecon1D”.
-  [[DOI]](https://doi.org/10.3390/metabo11070452)
-  [[MDPI]](https://www.mdpi.com/2218-1989/11/7/452)
 - JCAMP. JCAMP-DX: A Standard Form for the Exchange of Infrared Spectra in Computer Readable Form.
   [[JCAMP]](http://www.jcamp-dx.org/protocols/dxir01.pdf)
 - JCAMP. JCAMP-DX for NMR.
@@ -191,7 +183,7 @@ suggestions and bug reports. I will get back to them after my thesis is done.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
 ### Contribution
 

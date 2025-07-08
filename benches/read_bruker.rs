@@ -1,5 +1,5 @@
 use criterion::{Criterion, criterion_group, criterion_main};
-use metabodecon::spectrum::Bruker;
+use zeenmr::spectrum::Bruker;
 
 mod workspace_dir;
 use workspace_dir::workspace_dir;

@@ -35,7 +35,7 @@ jobs:
       - clippy
       - docs
       - minrust
-      - test-metabodecon-full
+      - test-zeenmr-full
     steps:
       - run: exit 0
 
@@ -119,8 +119,8 @@ jobs:
       - name: "check --workspace --all-features"
         run: cargo check --workspace --all-features
 
-  test-metabodecon-full:
-    name : test-metabodecon-full
+  test-zeenmr-full:
+    name : test-zeenmr-full
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -137,5 +137,5 @@ jobs:
         with:
           toolchain: ${{ env.rust_stable }}
       - uses: Swatinem/rust-cache@v2
-      - name: test metabodecon full
+      - name: test zeenmr full
         run: cargo test --features full

@@ -1,6 +1,6 @@
 use criterion::{Criterion, criterion_group, criterion_main};
-use metabodecon::deconvolution::*;
-use metabodecon::spectrum::*;
+use zeenmr::deconvolution::*;
+use zeenmr::spectrum::*;
 
 mod workspace_dir;
 use workspace_dir::workspace_dir;
