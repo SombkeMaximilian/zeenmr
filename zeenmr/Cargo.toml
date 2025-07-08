@@ -2,8 +2,8 @@
 name = "zeenmr"
 version = "0.1.0"
 authors = ["Maximilian Sombke <sombkemaximilian@gmail.com>"]
-edition = "2021"
-rust-version = "1.82.0"
+edition = "2024"
+rust-version = "1.85.0"
 description = """
     A library for 1D NMR spectra, offering data structure definitions,
     common NMR file format parsing (Bruker TopSpin, JCAMP-DX),

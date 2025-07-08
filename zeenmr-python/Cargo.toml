@@ -2,8 +2,8 @@
 name = "zeenmr-python"
 version = "0.1.0"
 authors = ["Maximilian Sombke <sombkemaximilian@gmail.com>"]
-edition = "2021"
-rust-version = "1.82.0"
+edition = "2024"
+rust-version = "1.85.0"
 description = """
     Python bindings for the ZeeNMR Rust library crate.
 """
