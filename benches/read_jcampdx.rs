@@ -19,7 +19,7 @@ fn read_spectrum(c: &mut Criterion) {
             .map(|entry| entry.unwrap().path())
             .for_each(|path| {
                 let basename = path.file_stem().unwrap().to_str().unwrap();
-                let bench_name = format!("read_jdx_{}_{}", version, basename);
+                let bench_name = format!("read_jdx_{version}_{basename}");
                 c.bench_function(&bench_name, |b| {
                     b.iter(|| {
                         let _spectrum = JcampDx::read_spectrum(&path, (1.0, 1.1)).unwrap();

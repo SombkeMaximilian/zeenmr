@@ -135,7 +135,7 @@ impl std::fmt::Display for Nucleus {
             Self::Phosphorus31 => "31P",
             Self::Other(value) => value.as_str(),
         };
-        write!(f, "{}", nucleus)
+        write!(f, "{nucleus}")
     }
 }
 

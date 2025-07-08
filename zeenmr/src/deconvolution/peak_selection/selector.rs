@@ -74,8 +74,10 @@ impl std::fmt::Display for SelectionSettings {
                 threshold,
             } => write!(
                 f,
-                "Noise Score Filter [scoring method: {}, score threshold: {}]",
-                scoring_method, threshold
+                "Noise Score Filter [\
+                 scoring method: {scoring_method},\
+                 score threshold: {threshold}\
+                 ]"
             ),
         }
     }

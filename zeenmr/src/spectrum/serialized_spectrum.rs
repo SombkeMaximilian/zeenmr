@@ -192,9 +192,9 @@ mod tests {
                         assert_eq!(*chemical_shifts, context.0);
                         assert_eq!(*intensities, context.1);
                     }
-                    _ => panic!("unexpected kind: {:?}", inner),
+                    _ => panic!("unexpected kind: {inner:?}"),
                 },
-                _ => panic!("unexpected error: {:?}", error),
+                _ => panic!("unexpected error: {error:?}"),
             });
     }
 
@@ -220,9 +220,9 @@ mod tests {
                         assert_eq!(*chemical_shifts, context.0);
                         assert_eq!(*intensities, context.1);
                     }
-                    _ => panic!("unexpected kind: {:?}", inner),
+                    _ => panic!("unexpected kind: {inner:?}"),
                 },
-                _ => panic!("unexpected error: {:?}", error),
+                _ => panic!("unexpected error: {error:?}"),
             });
     }
 
@@ -249,9 +249,9 @@ mod tests {
                     };
                     assert_eq!(*positions, expected_context.1);
                 }
-                _ => panic!("unexpected kind: {:?}", inner),
+                _ => panic!("unexpected kind: {inner:?}"),
             },
-            _ => panic!("unexpected error: {:?}", error),
+            _ => panic!("unexpected error: {error:?}"),
         };
     }
 
@@ -290,9 +290,9 @@ mod tests {
                             assert_eq!(*positions, context.0);
                             assert_eq!(positions.len(), context.1);
                         }
-                        _ => panic!("unexpected kind: {:?}", inner),
+                        _ => panic!("unexpected kind: {inner:?}"),
                     },
-                    _ => panic!("unexpected error: {:?}", error),
+                    _ => panic!("unexpected error: {error:?}"),
                 };
             });
     }
@@ -341,9 +341,9 @@ mod tests {
                             assert_approx_eq!(f64, chemical_shifts_range.0, context.1.0);
                             assert_approx_eq!(f64, chemical_shifts_range.1, context.1.1);
                         }
-                        _ => panic!("unexpected kind: {:?}", inner),
+                        _ => panic!("unexpected kind: {inner:?}"),
                     },
-                    _ => panic!("unexpected error: {:?}", error),
+                    _ => panic!("unexpected error: {error:?}"),
                 };
             });
     }

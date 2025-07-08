@@ -73,7 +73,7 @@ impl From<ZeeNmrError> for PyErr {
                 }
                 SpecErrKind::MissingData { .. } => MissingData::new_err(inner.to_string()),
                 SpecErrKind::MalformedData { .. } => MalformedData::new_err(inner.to_string()),
-                _ => UnexpectedError::new_err(format!("unexpected error: {}", value)),
+                _ => UnexpectedError::new_err(format!("unexpected error: {value}")),
             },
             zeenmr::Error::Deconvolution(ref inner) => match inner.kind() {
                 DecErrKind::InvalidSmoothingSettings { .. } => {
@@ -93,7 +93,7 @@ impl From<ZeeNmrError> for PyErr {
                 DecErrKind::EmptySignalFreeRegion => {
                     EmptySignalFreeRegion::new_err(inner.to_string())
                 }
-                _ => UnexpectedError::new_err(format!("unexpected error: {}", value)),
+                _ => UnexpectedError::new_err(format!("unexpected error: {value}")),
             },
             zeenmr::Error::Alignment(ref inner) => match inner.kind() {
                 AlignErrKind::InvalidAlignmentStrategy { .. } => {
@@ -105,10 +105,10 @@ impl From<ZeeNmrError> for PyErr {
                 AlignErrKind::InvalidSolvingSettings { .. } => {
                     InvalidSolvingSettings::new_err(inner.to_string())
                 }
-                _ => UnexpectedError::new_err(format!("unexpected error: {}", value)),
+                _ => UnexpectedError::new_err(format!("unexpected error: {value}")),
             },
             zeenmr::Error::IoError(inner) => PyIOError::new_err(inner.to_string()),
-            _ => UnexpectedError::new_err(format!("unexpected error: {}", value)),
+            _ => UnexpectedError::new_err(format!("unexpected error: {value}")),
         }
     }
 }

@@ -163,6 +163,6 @@ impl core::fmt::Display for Error {
             }
         };
 
-        write!(f, "{}", description)
+        write!(f, "{description}")
     }
 }

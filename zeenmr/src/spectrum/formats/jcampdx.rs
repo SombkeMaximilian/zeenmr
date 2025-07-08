@@ -826,7 +826,7 @@ impl JcampDx {
                 return Err(Error::new(Kind::MalformedMetadata {
                     key: keys[2].to_string(),
                     path: path.as_ref().to_path_buf(),
-                    details: format!("Unsupported x unit: {}", unit),
+                    details: format!("Unsupported x unit: {unit}"),
                 })
                 .into());
             }
@@ -899,7 +899,7 @@ impl JcampDx {
                         value.parse::<f64>().map_err(|error| {
                             Error::new(Kind::MalformedData {
                                 path: path.as_ref().to_path_buf(),
-                                details: format!("{} ({})", value, error),
+                                details: format!("{value} ({error})"),
                             })
                             .into()
                         })
@@ -937,7 +937,7 @@ impl JcampDx {
                 let next = captures.name("next").unwrap().as_str();
 
                 match dup {
-                    "" | "S" => format!(" \n{}", next),
+                    "" | "S" => format!(" \n{next}"),
                     _ => format!(" {} {} \n{}", dif, Self::decrement_dup(dup), next),
                 }
             })
@@ -1012,7 +1012,7 @@ impl JcampDx {
         decoded.extend(encoded.chars().skip(1));
         let duplicates = decoded.parse::<usize>().unwrap();
 
-        format!(" {}", value).repeat(duplicates)
+        format!(" {value}").repeat(duplicates)
     }
 
     /// Maps the DIF characters onto the respective digit and returns the

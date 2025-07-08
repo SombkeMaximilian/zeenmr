@@ -951,9 +951,9 @@ mod tests {
                     Kind::InvalidSmoothingSettings { settings } => {
                         assert!(SmoothingSettings::compare(settings, &context));
                     }
-                    _ => panic!("unexpected kind: {:?}", inner),
+                    _ => panic!("unexpected kind: {inner:?}"),
                 },
-                _ => panic!("unexpected error: {:?}", error),
+                _ => panic!("unexpected error: {error:?}"),
             });
     }
 
@@ -1004,9 +1004,9 @@ mod tests {
                     Kind::InvalidSelectionSettings { settings } => {
                         assert!(SelectionSettings::compare(settings, &context));
                     }
-                    _ => panic!("unexpected kind: {:?}", inner),
+                    _ => panic!("unexpected kind: {inner:?}"),
                 },
-                _ => panic!("unexpected error: {:?}", error),
+                _ => panic!("unexpected error: {error:?}"),
             });
     }
 
@@ -1026,9 +1026,9 @@ mod tests {
                     Kind::InvalidFittingSettings { settings } => {
                         assert!(FittingSettings::compare(settings, &context));
                     }
-                    _ => panic!("unexpected kind: {:?}", inner),
+                    _ => panic!("unexpected kind: {inner:?}"),
                 },
-                _ => panic!("unexpected error: {:?}", error),
+                _ => panic!("unexpected error: {error:?}"),
             });
     }
 
@@ -1097,7 +1097,7 @@ mod tests {
                     }
                     _ => panic!("Unexpected kind: {:?}", inner.kind()),
                 },
-                _ => panic!("Unexpected error: {:?}", error),
+                _ => panic!("Unexpected error: {error:?}"),
             });
     }
 

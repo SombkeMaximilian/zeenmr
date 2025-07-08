@@ -546,9 +546,9 @@ mod tests {
                     Kind::InvalidFilteringSettings { settings } => {
                         assert!(FilteringSettings::compare(settings, &context))
                     }
-                    _ => panic!("Unexpected kind: {:?}", inner),
+                    _ => panic!("Unexpected kind: {inner:?}"),
                 },
-                _ => panic!("Unexpected error: {:?}", error),
+                _ => panic!("Unexpected error: {error:?}"),
             });
     }
 }

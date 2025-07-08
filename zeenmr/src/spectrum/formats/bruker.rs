@@ -263,15 +263,13 @@ impl Bruker {
         processing: u32,
         signal_boundaries: (f64, f64),
     ) -> Result<Spectrum> {
-        let acqus_path = path
-            .as_ref()
-            .join(format!("{}/acqus", experiment));
+        let acqus_path = path.as_ref().join(format!("{experiment}/acqus"));
         let procs_path = path
             .as_ref()
-            .join(format!("{}/pdata/{}/procs", experiment, processing));
+            .join(format!("{experiment}/pdata/{processing}/procs"));
         let one_r_path = path
             .as_ref()
-            .join(format!("{}/pdata/{}/1r", experiment, processing));
+            .join(format!("{experiment}/pdata/{processing}/1r"));
 
         let acqus = Self::read_acquisition_parameters(acqus_path)?;
         let procs = Self::read_processing_parameters(procs_path)?;

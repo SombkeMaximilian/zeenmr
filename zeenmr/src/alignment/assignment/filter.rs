@@ -60,11 +60,10 @@ impl std::fmt::Display for FilteringSettings {
                 write!(
                     f,
                     "Distance Similarity Filter [\
-                     similarity metric: {},\
-                     maximum distance: {},\
-                     minimum similarity: {}\
-                     ]",
-                    similarity_metric, max_distance, min_similarity
+                     similarity metric: {similarity_metric},\
+                     maximum distance: {max_distance},\
+                     minimum similarity: {min_similarity}\
+                     ]"
                 )
             }
         }

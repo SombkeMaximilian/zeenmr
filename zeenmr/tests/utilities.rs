@@ -11,8 +11,8 @@ pub fn workspace_dir() -> PathBuf {
 
 pub fn store_deconvolution(deconvolution: Deconvolution, filename: &str) {
     let tmp_path = env!("CARGO_TARGET_TMPDIR");
-    let deconvolutions_dir = format!("{}/test-deconvolutions", tmp_path);
-    let filename = format!("{}/test-deconvolutions/{}", tmp_path, filename);
+    let deconvolutions_dir = format!("{tmp_path}/test-deconvolutions");
+    let filename = format!("{tmp_path}/test-deconvolutions/{filename}");
     let serialized = serde_json::to_string_pretty(deconvolution.as_ref()).unwrap();
     std::fs::create_dir_all(&deconvolutions_dir).unwrap();
     std::fs::write(&filename, &serialized).unwrap();

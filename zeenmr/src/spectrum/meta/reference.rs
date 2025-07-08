@@ -81,7 +81,7 @@ impl TryFrom<&str> for ReferencingMethod {
         match method.as_str() {
             "INTERNAL" => Ok(Self::Internal),
             "EXTERNAL" => Ok(Self::External),
-            _ => Err(format!("invalid referencing method: {}", value)),
+            _ => Err(format!("invalid referencing method: {value}")),
         }
     }
 }
@@ -100,7 +100,7 @@ impl std::fmt::Display for ReferencingMethod {
             Self::Internal => "internal",
             Self::External => "external",
         };
-        write!(f, "{}", method)
+        write!(f, "{method}")
     }
 }
 

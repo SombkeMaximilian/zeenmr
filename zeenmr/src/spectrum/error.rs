@@ -192,8 +192,8 @@ impl core::fmt::Display for Error {
                 chemical_shifts,
                 intensities,
             } => format!(
-                "lengths of chemical shifts [{}] and intensities [{}] do not match",
-                chemical_shifts, intensities
+                "lengths of chemical shifts [{chemical_shifts}]\
+                 and intensities [{intensities}] do not match"
             ),
             Kind::NonUniformSpacing {
                 step_size,
@@ -284,33 +284,29 @@ impl core::fmt::Display for Error {
             }
             Kind::MissingMetadata { path, key } => format!(
                 "missing metadata \
-                 expected in file at {:?} \
-                 with key {}",
-                path, key
+                 expected in file at {path:?} \
+                 with key {key}"
             ),
             Kind::MalformedMetadata { path, key, details } => format!(
                 "malformed metadata \
-                 in file at {:?} \
-                 with key {} \
-                 ({})",
-                path, key, details
+                 in file at {path:?} \
+                 with key {key} \
+                 ({details})"
             ),
             Kind::MissingData { path } => format!(
                 "missing data block \"
-                 expected in file at {:?}",
-                path
+                 expected in file at {path:?}"
             ),
             Kind::MalformedData { path, details } => format!(
                 "malformed data block \
-                 in file at {:?} \
-                 ({})",
-                path, details
+                 in file at {path:?} \
+                 ({details})"
             ),
             Kind::UnsupportedJcampDxFile => {
                 "unsupported JCAMP-DX file (see documentation for supported file types)".to_string()
             }
         };
 
-        write!(f, "{}", description)
+        write!(f, "{description}")
     }
 }
