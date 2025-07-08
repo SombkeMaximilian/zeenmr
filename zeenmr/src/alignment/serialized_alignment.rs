@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 /// [`Arc`] can cause issues with serialization, so the [`Alignment`] struct is
 /// converted to this form, where the `Deconvolution`s are stored as a `Vec`
 /// instead.
+///
+/// [`Arc`]: std::sync::Arc
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename = "Alignment", rename_all = "camelCase")]
 pub(crate) struct SerializedAlignment {
