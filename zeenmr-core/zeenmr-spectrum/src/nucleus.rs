@@ -1,5 +1,5 @@
 #[cfg(test)]
-use {strum::EnumIter, strum::IntoEnumIterator};
+use strum::EnumIter;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -498,6 +498,7 @@ impl From<Nucleus> for String {
 mod tests {
     use super::*;
     use static_assertions::assert_impl_all;
+    use strum::IntoEnumIterator;
 
     #[test]
     fn thread_safety() {
