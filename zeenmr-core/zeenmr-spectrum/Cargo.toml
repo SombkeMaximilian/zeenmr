@@ -1,0 +1,30 @@
+[package]
+name = "zeenmr-spectrum"
+version = "0.1.0"
+authors = ["Maximilian Sombke <sombkemaximilian@gmail.com>"]
+edition = "2024"
+rust-version = "1.85.0"
+description = """
+    ZeeNMR spectrum-related data types.
+"""
+readme = "../../README.md"
+repository = "https://github.com/spang-lab/zeenmr"
+license = "MIT"
+keywords = [
+    "bioinformatics",
+    "metabolomics",
+    "nmr",
+    "spectrum",
+]
+categories = [
+    "science::bioinformatics",
+    "data-structures",
+]
+
+[features]
+default = []
+
+[dependencies]
+
+[lints]
+workspace = true
