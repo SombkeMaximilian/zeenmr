@@ -8,6 +8,19 @@ members = [
     "benches",
 ]
 
+[workspace.dependencies]
+zeenmr = { version = "0.1.0", path = "zeenmr" }
+
+num-traits = { version = "0.2.19" }
+
+float-cmp = { version = "0.10.0" }
+
+rayon = { version = "1.10.0" }
+
+serde = { version = "1.0.219", features = ["derive"] }
+rmp-serde = { version = "1.3.0" }
+serde_json = { version = "1.0.140" }
+
 [profile.release]
 lto = true
 

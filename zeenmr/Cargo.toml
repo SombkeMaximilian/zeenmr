@@ -34,16 +34,16 @@ jdx = ["dep:regex"]
 serde = ["dep:serde"]
 
 [dependencies]
-num-traits = "0.2.19"
+num-traits = { workspace = true }
 good_lp = { version = "1.14.0", features = ["highs"], default-features = false, optional = true }
 regex = { version = "1.11.1", optional = true }
 byteorder = { version = "1.5.0", optional = true }
-rayon = { version = "1.10.0", optional = true }
-serde = { version = "1.0.219", features = ["derive"], optional = true }
+rayon = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
 
 [dev-dependencies]
-float-cmp = "0.10.0"
-serde_json = "1.0.140"
+float-cmp = { workspace = true }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true
