@@ -5,3 +5,5 @@
 
 mod nucleus;
 pub use nucleus::Nucleus;
+
+pub mod error;
