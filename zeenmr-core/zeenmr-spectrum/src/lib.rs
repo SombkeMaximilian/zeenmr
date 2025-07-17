@@ -6,4 +6,7 @@
 mod nucleus;
 pub use nucleus::Nucleus;
 
+mod reference;
+pub use reference::{ReferencingMethod, ShiftReference};
+
 pub mod error;
