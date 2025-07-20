@@ -9,4 +9,7 @@ pub use nucleus::Nucleus;
 mod reference;
 pub use reference::{ReferencingMethod, ShiftReference};
 
+mod spectral_linspace;
+pub(crate) use spectral_linspace::SpectralLinspace;
+
 pub mod error;

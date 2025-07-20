@@ -101,6 +101,18 @@ pub enum Kind {
         /// Range of the chemical shifts.
         chemical_shifts_range: (f64, f64),
     },
+    /// The index of a reference shift is out of bounds.
+    ///
+    /// This error occurs when the index of a reference shift is greater than or
+    /// equal to the length of the chemical shifts in a [`Spectrum`].
+    ///
+    /// [`Spectrum`]: crate::Spectrum
+    ReferenceIndexOutOfBounds {
+        /// Index of the reference shift.
+        index: usize,
+        /// Length of the chemical shifts.
+        length: usize,
+    },
 }
 
 impl From<Kind> for Error {
@@ -182,6 +194,11 @@ impl core::fmt::Display for Error {
                     _ => unreachable!("valid signal boundaries falsely detected as invalid"),
                 }
             }
+            Kind::ReferenceIndexOutOfBounds { index, length } => {
+                format!(
+                    "reference index [{index}] is out of bounds for chemical shifts of length [{length}]"
+                )
+            }
         };
 
         write!(f, "{description}")
@@ -237,6 +254,13 @@ impl Error {
             chemical_shifts_range,
         }
         .into()
+    }
+
+    /// Creates a new [`ReferenceIndexOutOfBounds`] error.
+    ///
+    /// [`ReferenceIndexOutOfBounds`]: Kind::ReferenceIndexOutOfBounds
+    pub(crate) fn reference_index_out_of_bounds(index: usize, length: usize) -> Self {
+        Kind::ReferenceIndexOutOfBounds { index, length }.into()
     }
 
     /// Returns the `Kind` of error that occurred.
