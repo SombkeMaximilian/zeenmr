@@ -56,12 +56,10 @@ impl SpectralLinspace {
         reference: T,
     ) -> Result<Self> {
         let reference = reference.into();
-        if reference.index() >= size {
-            return Err(Error::reference_index_out_of_bounds(
-                reference.index(),
-                size,
-            ));
-        }
+
+        Self::validate_frequency_range(frequency_range)?;
+        Self::validate_spectrometer_frequency(spectrometer_frequency)?;
+        Self::validate_reference_index(reference.index(), size)?;
 
         Ok(Self {
             frequency_range,
@@ -96,15 +94,21 @@ impl SpectralLinspace {
     /// The order of the range determines the direction of the spectral axis,
     /// where the first value is the first point, and the second value is the
     /// last point.
-    pub(crate) fn set_frequency_range(&mut self, frequency_range: (f64, f64)) {
+    pub(crate) fn set_frequency_range(&mut self, frequency_range: (f64, f64)) -> Result<()> {
+        Self::validate_frequency_range(frequency_range)?;
         self.frequency_range = frequency_range;
+
+        Ok(())
     }
 
     /// Sets the spectrometer frequency in MHz.
     ///
     /// This value is used to standardize the chemical shifts in the spectrum.
-    pub(crate) fn set_spectrometer_frequency(&mut self, spectrometer_frequency: f64) {
+    pub(crate) fn set_spectrometer_frequency(&mut self, spectrometer_frequency: f64) -> Result<()> {
+        Self::validate_spectrometer_frequency(spectrometer_frequency)?;
         self.spectrometer_frequency = spectrometer_frequency;
+
+        Ok(())
     }
 
     /// Sets the number of points in the spectral axis.
@@ -114,12 +118,7 @@ impl SpectralLinspace {
     /// This function will return an error if the chemical shift reference index
     /// is out of bounds for the new size.
     pub(crate) fn set_size(&mut self, size: usize) -> Result<()> {
-        if self.reference.index() >= size {
-            return Err(Error::reference_index_out_of_bounds(
-                self.reference.index(),
-                size,
-            ));
-        }
+        Self::validate_reference_index(self.reference.index(), size)?;
         self.size = size;
 
         Ok(())
@@ -209,6 +208,29 @@ impl SpectralLinspace {
         let offset = self.reference.chemical_shift() - self.reference.index() as f64 * step;
 
         (0..self.size).map(move |i| offset + step * i as f64)
+    }
+
+    fn validate_frequency_range(frequency_range: (f64, f64)) -> Result<()> {
+        match frequency_range.0.is_finite() && frequency_range.1.is_finite() {
+            true => Ok(()),
+            false => Err(Error::invalid_frequency_range(frequency_range)),
+        }
+    }
+
+    fn validate_spectrometer_frequency(spectrometer_frequency: f64) -> Result<()> {
+        match spectrometer_frequency.is_finite() {
+            true => Ok(()),
+            false => Err(Error::invalid_spectrometer_frequency(
+                spectrometer_frequency,
+            )),
+        }
+    }
+
+    fn validate_reference_index(index: usize, size: usize) -> Result<()> {
+        match index < size {
+            true => Ok(()),
+            false => Err(Error::reference_index_out_of_bounds(index, size)),
+        }
     }
 }
 

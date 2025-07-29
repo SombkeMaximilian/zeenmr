@@ -38,44 +38,7 @@ pub enum Kind {
     /// constructed, so an empty [`Spectrum`] is simply not useful.
     ///
     /// [`Spectrum`]: crate::Spectrum
-    EmptyData {
-        /// Number of chemical shift values in the spectrum.
-        chemical_shifts: usize,
-        /// Number of intensity values in the spectrum.
-        intensities: usize,
-    },
-    /// The input data lengths are mismatched.
-    ///
-    /// The length of a [`Spectrum`] is not intended to be changed after it is
-    /// constructed. A mismatch in the number of the chemical shift and
-    /// intensity values would create an inconsistent [`Spectrum`].
-    ///
-    /// [`Spectrum`]: crate::Spectrum
-    DataLengthMismatch {
-        /// Number of chemical shift values in the spectrum.
-        chemical_shifts: usize,
-        /// Number of intensity values in the spectrum.
-        intensities: usize,
-    },
-    /// The chemical shifts are not uniformly spaced.
-    ///
-    /// The step size between two consecutive chemical shift values needs to be
-    /// approximately consistent throughout the entire [`Spectrum`]. A situation
-    /// where this is not the case can arise due to
-    ///
-    /// - An inconsistent step size between two values
-    /// - The difference between two values being very close to zero
-    /// - Non-finite values in the chemical shifts
-    ///
-    /// Note that this error will short-circuit the construction of the
-    /// [`Spectrum`] at the first occurrence of non-uniform spacing, meaning
-    /// later values are not checked.
-    ///
-    /// [`Spectrum`]: crate::Spectrum
-    NonUniformSpacing {
-        /// Position of the first chemical shift with non-uniform spacing.
-        position: usize,
-    },
+    EmptyData,
     /// The intensities contain invalid values.
     ///
     /// Non-finite intensity values will lead to problems in further processing
@@ -84,6 +47,21 @@ pub enum Kind {
     InvalidIntensities {
         /// Positions of the invalid intensities.
         positions: Vec<usize>,
+    },
+    /// The frequency range is invalid.
+    ///
+    /// The frequency range of a [`Spectrum`] is expected to be a finite value.
+    InvalidFrequencyRange {
+        /// Frequency range of the spectrum.
+        frequency_range: (f64, f64),
+    },
+    /// The spectrometer frequency is invalid.
+    ///
+    /// The spectrometer frequency of a [`Spectrum`] is expected to be a
+    /// finite value.
+    InvalidSpectrometerFrequency {
+        /// Spectrometer frequency of the spectrum.
+        spectrometer_frequency: f64,
     },
     /// The signal boundaries are invalid.
     ///
@@ -124,25 +102,7 @@ impl From<Kind> for Error {
 impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let description = match self.kind() {
-            Kind::EmptyData {
-                chemical_shifts,
-                intensities,
-            } => match (*chemical_shifts == 0, *intensities == 0) {
-                (true, true) => "chemical shifts and intensities are empty".to_string(),
-                (true, false) => "chemical shifts are empty".to_string(),
-                (false, true) => "intensities are empty".to_string(),
-                _ => unreachable!("chemical shifts/intensities falsely detected as empty"),
-            },
-            Kind::DataLengthMismatch {
-                chemical_shifts,
-                intensities,
-            } => format!(
-                "lengths of chemical shifts [{chemical_shifts}]\
-                 and intensities [{intensities}] do not match"
-            ),
-            Kind::NonUniformSpacing { position } => {
-                format!("non-uniform spacing of chemical shifts at position {position}")
-            }
+            Kind::EmptyData => "intensities are empty".to_string(),
             Kind::InvalidIntensities { positions } => match positions.len() {
                 0 => unreachable!("error should not be created without invalid intensities"),
                 1 => format!(
@@ -168,6 +128,20 @@ impl core::fmt::Display for Error {
                     positions.len()
                 ),
             },
+            Kind::InvalidFrequencyRange { frequency_range } => {
+                format!(
+                    "frequency range [{}, {}] contains non-finite values",
+                    frequency_range.0, frequency_range.1
+                )
+            }
+            Kind::InvalidSpectrometerFrequency {
+                spectrometer_frequency,
+            } => {
+                format!(
+                    "spectrometer frequency [{}] is non-finite",
+                    spectrometer_frequency
+                )
+            }
             Kind::InvalidSignalBoundaries {
                 signal_boundaries,
                 chemical_shifts_range,
@@ -209,30 +183,8 @@ impl Error {
     /// Creates a new [`EmptyData`] error.
     ///
     /// [`EmptyData`]: Kind::EmptyData
-    pub(crate) fn empty_data(chemical_shifts: usize, intensities: usize) -> Self {
-        Kind::EmptyData {
-            chemical_shifts,
-            intensities,
-        }
-        .into()
-    }
-
-    /// Creates a new [`DataLengthMismatch`] error.
-    ///
-    /// [`DataLengthMismatch`]: Kind::DataLengthMismatch
-    pub(crate) fn data_length_mismatch(chemical_shifts: usize, intensities: usize) -> Self {
-        Kind::DataLengthMismatch {
-            chemical_shifts,
-            intensities,
-        }
-        .into()
-    }
-
-    /// Creates a new [`NonUniformSpacing`] error.
-    ///
-    /// [`NonUniformSpacing`]: Kind::NonUniformSpacing
-    pub(crate) fn non_uniform_spacing(position: usize) -> Self {
-        Kind::NonUniformSpacing { position }.into()
+    pub(crate) fn empty_data() -> Self {
+        Kind::EmptyData.into()
     }
 
     /// Creates a new [`InvalidIntensities`] error.
@@ -240,6 +192,23 @@ impl Error {
     /// [`InvalidIntensities`]: Kind::InvalidIntensities
     pub(crate) fn invalid_intensities(positions: Vec<usize>) -> Self {
         Kind::InvalidIntensities { positions }.into()
+    }
+
+    /// Creates a new [`InvalidFrequencyRange`] error.
+    ///
+    /// [`InvalidFrequencyRange`]: Kind::InvalidFrequencyRange
+    pub(crate) fn invalid_frequency_range(frequency_range: (f64, f64)) -> Self {
+        Kind::InvalidFrequencyRange { frequency_range }.into()
+    }
+
+    /// Creates a new [`InvalidSpectrometerFrequency`] error.
+    ///
+    /// [`InvalidSpectrometerFrequency`]: Kind::InvalidSpectrometerFrequency
+    pub(crate) fn invalid_spectrometer_frequency(spectrometer_frequency: f64) -> Self {
+        Kind::InvalidSpectrometerFrequency {
+            spectrometer_frequency,
+        }
+        .into()
     }
 
     /// Creates a new [`InvalidSignalBoundaries`] error.
