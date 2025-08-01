@@ -9,6 +9,9 @@ pub use nucleus::Nucleus;
 mod reference;
 pub use reference::{ReferencingMethod, ShiftReference};
 
+mod signal_boundaries;
+pub use signal_boundaries::SignalBoundaries;
+
 mod spectral_linspace;
 pub(crate) use spectral_linspace::SpectralLinspace;
 
