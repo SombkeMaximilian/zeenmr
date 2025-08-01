@@ -52,15 +52,20 @@ pub enum Kind {
     },
     /// The frequency range is invalid.
     ///
-    /// The frequency range of a [`Spectrum`] is expected to be a finite value.
+    /// The frequency range of a [`Spectrum`] must be a tuple of finite values
+    /// to generate chemical shifts from the frequency range.
+    ///
+    /// [`Spectrum`]: crate::Spectrum
     InvalidFrequencyRange {
         /// Frequency range of the spectrum.
         frequency_range: (f64, f64),
     },
     /// The spectrometer frequency is invalid.
     ///
-    /// The spectrometer frequency of a [`Spectrum`] is expected to be a
-    /// finite value.
+    /// The spectrometer frequency of a [`Spectrum`] must be a finite value to
+    /// generate chemical shifts from the frequency range.
+    ///
+    /// [`Spectrum`]: crate::Spectrum
     InvalidSpectrometerFrequency {
         /// Spectrometer frequency of the spectrum.
         spectrometer_frequency: f64,
