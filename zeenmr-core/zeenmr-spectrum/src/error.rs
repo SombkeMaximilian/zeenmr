@@ -1,5 +1,7 @@
 //! Spectrum error types.
 
+use crate::SignalBoundaries;
+
 /// A specialized [`Result`] type.
 ///
 /// This type alias avoids writing out `Result<T, zeenmr_spectrum::Error>`
@@ -65,19 +67,18 @@ pub enum Kind {
     },
     /// The signal boundaries are invalid.
     ///
-    /// A certain structure is expected from a 1D NMR [`Spectrum`] with respect
-    /// to the regions of interest. The region where signals are expected to be
-    /// found in the center of the [`Spectrum`], with signal-free regions on
-    /// either side. The following conditions are checked:
-    /// - Signal boundaries are finite values
-    /// - Signal boundaries are within the range of the chemical shifts
+    /// When overriding the signal boundaries, which are normally automatically
+    /// determined, some conditions must be met to ensure that the [`Spectrum`]
+    /// remains consistent and usable:
+    /// - Only finite values are allowed.
+    /// - Values must be within the valid range.
     ///
     /// [`Spectrum`]: crate::Spectrum
     InvalidSignalBoundaries {
         /// Signal boundaries of the spectrum.
-        signal_boundaries: (f64, f64),
+        signal_boundaries: SignalBoundaries,
         /// Range of the chemical shifts.
-        chemical_shifts_range: (f64, f64),
+        valid_range: (f64, f64),
     },
     /// The index of a reference shift is out of bounds.
     ///
@@ -144,26 +145,28 @@ impl core::fmt::Display for Error {
             }
             Kind::InvalidSignalBoundaries {
                 signal_boundaries,
-                chemical_shifts_range,
+                valid_range,
             } => {
-                let is_finite = signal_boundaries.0.is_finite() && signal_boundaries.1.is_finite();
-                let is_contained = (signal_boundaries.0 > chemical_shifts_range.0
-                    && signal_boundaries.1 < chemical_shifts_range.1)
-                    || (signal_boundaries.0 < chemical_shifts_range.0
-                        && signal_boundaries.1 > chemical_shifts_range.1);
+                let boundary_type = match signal_boundaries {
+                    SignalBoundaries::Relative(_, _) => "relative units",
+                    SignalBoundaries::Frequencies(_, _) => "frequencies",
+                    SignalBoundaries::ChemicalShifts(_, _) => "chemical shifts",
+                };
+                let start = signal_boundaries.start();
+                let end = signal_boundaries.end();
+                let valid_start = valid_range.0;
+                let valid_end = valid_range.1;
+                let is_finite = start.is_finite() && end.is_finite();
+                let is_contained = (start > valid_start && end < valid_end)
+                    || (start < valid_start && end > valid_end);
 
                 match (is_finite, is_contained) {
-                    (false, _) => format!(
-                        "signal boundaries [{}, {}] contain non-finite values",
-                        signal_boundaries.0, signal_boundaries.1
-                    ),
+                    (false, _) => {
+                        format!("signal boundaries [{start}, {end}] contain non-finite values",)
+                    }
                     (true, false) => format!(
-                        "signal boundaries [{}, {}] are \
-                         not within the range of chemical shifts [{}, {}]",
-                        signal_boundaries.0,
-                        signal_boundaries.1,
-                        chemical_shifts_range.0,
-                        chemical_shifts_range.1
+                        "signal boundaries [{start}, {end}] are not within \
+                         the valid range of {boundary_type} [{valid_start}, {valid_end}]",
                     ),
                     _ => unreachable!("valid signal boundaries falsely detected as invalid"),
                 }
@@ -215,12 +218,12 @@ impl Error {
     ///
     /// [`InvalidSignalBoundaries`]: Kind::InvalidSignalBoundaries
     pub(crate) fn invalid_signal_boundaries(
-        signal_boundaries: (f64, f64),
-        chemical_shifts_range: (f64, f64),
+        signal_boundaries: SignalBoundaries,
+        valid_range: (f64, f64),
     ) -> Self {
         Kind::InvalidSignalBoundaries {
             signal_boundaries,
-            chemical_shifts_range,
+            valid_range,
         }
         .into()
     }
