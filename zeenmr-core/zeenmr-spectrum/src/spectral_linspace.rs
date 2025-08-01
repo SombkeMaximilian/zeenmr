@@ -132,6 +132,46 @@ impl SpectralLinspace {
         self.step_hz() / self.spectrometer_frequency
     }
 
+    /// Returns the step size of the spectral axis in relative units.
+    pub(crate) fn step_relative(&self) -> f64 {
+        1.0 / (self.size as f64 - 1.0)
+    }
+
+    /// Calculates the fractional index of a frequency within the linear space.
+    pub(crate) fn fractional_index_hz(&self, frequency: f64) -> f64 {
+        (frequency - self.range_hz().0) / self.step_hz()
+    }
+
+    /// Calculates the fractional index of a chemical shift within the linear
+    /// space.
+    pub(crate) fn fractional_index_ppm(&self, chemical_shift: f64) -> f64 {
+        (chemical_shift - self.range_ppm().0) / self.step_ppm()
+    }
+
+    /// Calculates the fractional index in relative units within the linear
+    /// space.
+    pub(crate) fn fractional_index_relative(&self, relative: f64) -> f64 {
+        relative / self.step_relative()
+    }
+
+    /// Checks if the given frequency in Hz is within the linear space.
+    pub(crate) fn contains_hz(&self, frequency: f64) -> bool {
+        let range = (
+            f64::min(self.frequency_range.0, self.frequency_range.1),
+            f64::max(self.frequency_range.0, self.frequency_range.1),
+        );
+
+        frequency.is_finite() && frequency >= range.0 && frequency <= range.1
+    }
+
+    /// Checks if the given chemical shift in ppm is within the linear space.
+    pub(crate) fn contains_ppm(&self, chemical_shift: f64) -> bool {
+        let range = self.range_ppm();
+        let range = (f64::min(range.0, range.1), f64::max(range.0, range.1));
+
+        chemical_shift.is_finite() && chemical_shift >= range.0 && chemical_shift <= range.1
+    }
+
     /// Returns an iterator over the frequencies in Hz.
     ///
     /// Computing each frequency value only requires one addition and one
