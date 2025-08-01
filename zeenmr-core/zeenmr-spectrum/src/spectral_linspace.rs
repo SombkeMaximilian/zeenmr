@@ -209,6 +209,14 @@ impl SpectralLinspace {
 
         Ok(())
     }
+
+    /// Internal helper function to validate the frequency range and return an
+    /// error if either frequency is not a finite float.
+    ///
+    /// # Errors
+    ///
+    /// The following errors can occur:
+    /// - [`InvalidFrequencyRange`]: crate::error::Kind::InvalidFrequencyRange
     fn validate_frequency_range(frequency_range: (f64, f64)) -> Result<()> {
         match frequency_range.0.is_finite() && frequency_range.1.is_finite() {
             true => Ok(()),
@@ -216,6 +224,14 @@ impl SpectralLinspace {
         }
     }
 
+    /// Internal helper function to validate the spectrometer frequency and
+    /// return an error if it is not a finite float.
+    ///
+    /// # Errors
+    ///
+    /// The following errors can occur:
+    /// - [`InvalidSpectrometerFrequency`]:
+    ///   crate::error::Kind::InvalidSpectrometerFrequency
     fn validate_spectrometer_frequency(spectrometer_frequency: f64) -> Result<()> {
         match spectrometer_frequency.is_finite() {
             true => Ok(()),
@@ -225,6 +241,14 @@ impl SpectralLinspace {
         }
     }
 
+    /// Internal helper function to validate the reference index and return an
+    /// error if it is out of bounds for the given size.
+    ///
+    /// # Errors
+    ///
+    /// The following errors can occur:
+    /// - [`ReferenceIndexOutOfBounds`]:
+    ///   crate::error::Kind::ReferenceIndexOutOfBounds
     fn validate_reference_index(index: usize, size: usize) -> Result<()> {
         match index < size {
             true => Ok(()),
