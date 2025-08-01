@@ -104,45 +104,34 @@ impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let description = match self.kind() {
             Kind::EmptyData => "intensities are empty".to_string(),
-            Kind::InvalidIntensities { positions } => match positions.len() {
-                0 => unreachable!("error should not be created without invalid intensities"),
-                1 => format!(
-                    "intensities contains a non-finite value at index [{}]",
-                    positions[0]
-                ),
-                2..=5 => format!(
-                    "intensities contain non-finite values at indices [{}]",
-                    positions
-                        .iter()
-                        .map(|pos| pos.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                ),
-                _ => format!(
-                    "intensities contain non-finite values at indices [{}, ...] \
-                     ({} invalid values)",
-                    positions[..5]
-                        .iter()
-                        .map(|pos| pos.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                    positions.len()
-                ),
-            },
-            Kind::InvalidFrequencyRange { frequency_range } => {
-                format!(
-                    "frequency range [{}, {}] contains non-finite values",
-                    frequency_range.0, frequency_range.1
-                )
+            Kind::InvalidIntensities { positions } => {
+                let length = positions.len();
+                let indices = positions[..usize::min(5, length)]
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                match length {
+                    0 => unreachable!("error should not be created without invalid intensities"),
+                    1 => format!("intensities contains a non-finite value at index [{indices}]"),
+                    2..=5 => {
+                        format!("intensities contain non-finite values at indices [{indices}]")
+                    }
+                    _ => format!(
+                        "intensities contain non-finite values at indices [{indices}, ...] \
+                         ({length} invalid values)",
+                    ),
+                }
+            }
+            Kind::InvalidFrequencyRange {
+                frequency_range: (start, end),
+            } => {
+                format!("frequency range [{start}, {end}] contains non-finite values")
             }
             Kind::InvalidSpectrometerFrequency {
                 spectrometer_frequency,
-            } => {
-                format!(
-                    "spectrometer frequency [{}] is non-finite",
-                    spectrometer_frequency
-                )
-            }
+            } => format!("spectrometer frequency [{spectrometer_frequency}] is non-finite"),
             Kind::InvalidSignalBoundaries {
                 signal_boundaries,
                 valid_range,
