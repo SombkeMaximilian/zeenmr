@@ -23,10 +23,17 @@ use serde::{Deserialize, Serialize};
     derive(Serialize, Deserialize),
     serde(rename_all = "camelCase")
 )]
-#[allow(missing_docs)]
 pub enum SignalBoundaries {
+    /// Relative boundaries defined as a fraction of the total spectral range.
+    ///
+    /// Values must be between 0.0 and 1.0, with 0.0 representing the left edge
+    /// and 1.0 representing the right edge of the spectrum.
     Relative(f64, f64),
+    /// Frequency boundaries in Hz.
     Frequencies(f64, f64),
+    /// Chemical shift boundaries in ppm.
+    ///
+    /// These values require context to be interpreted. Providing boundaries in
     ChemicalShifts(f64, f64),
 }
 

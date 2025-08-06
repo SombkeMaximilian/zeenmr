@@ -15,10 +15,12 @@ use serde::{Deserialize, Serialize};
 /// [Serde]: (https://serde.rs/)
 ///
 /// When the `serde` feature is enabled, `SpectralLinspace` implements the
-/// [`Serialize`] and [`Deserialize`] traits.
+/// [`Serialize`] and [`Deserialize`] traits. This struct is flattened into
+/// the [`Spectrum`] struct when serialized.
 ///
 /// [`Serialize`]: serde::Serialize
 /// [`Deserialize`]: serde::Deserialize
+/// [`Spectrum`]: crate::Spectrum
 #[derive(Clone, Debug)]
 #[cfg_attr(
     feature = "serde",
@@ -48,7 +50,8 @@ impl SpectralLinspace {
     /// # Errors
     ///
     /// This function will return an error if the chemical shift reference index
-    /// is out of bounds for the given size.
+    /// is out of bounds for the given size, or if the frequency range or
+    /// spectrometer frequency contains non-finite values.
     pub(crate) fn new<T: Into<ShiftReference>>(
         spectrometer_frequency: f64,
         frequency_range: (f64, f64),
@@ -202,6 +205,10 @@ impl SpectralLinspace {
     /// The order of the range determines the direction of the spectral axis,
     /// where the first value is the first point, and the second value is the
     /// last point.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if either frequency in the range is not a finite float.
     pub(crate) fn set_frequency_range(&mut self, frequency_range: (f64, f64)) -> Result<()> {
         Self::validate_frequency_range(frequency_range)?;
         self.frequency_range = frequency_range;
@@ -212,6 +219,10 @@ impl SpectralLinspace {
     /// Sets the spectrometer frequency in MHz.
     ///
     /// This value is used to standardize the chemical shifts in the spectrum.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the spectrometer frequency is not a finite float.
     pub(crate) fn set_spectrometer_frequency(&mut self, spectrometer_frequency: f64) -> Result<()> {
         Self::validate_spectrometer_frequency(spectrometer_frequency)?;
         self.spectrometer_frequency = spectrometer_frequency;
@@ -223,8 +234,8 @@ impl SpectralLinspace {
     ///
     /// # Errors
     ///
-    /// This function will return an error if the chemical shift reference index
-    /// is out of bounds for the new size.
+    /// Returns an error if the chemical shift reference index is out of bounds
+    /// for the new size.
     pub(crate) fn set_size(&mut self, size: usize) -> Result<()> {
         Self::validate_index(self.reference.index(), size)?;
         self.size = size;
@@ -236,8 +247,8 @@ impl SpectralLinspace {
     ///
     /// # Errors
     ///
-    /// This function will return an error if the new reference index is out of
-    /// bounds for the current size of the spectral axis.
+    /// Returns an error if the new reference index is out of bounds for the
+    /// current size of the spectral axis.
     pub(crate) fn set_shift_reference<T: Into<ShiftReference>>(
         &mut self,
         reference: T,
@@ -286,8 +297,7 @@ impl SpectralLinspace {
     /// # Errors
     ///
     /// The following errors can occur:
-    /// - [`ReferenceIndexOutOfBounds`]:
-    ///   crate::error::Kind::ReferenceIndexOutOfBounds
+    /// - [`IndexOutOfBounds`]: crate::error::Kind::IndexOutOfBounds
     fn validate_index(index: usize, size: usize) -> Result<()> {
         match index < size {
             true => Ok(()),
