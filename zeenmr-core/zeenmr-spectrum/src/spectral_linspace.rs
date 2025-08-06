@@ -161,6 +161,44 @@ impl SpectralLinspace {
         relative / self.step_relative()
     }
 
+    /// Converts an index within the linear space to a frequency in Hz.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the index is out of bounds for the current size
+    /// of the spectral axis.
+    pub(crate) fn index_to_hz(&self, index: usize) -> Result<f64> {
+        Self::validate_index(index, self.size)?;
+
+        Ok(self.frequency_range.0 + self.step_hz() * index as f64)
+    }
+
+    /// Converts an index within the linear space to a chemical shift in ppm.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the index is out of bounds for the current size
+    /// of the spectral axis.
+    pub(crate) fn index_to_ppm(&self, index: usize) -> Result<f64> {
+        Self::validate_index(index, self.size)?;
+        let step = self.step_ppm();
+        let offset = self.reference_offset();
+
+        Ok(offset + step * index as f64)
+    }
+
+    /// Converts an index within the linear space to a relative value.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the index is out of bounds for the current size
+    /// of the spectral axis.
+    pub(crate) fn index_to_relative(&self, index: usize) -> Result<f64> {
+        Self::validate_index(index, self.size)?;
+
+        Ok(self.step_relative() * index as f64)
+    }
+
     /// Checks if the given frequency in Hz is within the linear space.
     pub(crate) fn contains_hz(&self, frequency: f64) -> bool {
         let range = (
