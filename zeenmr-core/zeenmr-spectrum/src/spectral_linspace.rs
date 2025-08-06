@@ -59,7 +59,7 @@ impl SpectralLinspace {
 
         Self::validate_frequency_range(frequency_range)?;
         Self::validate_spectrometer_frequency(spectrometer_frequency)?;
-        Self::validate_reference_index(reference.index(), size)?;
+        Self::validate_index(reference.index(), size)?;
 
         Ok(Self {
             spectrometer_frequency,
@@ -84,6 +84,11 @@ impl SpectralLinspace {
         &self.reference
     }
 
+    /// Calculates the offset from the chemical shift reference in ppm.
+    pub(crate) fn reference_offset(&self) -> f64 {
+        self.reference.chemical_shift() - self.reference.index() as f64 * self.step_ppm()
+    }
+
     /// Returns the frequency range of the spectral axis in Hz.
     pub(crate) fn range_hz(&self) -> (f64, f64) {
         self.frequency_range
@@ -91,8 +96,7 @@ impl SpectralLinspace {
 
     /// Returns the chemical shift range of the spectral axis in ppm.
     pub(crate) fn range_ppm(&self) -> (f64, f64) {
-        let step = self.step_ppm();
-        let start = self.reference.chemical_shift() - self.reference.index() as f64 * step;
+        let start = self.reference_offset();
 
         (
             start,
@@ -138,19 +142,19 @@ impl SpectralLinspace {
     }
 
     /// Calculates the fractional index of a frequency within the linear space.
-    pub(crate) fn fractional_index_hz(&self, frequency: f64) -> f64 {
+    pub(crate) fn hz_to_fractional(&self, frequency: f64) -> f64 {
         (frequency - self.range_hz().0) / self.step_hz()
     }
 
     /// Calculates the fractional index of a chemical shift within the linear
     /// space.
-    pub(crate) fn fractional_index_ppm(&self, chemical_shift: f64) -> f64 {
+    pub(crate) fn ppm_to_fractional(&self, chemical_shift: f64) -> f64 {
         (chemical_shift - self.range_ppm().0) / self.step_ppm()
     }
 
     /// Calculates the fractional index in relative units within the linear
     /// space.
-    pub(crate) fn fractional_index_relative(&self, relative: f64) -> f64 {
+    pub(crate) fn relative_to_fractional(&self, relative: f64) -> f64 {
         relative / self.step_relative()
     }
 
@@ -188,7 +192,7 @@ impl SpectralLinspace {
     /// multiplication, so we opt not to cache the chemical shifts in memory.
     pub(crate) fn chemical_shifts(&self) -> impl Iterator<Item = f64> {
         let step = self.step_ppm();
-        let offset = self.reference.chemical_shift() - self.reference.index() as f64 * step;
+        let offset = self.reference_offset();
 
         (0..self.size).map(move |i| offset + step * i as f64)
     }
@@ -222,7 +226,7 @@ impl SpectralLinspace {
     /// This function will return an error if the chemical shift reference index
     /// is out of bounds for the new size.
     pub(crate) fn set_size(&mut self, size: usize) -> Result<()> {
-        Self::validate_reference_index(self.reference.index(), size)?;
+        Self::validate_index(self.reference.index(), size)?;
         self.size = size;
 
         Ok(())
@@ -239,12 +243,7 @@ impl SpectralLinspace {
         reference: T,
     ) -> Result<()> {
         let reference = reference.into();
-        if self.reference.index() >= reference.index() {
-            return Err(Error::reference_index_out_of_bounds(
-                reference.index(),
-                self.size,
-            ));
-        }
+        Self::validate_index(reference.index(), self.size)?;
         self.reference = reference;
 
         Ok(())
@@ -289,10 +288,10 @@ impl SpectralLinspace {
     /// The following errors can occur:
     /// - [`ReferenceIndexOutOfBounds`]:
     ///   crate::error::Kind::ReferenceIndexOutOfBounds
-    fn validate_reference_index(index: usize, size: usize) -> Result<()> {
+    fn validate_index(index: usize, size: usize) -> Result<()> {
         match index < size {
             true => Ok(()),
-            false => Err(Error::reference_index_out_of_bounds(index, size)),
+            false => Err(Error::index_out_of_bounds(index, size)),
         }
     }
 }

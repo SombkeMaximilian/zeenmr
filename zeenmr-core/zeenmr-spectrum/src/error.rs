@@ -85,17 +85,17 @@ pub enum Kind {
         /// Range of the chemical shifts.
         valid_range: (f64, f64),
     },
-    /// The index of a reference shift is out of bounds.
+    /// The index is out of bounds for the [`Spectrum`]'s size.
     ///
-    /// This error occurs when the index of a reference shift is greater than or
-    /// equal to the length of the chemical shifts in a [`Spectrum`].
+    /// This error occurs when a provided index is greater than or equal to the
+    /// size of the [`Spectrum`].
     ///
     /// [`Spectrum`]: crate::Spectrum
-    ReferenceIndexOutOfBounds {
-        /// Index of the reference shift.
+    IndexOutOfBounds {
+        /// Provided index that is out of bounds.
         index: usize,
-        /// Length of the chemical shifts.
-        length: usize,
+        /// Size of the spectrum.
+        size: usize,
     },
 }
 
@@ -165,10 +165,8 @@ impl core::fmt::Display for Error {
                     _ => unreachable!("valid signal boundaries falsely detected as invalid"),
                 }
             }
-            Kind::ReferenceIndexOutOfBounds { index, length } => {
-                format!(
-                    "reference index [{index}] is out of bounds for chemical shifts of length [{length}]"
-                )
+            Kind::IndexOutOfBounds { index, size } => {
+                format!("index [{index}] is out of bounds for spectrum of size [{size}]")
             }
         };
 
@@ -222,11 +220,11 @@ impl Error {
         .into()
     }
 
-    /// Creates a new [`ReferenceIndexOutOfBounds`] error.
+    /// Creates a new [`IndexOutOfBounds`] error.
     ///
-    /// [`ReferenceIndexOutOfBounds`]: Kind::ReferenceIndexOutOfBounds
-    pub(crate) fn reference_index_out_of_bounds(index: usize, length: usize) -> Self {
-        Kind::ReferenceIndexOutOfBounds { index, length }.into()
+    /// [`IndexOutOfBounds`]: Kind::IndexOutOfBounds
+    pub(crate) fn index_out_of_bounds(index: usize, size: usize) -> Self {
+        Kind::IndexOutOfBounds { index, size }.into()
     }
 
     /// Returns the `Kind` of error that occurred.
