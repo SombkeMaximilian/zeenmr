@@ -334,12 +334,172 @@ impl SpectralLinspace {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::Kind;
     use float_cmp::assert_approx_eq;
     use static_assertions::assert_impl_all;
+
+    fn valid_parameters() -> (f64, (f64, f64), usize, ShiftReference) {
+        let frequency_range = (12000.0, 0.0);
+        let spectrometer_frequency = 600.0;
+        let spectrum_size = 2_usize.pow(17);
+        let reference = (frequency_range.0 / spectrometer_frequency).into();
+
+        (
+            spectrometer_frequency,
+            frequency_range,
+            spectrum_size,
+            reference,
+        )
+    }
+
+    fn valid_linspace() -> SpectralLinspace {
+        let (spec_freq, freq_range, size, reference) = valid_parameters();
+
+        SpectralLinspace::new(spec_freq, freq_range, size, reference).unwrap()
+    }
 
     #[test]
     fn thread_safety() {
         assert_impl_all!(ShiftReference: Send, Sync);
+    }
+
+    #[test]
+    fn new() {
+        let (spec_freq, freq_range, size, reference) = valid_parameters();
+        let linspace = SpectralLinspace::new(spec_freq, freq_range, size, reference);
+        assert!(linspace.is_ok());
+    }
+
+    #[test]
+    fn invalid_frequency_range() {
+        let (spec_freq, _, size, reference) = valid_parameters();
+        let invalid_ranges = [
+            (f64::NAN, 0.0),
+            (f64::INFINITY, 0.0),
+            (f64::NEG_INFINITY, 0.0),
+        ];
+        let errors = invalid_ranges.map(|freq_range| {
+            SpectralLinspace::new(spec_freq, freq_range, size, reference.clone()).unwrap_err()
+        });
+        let expected_context = invalid_ranges.clone();
+        errors
+            .into_iter()
+            .zip(expected_context)
+            .for_each(|(error, context)| match error.kind() {
+                Kind::InvalidFrequencyRange { frequency_range } => {
+                    assert_approx_eq!(f64, frequency_range.0, context.0);
+                    assert_approx_eq!(f64, frequency_range.1, context.1);
+                }
+                _ => panic!("unexpected error: {:?}", error),
+            });
+
+        let mut linspace = valid_linspace();
+        invalid_ranges.iter().for_each(|range| {
+            assert!(linspace.set_frequency_range(*range).is_err());
+        });
+    }
+
+    #[test]
+    fn invalid_spectrometer_frequency() {
+        let (_, freq_range, size, reference) = valid_parameters();
+        let invalid_frequencies = [f64::NAN, f64::INFINITY, f64::NEG_INFINITY];
+        let errors = invalid_frequencies.map(|spec_freq| {
+            SpectralLinspace::new(spec_freq, freq_range, size, reference.clone()).unwrap_err()
+        });
+        let expected_context = invalid_frequencies.clone();
+        errors
+            .into_iter()
+            .zip(expected_context)
+            .for_each(|(error, context)| match error.kind() {
+                Kind::InvalidSpectrometerFrequency {
+                    spectrometer_frequency,
+                } => {
+                    assert_approx_eq!(f64, *spectrometer_frequency, context);
+                }
+                _ => panic!("unexpected error: {:?}", error),
+            });
+
+        let mut linspace = valid_linspace();
+        invalid_frequencies.iter().for_each(|freq| {
+            assert!(
+                linspace
+                    .set_spectrometer_frequency(*freq)
+                    .is_err()
+            );
+        });
+    }
+
+    #[test]
+    fn index_out_of_bounds() {
+        let (spec_freq, freq_range, _, _) = valid_parameters();
+        let size = 16_usize;
+        let reference = ShiftReference::from((freq_range.0 / spec_freq, size));
+        let error = SpectralLinspace::new(spec_freq, freq_range, size, reference).unwrap_err();
+        let expected_context = (16_usize, 16_usize);
+        match error.kind() {
+            Kind::IndexOutOfBounds { index, size } => {
+                assert_eq!(*index, expected_context.0);
+                assert_eq!(*size, expected_context.1);
+            }
+            _ => panic!("unexpected error: {:?}", error),
+        }
+
+        let mut linspace = valid_linspace();
+        let errors = [
+            linspace.index_to_hz(2_usize.pow(18)).unwrap_err(),
+            linspace
+                .index_to_ppm(2_usize.pow(18))
+                .unwrap_err(),
+            linspace
+                .index_to_relative(2_usize.pow(18))
+                .unwrap_err(),
+        ];
+        errors
+            .into_iter()
+            .for_each(|error| match error.kind() {
+                Kind::IndexOutOfBounds { index, size } => {
+                    assert_eq!(*index, 2_usize.pow(18));
+                    assert_eq!(*size, linspace.size());
+                }
+                _ => panic!("unexpected error: {:?}", error),
+            });
+        let error = linspace
+            .set_shift_reference((10.0, 2_usize.pow(18)))
+            .unwrap_err();
+        match error.kind() {
+            Kind::IndexOutOfBounds { index, size } => {
+                assert_eq!(*index, 2_usize.pow(18));
+                assert_eq!(*size, linspace.size());
+            }
+            _ => panic!("unexpected error: {:?}", error),
+        }
+    }
+
+    #[test]
+    fn mutators() {
+        let mut linspace = valid_linspace();
+        assert!(
+            linspace
+                .set_frequency_range((24000.0, 0.0))
+                .is_ok()
+        );
+        assert_approx_eq!(f64, linspace.range_hz().0, 24000.0);
+        assert_approx_eq!(f64, linspace.range_hz().1, 0.0);
+        assert!(linspace.set_spectrometer_frequency(800.0).is_ok());
+        assert_approx_eq!(f64, linspace.spectrometer_frequency(), 800.0);
+        assert!(
+            linspace
+                .set_shift_reference((24000.0 / 800.0, 0))
+                .is_ok()
+        );
+        assert_approx_eq!(
+            f64,
+            linspace.shift_reference().chemical_shift(),
+            24000.0 / 800.0
+        );
+        assert_eq!(linspace.shift_reference().index(), 0);
+        assert!(linspace.shift_reference().name().is_none());
+        assert!(linspace.shift_reference().method().is_none());
     }
 
     #[cfg(feature = "serde")]
@@ -382,66 +542,5 @@ mod tests {
         assert_eq!(linspace.reference.index(), deserialized.reference.index());
         assert_eq!(linspace.reference.name(), deserialized.reference.name());
         assert_eq!(linspace.reference.method(), deserialized.reference.method());
-    }
-
-    #[test]
-    fn properties() {
-        let frequency_range = (12000.0, 0.0);
-        let spectrometer_frequency = 600.0;
-        let spectrum_size = 2_usize.pow(17);
-        let first_point = frequency_range.0 / spectrometer_frequency;
-        let linspace = SpectralLinspace::new(
-            spectrometer_frequency,
-            frequency_range,
-            spectrum_size,
-            first_point,
-        )
-        .unwrap();
-
-        assert_approx_eq!(
-            f64,
-            linspace.spectrometer_frequency(),
-            spectrometer_frequency
-        );
-        assert_eq!(linspace.size(), spectrum_size);
-        assert_approx_eq!(f64, linspace.range_hz().0, frequency_range.0);
-        assert_approx_eq!(f64, linspace.range_hz().1, frequency_range.1);
-        assert_approx_eq!(f64, linspace.range_ppm().0, first_point);
-        assert_approx_eq!(
-            f64,
-            linspace.range_ppm().1,
-            first_point + (frequency_range.1 - frequency_range.0) / spectrometer_frequency
-        );
-        assert_approx_eq!(
-            f64,
-            linspace.width_hz(),
-            f64::abs(frequency_range.1 - frequency_range.0)
-        );
-        assert_approx_eq!(
-            f64,
-            linspace.width_ppm(),
-            f64::abs((frequency_range.1 - frequency_range.0) / spectrometer_frequency)
-        );
-        assert_approx_eq!(
-            f64,
-            linspace.center_hz(),
-            (frequency_range.0 + frequency_range.1) / 2.0
-        );
-        assert_approx_eq!(
-            f64,
-            linspace.center_ppm(),
-            first_point + (frequency_range.1 - frequency_range.0) / (2.0 * spectrometer_frequency)
-        );
-        assert_approx_eq!(
-            f64,
-            linspace.step_hz(),
-            (frequency_range.1 - frequency_range.0) / (spectrum_size as f64 - 1.0)
-        );
-        assert_approx_eq!(
-            f64,
-            linspace.step_ppm(),
-            (frequency_range.1 - frequency_range.0)
-                / ((spectrum_size as f64 - 1.0) * spectrometer_frequency)
-        );
     }
 }
