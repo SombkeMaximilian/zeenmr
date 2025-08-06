@@ -268,19 +268,6 @@ impl SpectralLinspace {
         Ok(())
     }
 
-    /// Sets the number of points in the spectral axis.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the chemical shift reference index is out of bounds
-    /// for the new size.
-    pub(crate) fn set_size(&mut self, size: usize) -> Result<()> {
-        Self::validate_index(self.reference.index(), size)?;
-        self.size = size;
-
-        Ok(())
-    }
-
     /// Sets the chemical shift reference.
     ///
     /// # Errors
