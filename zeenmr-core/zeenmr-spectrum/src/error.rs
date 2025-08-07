@@ -1,6 +1,6 @@
 //! Spectrum error types.
 
-use crate::SignalBoundaries;
+use crate::{ShiftReference, SignalBoundaries};
 use std::sync::Arc;
 
 /// A specialized [`Result`] type.
@@ -100,6 +100,17 @@ pub enum Kind {
         /// Size of the spectrum.
         size: usize,
     },
+    /// The provided shift reference is invalid.
+    ///
+    /// This error can occur as a result of either a non-finite value in the
+    /// chemical shift or an out-of-bounds index, in which case, the source of
+    /// the error will be the [`IndexOutOfBounds`] error.
+    ///
+    /// [`IndexOutOfBounds`]: Kind::IndexOutOfBounds
+    InvalidShiftReference {
+        /// The invalid shift reference.
+        reference: ShiftReference,
+    },
 }
 
 impl From<Kind> for Error {
@@ -177,6 +188,26 @@ impl core::fmt::Display for Error {
             Kind::IndexOutOfBounds { index, size } => {
                 format!("index [{index}] is out of bounds for spectrum of size [{size}]")
             }
+            Kind::InvalidShiftReference { reference } => {
+                match (
+                    !reference.chemical_shift().is_finite(),
+                    self.source.is_some(),
+                ) {
+                    (true, true) => format!(
+                        "reference chemical shift [{}] is non-finite and its {}",
+                        reference.chemical_shift(),
+                        self.source.as_ref().unwrap().to_string(),
+                    ),
+                    (true, false) => format!(
+                        "reference chemical shift [{}] is non-finite",
+                        reference.chemical_shift()
+                    ),
+                    (false, true) => {
+                        format!("reference {}", self.source.as_ref().unwrap().to_string())
+                    }
+                    _ => unreachable!("invalid shift reference falsely detected as valid"),
+                }
+            }
         };
 
         write!(f, "{description}")
@@ -234,6 +265,19 @@ impl Error {
     /// [`IndexOutOfBounds`]: Kind::IndexOutOfBounds
     pub(crate) fn index_out_of_bounds(index: usize, size: usize) -> Self {
         Kind::IndexOutOfBounds { index, size }.into()
+    }
+
+    /// Creates a new [`InvalidShiftReference`] error.
+    ///
+    /// [`InvalidShiftReference`]: Kind::InvalidShiftReference
+    pub(crate) fn invalid_shift_reference(
+        reference: ShiftReference,
+        source: Option<Error>,
+    ) -> Self {
+        Self {
+            kind: Kind::InvalidShiftReference { reference },
+            source: source.map(|error| Arc::new(error) as _),
+        }
     }
 
     /// Returns the `Kind` of error that occurred.
