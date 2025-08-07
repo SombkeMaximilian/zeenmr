@@ -1,6 +1,7 @@
 //! Spectrum error types.
 
 use crate::SignalBoundaries;
+use std::sync::Arc;
 
 /// A specialized [`Result`] type.
 ///
@@ -22,6 +23,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct Error {
     /// `Kind` of error that occurred.
     kind: Kind,
+    /// Source of the error, if any.
+    source: Option<Arc<dyn std::error::Error + Send + Sync>>,
 }
 
 /// The kind of `Error` that can occur while constructing or manipulating a
@@ -101,7 +104,13 @@ pub enum Kind {
 
 impl From<Kind> for Error {
     fn from(kind: Kind) -> Self {
-        Self { kind }
+        Self { kind, source: None }
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.source.as_ref().map(|e| e.as_ref() as _)
     }
 }
 
