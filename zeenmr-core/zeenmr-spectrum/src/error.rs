@@ -232,3 +232,16 @@ impl Error {
         &self.kind
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use static_assertions::assert_impl_all;
+
+    #[test]
+    fn thread_safety() {
+        assert_impl_all!(Error: Send, Sync);
+        assert_impl_all!(Kind: Send, Sync);
+        assert_impl_all!(Result<()>: Send, Sync);
+    }
+}
