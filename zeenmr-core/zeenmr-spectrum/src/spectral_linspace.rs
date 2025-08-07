@@ -489,23 +489,21 @@ mod tests {
             ShiftReference::from((freq_range.0 / spec_freq, size)),
             ShiftReference::from((f64::NAN, size / 2)),
         ];
-        let errors = invalid_references
-            .clone()
-            .map(|reference| SpectralLinspace::new(spec_freq, freq_range, size, reference).unwrap_err());
+        let errors = invalid_references.clone().map(|reference| {
+            SpectralLinspace::new(spec_freq, freq_range, size, reference).unwrap_err()
+        });
         let expected_contexts = invalid_references;
         errors
             .into_iter()
             .zip(expected_contexts)
-            .for_each(|(error, context)| {
-                match error.kind() {
-                    Kind::InvalidShiftReference { reference} => {
-                        assert_approx_eq!(f64, reference.chemical_shift(), context.chemical_shift());
-                        assert_eq!(reference.index(), context.index());
-                        assert_eq!(reference.name(), context.name());
-                        assert_eq!(reference.method(), context.method());
-                    },
-                    _ => panic!("unexpected error: {:?}", error),
+            .for_each(|(error, context)| match error.kind() {
+                Kind::InvalidShiftReference { reference } => {
+                    assert_approx_eq!(f64, reference.chemical_shift(), context.chemical_shift());
+                    assert_eq!(reference.index(), context.index());
+                    assert_eq!(reference.name(), context.name());
+                    assert_eq!(reference.method(), context.method());
                 }
+                _ => panic!("unexpected error: {:?}", error),
             })
     }
 
