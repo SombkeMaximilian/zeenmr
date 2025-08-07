@@ -41,23 +41,26 @@ pub(crate) struct SpectralLinspace {
 impl SpectralLinspace {
     /// Constructs a new `SpectralLinspace`.
     ///
-    /// The first value of the `frequency_range` is the frequency of the first
-    /// point in the spectral axis, while the second value is the last point.
-    /// The `spectrometer_frequency` is used to standardize the chemical
-    /// shifts in the spectrum. A `ShiftReference` is used to determine the
-    /// chemical shift reference point in the spectrum.
+    /// The first value of the `frequency_range` (Hz) is the frequency of the
+    /// first point in the spectral axis, while the second value is the last
+    /// point. The `spectrometer_frequency` (MHz) is used to standardize the
+    /// chemical shifts in the spectrum. A `ShiftReference` is used to determine
+    /// the chemical shift reference point in the spectrum.
     ///
     /// # Errors
     ///
     /// This function will return an error if the chemical shift reference index
     /// is out of bounds for the given size, or if the frequency range or
     /// spectrometer frequency contains non-finite values.
-    pub(crate) fn new<T: Into<ShiftReference>>(
+    pub(crate) fn new<T>(
         spectrometer_frequency: f64,
         frequency_range: (f64, f64),
         size: usize,
         reference: T,
-    ) -> Result<Self> {
+    ) -> Result<Self>
+    where
+        T: Into<ShiftReference>,
+    {
         let reference = reference.into();
 
         Self::validate_frequency_range(frequency_range)?;

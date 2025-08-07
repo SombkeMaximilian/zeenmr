@@ -214,29 +214,23 @@ impl ShiftReference {
     /// use float_cmp::assert_approx_eq;
     /// use zeenmr_spectrum::{ReferencingMethod, ShiftReference};
     ///
-    /// let reference = ShiftReference::new(
-    ///     4.8,
-    ///     2_usize.pow(14) - 1,
-    ///     Some("H2O"),
-    ///     Some(ReferencingMethod::Internal),
-    /// );
+    /// let reference = ShiftReference::new(4.8, 2_usize.pow(14) - 1, Some("H2O"), Some("internal"));
     ///
     /// assert_approx_eq!(f64, reference.chemical_shift(), 4.8);
     /// assert_eq!(reference.index(), 2_usize.pow(14) - 1);
     /// assert_eq!(reference.name(), Some("H2O"));
     /// assert_eq!(reference.method(), Some(&ReferencingMethod::Internal));
     /// ```
-    pub fn new<T: Into<String>>(
-        chemical_shift: f64,
-        index: usize,
-        name: Option<T>,
-        method: Option<ReferencingMethod>,
-    ) -> Self {
+    pub fn new<T, U>(chemical_shift: f64, index: usize, name: Option<T>, method: Option<U>) -> Self
+    where
+        T: Into<String>,
+        U: Into<ReferencingMethod>,
+    {
         Self {
             chemical_shift,
             index,
-            name: name.map(|name| name.into()),
-            method,
+            name: name.map(Into::into),
+            method: method.map(Into::into),
         }
     }
 
@@ -418,8 +412,8 @@ mod tests {
         ];
         let expected = [
             14_f64.into(),
-            ShiftReference::new(4.8, 2_usize.pow(14), Some("H2O"), None),
-            ShiftReference::new::<&str>(0.0, 12000, None, Some(ReferencingMethod::Internal)),
+            ShiftReference::new(4.8, 2_usize.pow(14), Some("H2O"), None::<&str>),
+            ShiftReference::new(0.0, 12000, None::<&str>, Some(ReferencingMethod::Internal)),
         ];
         let deserialized =
             serialized.map(|reference| serde_json::from_str::<ShiftReference>(reference).unwrap());
