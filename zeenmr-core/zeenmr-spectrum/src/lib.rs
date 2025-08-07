@@ -15,4 +15,7 @@ pub use signal_boundaries::SignalBoundaries;
 mod spectral_linspace;
 pub(crate) use spectral_linspace::SpectralLinspace;
 
+mod spectrum;
+pub use spectrum::Spectrum;
+
 pub mod error;
