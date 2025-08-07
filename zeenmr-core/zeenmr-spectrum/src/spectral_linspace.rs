@@ -62,7 +62,7 @@ impl SpectralLinspace {
 
         Self::validate_frequency_range(frequency_range)?;
         Self::validate_spectrometer_frequency(spectrometer_frequency)?;
-        Self::validate_index(reference.index(), size)?;
+        Self::validate_reference(&reference, size)?;
 
         Ok(Self {
             spectrometer_frequency,
@@ -329,6 +329,26 @@ impl SpectralLinspace {
             false => Err(Error::index_out_of_bounds(index, size)),
         }
     }
+
+    /// Internal helper function to validate the shift reference and return an
+    /// error if the index is out of bounds or the chemical shift is not finite.
+    ///
+    /// # Errors
+    ///
+    /// The following errors can occur:
+    /// - [`InvalidShiftReference`](crate::error::Kind::InvalidShiftReference)
+    fn validate_reference(reference: &ShiftReference, size: usize) -> Result<()> {
+        match Self::validate_index(reference.index(), size) {
+            Ok(_) => match reference.chemical_shift().is_finite() {
+                true => Ok(()),
+                false => Err(Error::invalid_shift_reference(reference.clone(), None)),
+            },
+            Err(error) => Err(Error::invalid_shift_reference(
+                reference.clone(),
+                Some(error),
+            )),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -431,19 +451,6 @@ mod tests {
 
     #[test]
     fn index_out_of_bounds() {
-        let (spec_freq, freq_range, _, _) = valid_parameters();
-        let size = 16_usize;
-        let reference = ShiftReference::from((freq_range.0 / spec_freq, size));
-        let error = SpectralLinspace::new(spec_freq, freq_range, size, reference).unwrap_err();
-        let expected_context = (16_usize, 16_usize);
-        match error.kind() {
-            Kind::IndexOutOfBounds { index, size } => {
-                assert_eq!(*index, expected_context.0);
-                assert_eq!(*size, expected_context.1);
-            }
-            _ => panic!("unexpected error: {:?}", error),
-        }
-
         let mut linspace = valid_linspace();
         let errors = [
             linspace.index_to_hz(2_usize.pow(18)).unwrap_err(),
@@ -473,6 +480,33 @@ mod tests {
             }
             _ => panic!("unexpected error: {:?}", error),
         }
+    }
+
+    #[test]
+    fn invalid_shift_reference() {
+        let (spec_freq, freq_range, size, _) = valid_parameters();
+        let invalid_references = [
+            ShiftReference::from((freq_range.0 / spec_freq, size)),
+            ShiftReference::from((f64::NAN, size / 2)),
+        ];
+        let errors = invalid_references
+            .clone()
+            .map(|reference| SpectralLinspace::new(spec_freq, freq_range, size, reference).unwrap_err());
+        let expected_contexts = invalid_references;
+        errors
+            .into_iter()
+            .zip(expected_contexts)
+            .for_each(|(error, context)| {
+                match error.kind() {
+                    Kind::InvalidShiftReference { reference} => {
+                        assert_approx_eq!(f64, reference.chemical_shift(), context.chemical_shift());
+                        assert_eq!(reference.index(), context.index());
+                        assert_eq!(reference.name(), context.name());
+                        assert_eq!(reference.method(), context.method());
+                    },
+                    _ => panic!("unexpected error: {:?}", error),
+                }
+            })
     }
 
     #[test]
