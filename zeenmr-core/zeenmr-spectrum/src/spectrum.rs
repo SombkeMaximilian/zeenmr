@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 
 /// Data structure that represents a 1D NMR spectrum.
 ///
-/// `Spectrum` is a fixed-size container that holds the signal intensities and
-/// metadata of a 1D NMR spectrum. The signal intensities are read-only, but the
-/// metadata may be modified (e.g., the chemical shift reference).
+/// `Spectrum` is a container that holds the signal intensities and metadata of
+/// a 1D NMR spectrum. The signal intensities are read-only, but the metadata
+/// may be modified (e.g., the chemical shift reference).
 ///
 /// # Invariants
 ///
@@ -70,14 +70,14 @@ use serde::{Deserialize, Serialize};
 /// // Create a Spectrum object.
 /// let mut spectrum = Spectrum::new(spectrometer_frequency, frequency_range, intensities)?;
 ///
+/// // Specify a chemical shift reference.
+/// let shift_reference = ShiftReference::new(0.0, 2_usize.pow(13), Some("ref"), Some("internal"));
+/// spectrum.set_shift_reference(shift_reference)?;
+///
 /// // Add metadata.
 /// spectrum.set_id("example_spectrum");
 /// spectrum.set_nucleus("Deuterium");
 /// spectrum.set_signal_boundaries(SignalBoundaries::Relative(0.1, 0.9))?;
-///
-/// // Specify a chemical shift reference.
-/// let shift_reference = ShiftReference::new(0.0, 2_usize.pow(13), Some("TMS"), Some("internal"));
-/// spectrum.set_shift_reference(shift_reference)?;
 /// # Ok(())
 /// # }
 /// ```
