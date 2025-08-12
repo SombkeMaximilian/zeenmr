@@ -50,6 +50,8 @@ pub enum Kind {
     /// steps. Therefore, this state is considered inconsistent and results in
     /// an error.
     InvalidIntensities {
+        /// Intensity data that contains invalid values.
+        intensities: Vec<f64>,
         /// Positions of the invalid intensities.
         positions: Vec<usize>,
     },
@@ -133,8 +135,16 @@ impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let description = match self.kind() {
             Kind::EmptyData => "intensities are empty".to_string(),
-            Kind::InvalidIntensities { positions } => {
+            Kind::InvalidIntensities {
+                intensities,
+                positions,
+            } => {
                 let length = positions.len();
+                let values = positions[..usize::min(5, length)]
+                    .iter()
+                    .map(|i| intensities[*i].to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 let indices = positions[..usize::min(5, length)]
                     .iter()
                     .map(ToString::to_string)
@@ -143,13 +153,17 @@ impl core::fmt::Display for Error {
 
                 match length {
                     0 => unreachable!("error should not be created without invalid intensities"),
-                    1 => format!("intensities contains a non-finite value at index [{indices}]"),
+                    1 => format!(
+                        "intensities contains a non-finite value [{values}] at index [{indices}]"
+                    ),
                     2..=5 => {
-                        format!("intensities contain non-finite values at indices [{indices}]")
+                        format!(
+                            "intensities contain non-finite values [{values}] at indices [{indices}]"
+                        )
                     }
                     _ => format!(
-                        "intensities contain non-finite values at indices [{indices}, ...] \
-                         ({length} invalid values)",
+                        "intensities contain non-finite values [{values}, ...] \
+                         at indices [{indices}, ...] ({length} invalid values)",
                     ),
                 }
             }
@@ -232,8 +246,12 @@ impl Error {
     /// Creates a new [`InvalidIntensities`] error.
     ///
     /// [`InvalidIntensities`]: Kind::InvalidIntensities
-    pub(crate) fn invalid_intensities(positions: Vec<usize>) -> Self {
-        Kind::InvalidIntensities { positions }.into()
+    pub(crate) fn invalid_intensities(intensities: Vec<f64>, positions: Vec<usize>) -> Self {
+        Kind::InvalidIntensities {
+            intensities,
+            positions,
+        }
+        .into()
     }
 
     /// Creates a new [`InvalidFrequencyRange`] error.

@@ -1,6 +1,5 @@
 use crate::error::{Error, Result};
 use crate::{Nucleus, ShiftReference, SignalBoundaries, SpectralLinspace};
-use std::borrow::Cow;
 use std::sync::Arc;
 
 #[cfg(feature = "serde")]
@@ -17,6 +16,8 @@ use serde::{Deserialize, Serialize};
 /// A valid `Spectrum` instance maintains the following conditions:
 /// - None of the values are [`f64::NAN`], [`f64::INFINITY`], or
 ///   [`f64::NEG_INFINITY`].
+/// - The frequency range contains only values greater than or equal to zero.
+/// - The spectrometer frequency is a positive value greater than zero.
 /// - The index of the [`ShiftReference`] is within the bounds of the spectral
 ///   axis.
 /// - Signal boundaries are within the spectral axis.
@@ -68,7 +69,7 @@ use serde::{Deserialize, Serialize};
 ///     .collect::<Vec<f64>>();
 ///
 /// // Create a Spectrum object.
-/// let mut spectrum = Spectrum::new(spectrometer_frequency, frequency_range, intensities)?;
+/// let mut spectrum = Spectrum::new(intensities, spectrometer_frequency, frequency_range)?;
 ///
 /// // Specify a chemical shift reference.
 /// let shift_reference = ShiftReference::new(0.0, 2_usize.pow(13), Some("ref"), Some("internal"));
@@ -134,12 +135,12 @@ mod serialize_intensities {
 }
 
 impl Spectrum {
-    /// Constructs a `Spectrum` from the given data.
+    /// Constructs a `Spectrum` from an iterator of intensities and parameters
+    /// for the spectral axis.
     ///
-    /// This is generally not the recommended way to create a `Spectrum` object,
-    /// as spectra are typically parsed from files, and should mostly only be
-    /// used in parsers. Note that the `intensities` cannot be modified after
-    /// construction, but the metadata may be changed freely.
+    /// `frequency_range` is specified in Hz, and `spectrometer_frequency` is
+    /// specified in MHz. Note that the `intensities` cannot be modified after
+    /// construction.
     ///
     /// # Errors
     ///
@@ -177,7 +178,7 @@ impl Spectrum {
     ///     .collect::<Vec<f64>>();
     ///
     /// // Create a Spectrum object.
-    /// let mut spectrum = Spectrum::new(spectrometer_frequency, frequency_range, intensities)?;
+    /// let mut spectrum = Spectrum::new(intensities, spectrometer_frequency, frequency_range)?;
     ///
     /// // Add metadata.
     /// spectrum.set_id("example_spectrum");
@@ -190,15 +191,15 @@ impl Spectrum {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn new<'a, T>(
+    pub fn new<I>(
+        intensities: I,
         spectrometer_frequency: f64,
         frequency_range: (f64, f64),
-        intensities: T,
     ) -> Result<Self>
     where
-        T: Into<Cow<'a, [f64]>>,
+        I: IntoIterator<Item = f64>,
     {
-        let intensities = intensities.into();
+        let intensities = Self::validate_intensities(intensities)?;
         let reference = frequency_range.0 / spectrometer_frequency;
         let spectral_linspace = SpectralLinspace::new(
             spectrometer_frequency,
@@ -207,14 +208,13 @@ impl Spectrum {
             reference,
         )?;
         let signal_boundaries = Self::validate_boundaries(Default::default(), &spectral_linspace)?;
-        Self::validate_intensities(&intensities)?;
 
         Ok(Self {
             id: None,
             nucleus: None,
             spectral_linspace,
             signal_boundaries,
-            intensities: intensities.into(),
+            intensities,
         })
     }
 
@@ -360,26 +360,34 @@ impl Spectrum {
         Ok(())
     }
 
-    fn validate_intensities(intensities: &[f64]) -> Result<()> {
+    fn validate_intensities<I>(intensities: I) -> Result<Arc<[f64]>>
+    where
+        I: IntoIterator<Item = f64>,
+    {
+        let mut invalid_positions = Vec::<usize>::new();
+        let intensities = intensities
+            .into_iter()
+            .enumerate()
+            .map(|(position, intensity)| {
+                if !intensity.is_finite() {
+                    invalid_positions.push(position);
+                }
+
+                intensity
+            })
+            .collect::<Arc<[f64]>>();
+
         if intensities.is_empty() {
             return Err(Error::empty_data());
         }
-        let positions = intensities
-            .iter()
-            .enumerate()
-            .filter_map(|(index, intensity)| {
-                if !intensity.is_finite() {
-                    Some(index)
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<usize>>();
-
-        match positions.is_empty() {
-            true => Ok(()),
-            false => Err(Error::invalid_intensities(positions)),
+        if !invalid_positions.is_empty() {
+            return Err(Error::invalid_intensities(
+                intensities.as_ref().to_vec(),
+                invalid_positions,
+            ));
         }
+
+        Ok(intensities)
     }
 
     fn validate_boundaries(
