@@ -56,7 +56,9 @@ pub enum Kind {
     /// The frequency range is invalid.
     ///
     /// The frequency range of a [`Spectrum`] must be a tuple of finite values
-    /// to generate chemical shifts from the frequency range.
+    /// to generate chemical shifts. While negative values could theoretically
+    /// also be used, they are not meaningful in this context and will lead to
+    /// an error as well.
     ///
     /// [`Spectrum`]: crate::Spectrum
     InvalidFrequencyRange {
@@ -65,8 +67,10 @@ pub enum Kind {
     },
     /// The spectrometer frequency is invalid.
     ///
-    /// The spectrometer frequency of a [`Spectrum`] must be a finite value to
-    /// generate chemical shifts from the frequency range.
+    /// The spectrometer frequency of a [`Spectrum`] must be a finite, non-zero
+    /// value to generate chemical shifts from the frequency range. While
+    /// negative values could theoretically also be used, they are not
+    /// meaningful in this context and will lead to an error as well.
     ///
     /// [`Spectrum`]: crate::Spectrum
     InvalidSpectrometerFrequency {
@@ -152,11 +156,14 @@ impl core::fmt::Display for Error {
             Kind::InvalidFrequencyRange {
                 frequency_range: (start, end),
             } => {
-                format!("frequency range [{start}, {end}] contains non-finite values")
+                format!("frequency range [{start}, {end}] contains non-finite or negative values")
             }
             Kind::InvalidSpectrometerFrequency {
                 spectrometer_frequency,
-            } => format!("spectrometer frequency [{spectrometer_frequency}] is non-finite"),
+            } => format!(
+                "spectrometer frequency [{spectrometer_frequency}] is \
+                 non-finite, not positive or zero"
+            ),
             Kind::InvalidSignalBoundaries {
                 signal_boundaries,
                 valid_range,

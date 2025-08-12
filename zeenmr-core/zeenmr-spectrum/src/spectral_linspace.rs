@@ -289,21 +289,26 @@ impl SpectralLinspace {
     }
 
     /// Internal helper function to validate the frequency range and return an
-    /// error if either frequency is not a finite float.
+    /// error if either frequency is not a finite float or not greater than or
+    /// equal to 0.
     ///
     /// # Errors
     ///
     /// The following errors can occur:
     /// - [`InvalidFrequencyRange`]: crate::error::Kind::InvalidFrequencyRange
     fn validate_frequency_range(frequency_range: (f64, f64)) -> Result<()> {
-        match frequency_range.0.is_finite() && frequency_range.1.is_finite() {
+        match frequency_range.0.is_finite()
+            && frequency_range.1.is_finite()
+            && frequency_range.0 >= 0.0
+            && frequency_range.1 >= 0.0
+        {
             true => Ok(()),
             false => Err(Error::invalid_frequency_range(frequency_range)),
         }
     }
 
     /// Internal helper function to validate the spectrometer frequency and
-    /// return an error if it is not a finite float.
+    /// return an error if it is not a finite float or not greater than 0.
     ///
     /// # Errors
     ///
@@ -311,7 +316,7 @@ impl SpectralLinspace {
     /// - [`InvalidSpectrometerFrequency`]:
     ///   crate::error::Kind::InvalidSpectrometerFrequency
     fn validate_spectrometer_frequency(spectrometer_frequency: f64) -> Result<()> {
-        match spectrometer_frequency.is_finite() {
+        match spectrometer_frequency.is_finite() && spectrometer_frequency > 0.0 {
             true => Ok(()),
             false => Err(Error::invalid_spectrometer_frequency(
                 spectrometer_frequency,
