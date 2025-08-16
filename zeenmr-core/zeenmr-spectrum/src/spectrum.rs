@@ -404,8 +404,8 @@ impl Spectrum {
                     && end <= 1.0
                 {
                     true => Ok((
-                        linspace.relative_to_fractional(start).floor() as usize,
-                        linspace.relative_to_fractional(end).ceil() as usize,
+                        linspace.relative_to_fractional(start).ceil() as usize,
+                        linspace.relative_to_fractional(end).floor() as usize,
                     )),
                     false => Err(Error::invalid_signal_boundaries(
                         signal_boundaries,
@@ -420,8 +420,8 @@ impl Spectrum {
                         let end = linspace.hz_to_fractional(end);
 
                         match start < end {
-                            true => Ok((start.floor() as usize, end.ceil() as usize)),
-                            false => Ok((end.floor() as usize, start.ceil() as usize)),
+                            true => Ok((start.ceil() as usize, end.floor() as usize)),
+                            false => Ok((end.ceil() as usize, start.floor() as usize)),
                         }
                     }
                     false => Err(Error::invalid_signal_boundaries(
@@ -437,8 +437,8 @@ impl Spectrum {
                         let end = linspace.ppm_to_fractional(end);
 
                         match start < end {
-                            true => Ok((start.floor() as usize, end.ceil() as usize)),
-                            false => Ok((end.floor() as usize, start.ceil() as usize)),
+                            true => Ok((start.ceil() as usize, end.floor() as usize)),
+                            false => Ok((end.ceil() as usize, start.floor() as usize)),
                         }
                     }
                     false => Err(Error::invalid_signal_boundaries(
