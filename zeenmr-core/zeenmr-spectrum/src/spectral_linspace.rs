@@ -288,14 +288,13 @@ impl SpectralLinspace {
         Ok(())
     }
 
-    /// Internal helper function to validate the frequency range and return an
-    /// error if either frequency is not a finite float or not greater than or
-    /// equal to 0.
+    /// Validates the frequency range and returns an error if either frequency
+    /// is not a finite float or not greater than or equal to 0.
     ///
     /// # Errors
     ///
     /// The following errors can occur:
-    /// - [`InvalidFrequencyRange`]: crate::error::Kind::InvalidFrequencyRange
+    /// - [`InvalidFrequencyRange`](crate::error::Kind::InvalidFrequencyRange)
     fn validate_frequency_range(frequency_range: (f64, f64)) -> Result<()> {
         match frequency_range.0.is_finite()
             && frequency_range.1.is_finite()
@@ -307,14 +306,13 @@ impl SpectralLinspace {
         }
     }
 
-    /// Internal helper function to validate the spectrometer frequency and
-    /// return an error if it is not a finite float or not greater than 0.
+    /// Validates the spectrometer frequency and returns an error if it is not
+    /// a finite float or not greater than 0.
     ///
     /// # Errors
     ///
     /// The following errors can occur:
-    /// - [`InvalidSpectrometerFrequency`]:
-    ///   crate::error::Kind::InvalidSpectrometerFrequency
+    /// - [`InvalidSpectrometerFrequency`](crate::error::Kind::InvalidSpectrometerFrequency)
     fn validate_spectrometer_frequency(spectrometer_frequency: f64) -> Result<()> {
         match spectrometer_frequency.is_finite() && spectrometer_frequency > 0.0 {
             true => Ok(()),
@@ -324,13 +322,13 @@ impl SpectralLinspace {
         }
     }
 
-    /// Internal helper function to validate the reference index and return an
-    /// error if it is out of bounds for the given size.
+    /// Validates a provided index and returns an error if it is out of bounds
+    /// for the given size.
     ///
     /// # Errors
     ///
     /// The following errors can occur:
-    /// - [`IndexOutOfBounds`]: crate::error::Kind::IndexOutOfBounds
+    /// - [`IndexOutOfBounds`](crate::error::Kind::IndexOutOfBounds)
     fn validate_index(index: usize, size: usize) -> Result<()> {
         match index < size {
             true => Ok(()),
@@ -338,8 +336,8 @@ impl SpectralLinspace {
         }
     }
 
-    /// Internal helper function to validate the shift reference and return an
-    /// error if the index is out of bounds or the chemical shift is not finite.
+    /// Validates the shift reference and returns an error if the index is out
+    /// of bounds or the chemical shift is not finite.
     ///
     /// # Errors
     ///

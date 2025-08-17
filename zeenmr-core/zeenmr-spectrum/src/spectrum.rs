@@ -218,30 +218,162 @@ impl Spectrum {
         })
     }
 
+    /// Returns the ID of the spectrum, if available.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use zeenmr_spectrum::Spectrum;
+    ///
+    /// # fn main() -> zeenmr_spectrum::error::Result<()> {
+    /// let spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    /// assert!(spectrum.id().is_none());
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn id(&self) -> Option<&str> {
         self.id.as_deref()
     }
 
+    /// Returns the nucleus observed in the NMR experiment, if available.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use zeenmr_spectrum::Spectrum;
+    ///
+    /// # fn main() -> zeenmr_spectrum::error::Result<()> {
+    /// let spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    /// assert!(spectrum.nucleus().is_none());
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn nucleus(&self) -> Option<&Nucleus> {
         self.nucleus.as_ref()
     }
 
+    /// Returns the spectrometer frequency in MHz.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use float_cmp::assert_approx_eq;
+    /// use zeenmr_spectrum::Spectrum;
+    ///
+    /// # fn main() -> zeenmr_spectrum::error::Result<()> {
+    /// let spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    /// assert_approx_eq!(f64, spectrum.spectrometer_frequency(), 600.0);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn spectrometer_frequency(&self) -> f64 {
         self.spectral_linspace.spectrometer_frequency()
     }
 
+    /// Returns the number of data points in the spectrum, usually referred to
+    /// as its "resolution".
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use zeenmr_spectrum::Spectrum;
+    ///
+    /// # fn main() -> zeenmr_spectrum::error::Result<()> {
+    /// let spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    /// assert_eq!(spectrum.len(), 3);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn len(&self) -> usize {
+        debug_assert_eq!(self.intensities.len(), self.spectral_linspace.size());
+
         self.spectral_linspace.size()
     }
 
+    /// Returns `true` if the spectrum has no data points. This will always be
+    /// `false` for a valid `Spectrum` instance.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use zeenmr_spectrum::Spectrum;
+    ///
+    /// # fn main() -> zeenmr_spectrum::error::Result<()> {
+    /// let spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    /// assert!(!spectrum.is_empty());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn is_empty(&self) -> bool {
+        debug_assert_ne!(self.len(), 0);
+
+        self.len() == 0
+    }
+
+    /// Returns the chemical shift reference of the spectrum.
+    ///
+    /// A `ShiftReference` using the 0'th index of the spectral axis is
+    /// default initialized when creating a new `Spectrum`. See
+    /// [`set_shift_reference`] to set a custom reference.
+    ///
+    /// [`set_shift_reference`]: Spectrum::set_shift_reference
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use float_cmp::assert_approx_eq;
+    /// use zeenmr_spectrum::Spectrum;
+    ///
+    /// # fn main() -> zeenmr_spectrum::error::Result<()> {
+    /// let spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    /// assert_approx_eq!(f64, spectrum.shift_reference().chemical_shift(), 0.0);
+    /// assert_eq!(spectrum.shift_reference().index(), 0);
+    /// assert!(spectrum.shift_reference().name().is_none());
+    /// assert!(spectrum.shift_reference().method().is_none());
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn shift_reference(&self) -> &ShiftReference {
         self.spectral_linspace.shift_reference()
     }
 
+    /// Returns the frequency range of the spectrum in Hz.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use float_cmp::assert_approx_eq;
+    /// use zeenmr_spectrum::Spectrum;
+    ///
+    /// # fn main() -> zeenmr_spectrum::error::Result<()> {
+    /// let spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    /// assert_approx_eq!(f64, spectrum.range_hz().0, 0.0);
+    /// assert_approx_eq!(f64, spectrum.range_hz().1, 12000.0);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn range_hz(&self) -> (f64, f64) {
         self.spectral_linspace.range_hz()
     }
 
+    /// Returns the chemical shift range of the spectrum in ppm.
+    ///
+    /// The [`ShiftReference`] and spectrometer frequency are used to compute
+    /// the chemical shift range.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use float_cmp::assert_approx_eq;
+    /// use zeenmr_spectrum::Spectrum;
+    ///
+    /// # fn main() -> zeenmr_spectrum::error::Result<()> {
+    /// let spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    /// assert_approx_eq!(f64, spectrum.range_ppm().0, 0.0);
+    /// assert_approx_eq!(f64, spectrum.range_ppm().1, 12000.0 / 600.0);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn range_ppm(&self) -> (f64, f64) {
         self.spectral_linspace.range_ppm()
     }
@@ -360,6 +492,15 @@ impl Spectrum {
         Ok(())
     }
 
+    /// Validates the intensities and returns them in the internal format.
+    /// Returns an error if any of the values are not finite or if the iterator
+    /// is empty.
+    ///
+    /// # Errors
+    ///
+    /// The following errors can occur:
+    /// - [`EmptyData`](crate::error::Kind::EmptyData)
+    /// - [`InvalidIntensities`](crate::error::Kind::InvalidIntensities)
     fn validate_intensities<I>(intensities: I) -> Result<Arc<[f64]>>
     where
         I: IntoIterator<Item = f64>,
@@ -390,6 +531,14 @@ impl Spectrum {
         Ok(intensities)
     }
 
+    /// Validates the signal boundaries and returns their indices in the
+    /// spectral linspace. Returns an error if the boundaries are not valid
+    /// according to the spectral linspace.
+    ///
+    /// # Errors
+    ///
+    /// The following errors can occur:
+    /// - [`InvalidSignalBoundaries`](crate::error::Kind::InvalidSignalBoundaries)
     fn validate_boundaries(
         signal_boundaries: SignalBoundaries,
         linspace: &SpectralLinspace,
