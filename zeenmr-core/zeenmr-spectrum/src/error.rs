@@ -217,14 +217,14 @@ impl core::fmt::Display for Error {
                     (true, true) => format!(
                         "reference chemical shift [{}] is non-finite and its {}",
                         reference.chemical_shift(),
-                        self.source.as_ref().unwrap().to_string(),
+                        self.source.as_ref().unwrap(),
                     ),
                     (true, false) => format!(
                         "reference chemical shift [{}] is non-finite",
                         reference.chemical_shift()
                     ),
                     (false, true) => {
-                        format!("reference {}", self.source.as_ref().unwrap().to_string())
+                        format!("reference {}", self.source.as_ref().unwrap())
                     }
                     _ => unreachable!("invalid shift reference falsely detected as valid"),
                 }
