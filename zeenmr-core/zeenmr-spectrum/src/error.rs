@@ -106,12 +106,23 @@ pub enum Kind {
         /// Size of the spectrum.
         size: usize,
     },
+    /// The chemical shift is non-finite.
+    ///
+    /// This error occurs when a chemical shift is not a finite value.
+    ///
+    /// [`InvalidShiftReference`]: Kind::InvalidShiftReference
+    NonFiniteChemicalShift {
+        /// Chemical shift that is non-finite.
+        chemical_shift: f64,
+    },
     /// The provided shift reference is invalid.
     ///
     /// This error can occur as a result of either a non-finite value in the
     /// chemical shift or an out-of-bounds index, in which case, the source of
-    /// the error will be the [`IndexOutOfBounds`] error.
+    /// the error will be the [`NonFiniteChemicalShift`] or [`IndexOutOfBounds`]
+    /// error, respectively.
     ///
+    /// [`NonFiniteChemicalShift`]: Kind::NonFiniteChemicalShift
     /// [`IndexOutOfBounds`]: Kind::IndexOutOfBounds
     InvalidShiftReference {
         /// The invalid shift reference.
@@ -209,6 +220,9 @@ impl core::fmt::Display for Error {
             Kind::IndexOutOfBounds { index, size } => {
                 format!("index [{index}] is out of bounds for spectrum of size [{size}]")
             }
+            Kind::NonFiniteChemicalShift { chemical_shift } => {
+                format!("chemical shift [{chemical_shift}] is invalid (non-finite)")
+            }
             Kind::InvalidShiftReference { reference } => {
                 match (
                     !reference.chemical_shift().is_finite(),
@@ -292,16 +306,20 @@ impl Error {
         Kind::IndexOutOfBounds { index, size }.into()
     }
 
+    /// Creates a new [`NonFiniteChemicalShift`] error.
+    ///
+    /// [`NonFiniteChemicalShift`]: Kind::NonFiniteChemicalShift
+    pub(crate) fn non_finite_chemical_shift(chemical_shift: f64) -> Self {
+        Kind::NonFiniteChemicalShift { chemical_shift }.into()
+    }
+
     /// Creates a new [`InvalidShiftReference`] error.
     ///
     /// [`InvalidShiftReference`]: Kind::InvalidShiftReference
-    pub(crate) fn invalid_shift_reference(
-        reference: ShiftReference,
-        source: Option<Error>,
-    ) -> Self {
+    pub(crate) fn invalid_shift_reference(reference: ShiftReference, source: Error) -> Self {
         Self {
             kind: Kind::InvalidShiftReference { reference },
-            source: source.map(|error| Arc::new(error) as _),
+            source: Some(Arc::new(source)),
         }
     }
 

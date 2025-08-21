@@ -280,14 +280,15 @@ impl SpectralLinspace {
     ///
     /// # Errors
     ///
-    /// Returns an error if the new reference index is out of bounds for the
-    /// current size of the spectral axis.
+    /// Returns an error if the chemical shift value is not a finite float or
+    /// the new reference index is out of bounds for the current size of the
+    /// spectral axis.
     pub(crate) fn set_shift_reference<T: Into<ShiftReference>>(
         &mut self,
         reference: T,
     ) -> Result<()> {
         let reference = reference.into();
-        Self::validate_index(reference.index(), self.size)?;
+        Self::validate_reference(&reference, self.size)?;
         self.reference = reference;
 
         Ok(())
@@ -327,6 +328,20 @@ impl SpectralLinspace {
         }
     }
 
+    /// Validates the chemical shift value and returns an error if it is not a
+    /// finite float.
+    ///
+    /// # Errors
+    ///
+    /// The following errors can occur:
+    /// - [`NonFiniteChemicalShift`](crate::error::Kind::NonFiniteChemicalShift)
+    fn validate_shift_value(chemical_shift: f64) -> Result<()> {
+        match chemical_shift.is_finite() {
+            true => Ok(()),
+            false => Err(Error::non_finite_chemical_shift(chemical_shift)),
+        }
+    }
+
     /// Validates a provided index and returns an error if it is out of bounds
     /// for the given size.
     ///
@@ -350,14 +365,11 @@ impl SpectralLinspace {
     /// - [`InvalidShiftReference`](crate::error::Kind::InvalidShiftReference)
     fn validate_reference(reference: &ShiftReference, size: usize) -> Result<()> {
         match Self::validate_index(reference.index(), size) {
-            Ok(_) => match reference.chemical_shift().is_finite() {
-                true => Ok(()),
-                false => Err(Error::invalid_shift_reference(reference.clone(), None)),
+            Ok(_) => match Self::validate_shift_value(reference.chemical_shift()) {
+                Ok(_) => Ok(()),
+                Err(error) => Err(Error::invalid_shift_reference(reference.clone(), error)),
             },
-            Err(error) => Err(Error::invalid_shift_reference(
-                reference.clone(),
-                Some(error),
-            )),
+            Err(error) => Err(Error::invalid_shift_reference(reference.clone(), error)),
         }
     }
 }
