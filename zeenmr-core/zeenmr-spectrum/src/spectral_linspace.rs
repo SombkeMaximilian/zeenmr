@@ -224,17 +224,18 @@ impl SpectralLinspace {
     ///
     /// Computing each frequency value only requires one addition and one
     /// multiplication, so we opt not to cache the frequencies in memory.
-    pub(crate) fn frequencies(&self) -> impl Iterator<Item = f64> {
+    pub(crate) fn frequencies(&self) -> impl Iterator<Item = f64> + use<> {
         let step = self.step_hz();
+        let start = self.frequency_range.0;
 
-        (0..self.size).map(move |i| self.frequency_range.0 + step * i as f64)
+        (0..self.size).map(move |i| start + step * i as f64)
     }
 
     /// Returns an iterator over the chemical shifts in ppm.
     ///
     /// Computing each chemical shift value only requires one addition and one
     /// multiplication, so we opt not to cache the chemical shifts in memory.
-    pub(crate) fn chemical_shifts(&self) -> impl Iterator<Item = f64> {
+    pub(crate) fn chemical_shifts(&self) -> impl Iterator<Item = f64> + use<> {
         let step = self.step_ppm();
         let offset = self.reference_offset();
 

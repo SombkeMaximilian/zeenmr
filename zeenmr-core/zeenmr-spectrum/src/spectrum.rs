@@ -402,11 +402,11 @@ impl Spectrum {
         self.spectral_linspace.step_ppm()
     }
 
-    pub fn frequencies(&self) -> impl Iterator<Item = f64> {
+    pub fn frequencies(&self) -> impl Iterator<Item = f64> + use<> {
         self.spectral_linspace.frequencies()
     }
 
-    pub fn chemical_shifts(&self) -> impl Iterator<Item = f64> {
+    pub fn chemical_shifts(&self) -> impl Iterator<Item = f64> + use<> {
         self.spectral_linspace.chemical_shifts()
     }
 
