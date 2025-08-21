@@ -368,6 +368,7 @@ impl ShiftReference {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "serde")]
     use float_cmp::assert_approx_eq;
     use static_assertions::assert_impl_all;
 
