@@ -9,10 +9,10 @@ use serde::{Deserialize, Serialize};
 ///
 /// A `Spectrum` consists of an ordered, immutable set of intensity values along
 /// a spectral axis defined by the recorded frequency range, the spectrometer
-/// frequency (for converting to chemical shifts), and a chemical shift
-/// reference. In addition to the measured data, a `Spectrum` can store metadata
-/// such as the observed nucleus, an identifier, and signal region boundaries,
-/// which define the portion of the spectrum expected to contain real signals.
+/// frequency, and a chemical shift reference. In addition to the measured data,
+/// a `Spectrum` can store metadata such as the observed nucleus, an identifier,
+/// and signal region boundaries, which define the portion of the spectrum
+/// expected to contain real signals.
 ///
 /// # Invariants
 ///
