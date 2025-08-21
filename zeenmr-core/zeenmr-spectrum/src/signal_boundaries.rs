@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 
 /// Boundaries of the signal region in a [`Spectrum`].
 ///
+/// [`Spectrum`]: crate::Spectrum
+///
 /// Signal boundaries can be defined in three different ways:
 /// - Relative: as a fraction of the total spectral range (between 0.0 and 1.0).
 /// - Frequencies: as absolute frequency values in Hz.
