@@ -412,7 +412,7 @@ mod tests {
         let errors = invalid_ranges.map(|freq_range| {
             SpectralLinspace::new(spec_freq, freq_range, size, reference.clone()).unwrap_err()
         });
-        let expected_context = invalid_ranges.clone();
+        let expected_context = invalid_ranges;
         errors
             .into_iter()
             .zip(expected_context)
