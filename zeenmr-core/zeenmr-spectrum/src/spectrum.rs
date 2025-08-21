@@ -547,10 +547,8 @@ impl Spectrum {
             SignalBoundaries::Relative(start, end) => {
                 match start.is_finite()
                     && end.is_finite()
-                    && 0.0 <= start
-                    && start <= 1.0
-                    && 0.0 <= end
-                    && end <= 1.0
+                    && (0.0..=1.0).contains(&start)
+                    && (0.0..=1.0).contains(&end)
                 {
                     true => Ok((
                         linspace.relative_to_fractional(start).ceil() as usize,

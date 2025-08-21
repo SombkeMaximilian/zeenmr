@@ -213,7 +213,7 @@ impl SpectralLinspace {
             f64::max(self.frequency_range.0, self.frequency_range.1),
         );
 
-        frequency.is_finite() && frequency >= range.0 && frequency <= range.1
+        frequency.is_finite() && (range.0..=range.1).contains(&frequency)
     }
 
     /// Checks if the given chemical shift in ppm is within the linear space.
@@ -221,7 +221,7 @@ impl SpectralLinspace {
         let range = self.range_ppm();
         let range = (f64::min(range.0, range.1), f64::max(range.0, range.1));
 
-        chemical_shift.is_finite() && chemical_shift >= range.0 && chemical_shift <= range.1
+        chemical_shift.is_finite() && (range.0..=range.1).contains(&chemical_shift)
     }
 
     /// Returns an iterator over the frequencies in Hz.
