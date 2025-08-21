@@ -421,11 +421,14 @@ impl Spectrum {
         &self.intensities
     }
 
-    pub fn signal_boundaries_indices(&self) -> (usize, usize) {
+    pub fn signal_boundaries(&self) -> (usize, usize) {
         self.signal_boundaries
     }
 
-    pub fn signal_boundaries_frequencies(&self) -> SignalBoundaries {
+    pub fn signal_boundaries_hz(&self) -> SignalBoundaries {
+        debug_assert!(self.signal_boundaries.0 < self.len());
+        debug_assert!(self.signal_boundaries.1 < self.len());
+
         // unwrapping is safe because signal_boundaries is validated during construction
         SignalBoundaries::Frequencies(
             self.spectral_linspace
@@ -438,6 +441,9 @@ impl Spectrum {
     }
 
     pub fn signal_boundaries_ppm(&self) -> SignalBoundaries {
+        debug_assert!(self.signal_boundaries.0 < self.len());
+        debug_assert!(self.signal_boundaries.1 < self.len());
+
         // unwrapping is safe because signal_boundaries is validated during construction
         SignalBoundaries::ChemicalShifts(
             self.spectral_linspace
@@ -450,6 +456,9 @@ impl Spectrum {
     }
 
     pub fn signal_boundaries_relative(&self) -> SignalBoundaries {
+        debug_assert!(self.signal_boundaries.0 < self.len());
+        debug_assert!(self.signal_boundaries.1 < self.len());
+
         // unwrapping is safe because signal_boundaries is validated during construction
         SignalBoundaries::Relative(
             self.spectral_linspace
