@@ -1,5 +1,5 @@
-use crate::ShiftReference;
 use crate::error::{Error, Result};
+use crate::{ReferencingMethod, ShiftReference};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -292,6 +292,51 @@ impl SpectralLinspace {
         self.reference = reference;
 
         Ok(())
+    }
+
+    /// Sets the chemical shift reference value in ppm.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the chemical shift is not a finite float.
+    pub(crate) fn set_shift_reference_value(&mut self, chemical_shift: f64) -> Result<()> {
+        Self::validate_shift_value(chemical_shift)?;
+        self.reference.set_chemical_shift(chemical_shift);
+
+        Ok(())
+    }
+
+    /// Sets the chemical shift reference index.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the index is out of bounds for the current size
+    /// of the spectral axis.
+    pub(crate) fn set_shift_reference_index(&mut self, index: usize) -> Result<()> {
+        Self::validate_index(index, self.size)?;
+        self.reference.set_index(index);
+
+        Ok(())
+    }
+
+    /// Sets the chemical shift reference name.
+    pub(crate) fn set_shift_reference_name<T: Into<String>>(&mut self, name: T) {
+        self.reference.set_name(name);
+    }
+
+    /// Clears the chemical shift reference name.
+    pub(crate) fn clear_shift_reference_name(&mut self) {
+        self.reference.clear_name();
+    }
+
+    /// Sets the chemical shift reference method.
+    pub(crate) fn set_shift_reference_method<T: Into<ReferencingMethod>>(&mut self, method: T) {
+        self.reference.set_method(method);
+    }
+
+    /// Clears the chemical shift reference method.
+    pub(crate) fn clear_shift_reference_method(&mut self) {
+        self.reference.clear_method();
     }
 
     /// Validates the frequency range and returns an error if either frequency

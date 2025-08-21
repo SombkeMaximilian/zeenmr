@@ -1,5 +1,5 @@
 use crate::error::{Error, Result};
-use crate::{Nucleus, ShiftReference, SignalBoundaries, SpectralLinspace};
+use crate::{Nucleus, ReferencingMethod, ShiftReference, SignalBoundaries, SpectralLinspace};
 use std::sync::Arc;
 
 #[cfg(feature = "serde")]
@@ -944,6 +944,171 @@ impl Spectrum {
     pub fn set_shift_reference<T: Into<ShiftReference>>(&mut self, reference: T) -> Result<()> {
         self.spectral_linspace
             .set_shift_reference(reference)
+    }
+
+    /// Sets the chemical shift reference value of the `Spectrum`.
+    ///
+    /// Useful for fine-tuning the chemical shift reference without changing all
+    /// of its properties.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use float_cmp::assert_approx_eq;
+    /// use zeenmr_spectrum::{ShiftReference, Spectrum};
+    ///
+    /// # fn main() -> zeenmr_spectrum::error::Result<()> {
+    /// let mut spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    ///
+    /// // create a custom shift reference with a name and method
+    /// let reference = ShiftReference::new(0.0, 1, Some("example ref"), Some("internal"));
+    /// spectrum.set_shift_reference(reference)?;
+    /// let mut shifts = spectrum.chemical_shifts();
+    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(-10.0));
+    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(6000.0 / 600.0 - 10.0));
+    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(12000.0 / 600.0 - 10.0));
+    ///
+    /// // adjust the chemical shift reference value from 0.0 to 1.0 ppm
+    /// spectrum.set_shift_reference_value(1.0)?;
+    /// let mut shifts = spectrum.chemical_shifts();
+    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(-9.0));
+    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(6000.0 / 600.0 - 9.0));
+    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(12000.0 / 600.0 - 9.0));
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn set_shift_reference_value(&mut self, chemical_shift: f64) -> Result<()> {
+        self.spectral_linspace
+            .set_shift_reference_value(chemical_shift)?;
+
+        Ok(())
+    }
+
+    /// Sets the chemical shift reference index of the `Spectrum`.
+    ///
+    /// Useful for fine-tuning the chemical shift reference without changing all
+    /// of its properties.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use float_cmp::assert_approx_eq;
+    /// use zeenmr_spectrum::{ShiftReference, Spectrum};
+    ///
+    /// # fn main() -> zeenmr_spectrum::error::Result<()> {
+    /// let mut spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    ///
+    /// // create a custom shift reference with a name and method
+    /// let reference = ShiftReference::new(0.0, 1, Some("example ref"), Some("internal"));
+    /// spectrum.set_shift_reference(reference)?;
+    /// let mut shifts = spectrum.chemical_shifts();
+    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(-10.0));
+    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(6000.0 / 600.0 - 10.0));
+    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(12000.0 / 600.0 - 10.0));
+    ///
+    /// // adjust the chemical shift reference index to the first point
+    /// spectrum.set_shift_reference_index(0)?;
+    /// let mut shifts = spectrum.chemical_shifts();
+    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(0.0));
+    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(6000.0 / 600.0));
+    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(12000.0 / 600.0));
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn set_shift_reference_index(&mut self, index: usize) -> Result<()> {
+        self.spectral_linspace
+            .set_shift_reference_index(index)?;
+
+        Ok(())
+    }
+
+    /// Sets the name of the chemical shift reference of the `Spectrum`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use zeenmr_spectrum::{ShiftReference, Spectrum};
+    ///
+    /// # fn main() -> zeenmr_spectrum::error::Result<()> {
+    /// let mut spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    /// let reference = ShiftReference::new(0.0, 1, Some("example ref"), Some("internal"));
+    /// spectrum.set_shift_reference(reference)?;
+    /// spectrum.set_shift_reference_name("new ref name");
+    /// assert_eq!(spectrum.shift_reference().name(), Some("new ref name"));
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn set_shift_reference_name<T: Into<String>>(&mut self, name: T) {
+        self.spectral_linspace
+            .set_shift_reference_name(name);
+    }
+
+    /// Clears the name of the chemical shift reference of the `Spectrum`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use zeenmr_spectrum::{ShiftReference, Spectrum};
+    ///
+    /// # fn main() -> zeenmr_spectrum::error::Result<()> {
+    /// let mut spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    /// let reference = ShiftReference::new(0.0, 1, Some("example ref"), Some("internal"));
+    /// spectrum.set_shift_reference(reference)?;
+    /// spectrum.clear_shift_reference_name();
+    /// assert!(spectrum.shift_reference().name().is_none());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn clear_shift_reference_name(&mut self) {
+        self.spectral_linspace
+            .clear_shift_reference_name();
+    }
+
+    /// Sets the referencing method of the chemical shift reference of the
+    /// `Spectrum`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use zeenmr_spectrum::{ReferencingMethod, ShiftReference, Spectrum};
+    ///
+    /// # fn main() -> zeenmr_spectrum::error::Result<()> {
+    /// let mut spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    /// let reference = ShiftReference::new(0.0, 1, Some("example ref"), Some("internal"));
+    /// spectrum.set_shift_reference(reference)?;
+    /// spectrum.set_shift_reference_method("external");
+    /// assert_eq!(
+    ///     spectrum.shift_reference().method(),
+    ///     Some(ReferencingMethod::External).as_ref()
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn set_shift_reference_method<T: Into<ReferencingMethod>>(&mut self, method: T) {
+        self.spectral_linspace
+            .set_shift_reference_method(method);
+    }
+
+    /// Clears the referencing method of the chemical shift reference of the
+    /// `Spectrum`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use zeenmr_spectrum::{ShiftReference, Spectrum};
+    ///
+    /// # fn main() -> zeenmr_spectrum::error::Result<()> {
+    /// let mut spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    /// let reference = ShiftReference::new(0.0, 1, Some("example ref"), Some("internal"));
+    /// spectrum.set_shift_reference(reference)?;
+    /// spectrum.clear_shift_reference_method();
+    /// assert!(spectrum.shift_reference().method().is_none());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn clear_shift_reference_method(&mut self) {
+        self.spectral_linspace
+            .clear_shift_reference_method();
     }
 
     /// Sets the signal boundaries of the `Spectrum`.
