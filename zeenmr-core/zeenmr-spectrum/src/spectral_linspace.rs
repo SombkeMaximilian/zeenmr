@@ -149,19 +149,23 @@ impl SpectralLinspace {
 
     /// Calculates the fractional index of a frequency within the linear space.
     pub(crate) fn hz_to_fractional(&self, frequency: f64) -> f64 {
-        (frequency - self.range_hz().0) / self.step_hz()
+        (frequency - self.frequency_range.0) * ((self.size - 1) as f64)
+            / (self.frequency_range.1 - self.frequency_range.0)
     }
 
     /// Calculates the fractional index of a chemical shift within the linear
     /// space.
     pub(crate) fn ppm_to_fractional(&self, chemical_shift: f64) -> f64 {
-        (chemical_shift - self.range_ppm().0) / self.step_ppm()
+        (chemical_shift - self.reference_offset())
+            * ((self.size - 1) as f64)
+            * self.spectrometer_frequency
+            / (self.frequency_range.1 - self.frequency_range.0)
     }
 
     /// Calculates the fractional index in relative units within the linear
     /// space.
     pub(crate) fn relative_to_fractional(&self, relative: f64) -> f64 {
-        relative / self.step_relative()
+        relative * ((self.size - 1) as f64)
     }
 
     /// Converts an index within the linear space to a frequency in Hz.
