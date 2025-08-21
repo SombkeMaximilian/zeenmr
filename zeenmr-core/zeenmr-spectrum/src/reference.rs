@@ -333,12 +333,27 @@ impl ShiftReference {
     /// use zeenmr_spectrum::ShiftReference;
     ///
     /// let mut reference = ShiftReference::from(10.0);
-    /// reference.set_name(Some("TMS"));
-    ///
+    /// reference.set_name("TMS");
     /// assert_eq!(reference.name(), Some("TMS"));
     /// ```
-    pub fn set_name<T: Into<String>>(&mut self, name: Option<T>) {
-        self.name = name.map(|name| name.into());
+    pub fn set_name<T: Into<String>>(&mut self, name: T) {
+        self.name = Some(name.into());
+    }
+
+    /// Clears the name of the reference.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use zeenmr_spectrum::ShiftReference;
+    ///
+    /// let mut reference = ShiftReference::from(10.0);
+    /// reference.set_name("TMS");
+    /// reference.clear_name();
+    /// assert!(reference.name().is_none());
+    /// ```
+    pub fn clear_name(&mut self) {
+        self.name = None;
     }
 
     /// Sets the referencing method used in the NMR experiment.
@@ -349,12 +364,27 @@ impl ShiftReference {
     /// use zeenmr_spectrum::{ReferencingMethod, ShiftReference};
     ///
     /// let mut reference = ShiftReference::from(10.0);
-    /// reference.set_method(Some(ReferencingMethod::Internal));
-    ///
+    /// reference.set_method(ReferencingMethod::Internal);
     /// assert_eq!(reference.method(), Some(&ReferencingMethod::Internal));
     /// ```
-    pub fn set_method(&mut self, method: Option<ReferencingMethod>) {
-        self.method = method;
+    pub fn set_method<T: Into<ReferencingMethod>>(&mut self, method: T) {
+        self.method = Some(method.into());
+    }
+
+    /// Clears the referencing method of the reference.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use zeenmr_spectrum::{ReferencingMethod, ShiftReference};
+    ///
+    /// let mut reference = ShiftReference::from(10.0);
+    /// reference.set_method(ReferencingMethod::Internal);
+    /// reference.clear_method();
+    /// assert!(reference.method().is_none());
+    /// ```
+    pub fn clear_method(&mut self) {
+        self.method = None;
     }
 }
 
