@@ -215,7 +215,6 @@ impl ShiftReference {
     /// use zeenmr_spectrum::{ReferencingMethod, ShiftReference};
     ///
     /// let reference = ShiftReference::new(4.8, 2_usize.pow(14) - 1, Some("H2O"), Some("internal"));
-    ///
     /// assert_approx_eq!(f64, reference.chemical_shift(), 4.8);
     /// assert_eq!(reference.index(), 2_usize.pow(14) - 1);
     /// assert_eq!(reference.name(), Some("H2O"));
@@ -243,7 +242,6 @@ impl ShiftReference {
     /// use zeenmr_spectrum::ShiftReference;
     ///
     /// let reference = ShiftReference::from(10.0);
-    ///
     /// assert_approx_eq!(f64, reference.chemical_shift(), 10.0);
     /// ```
     pub fn chemical_shift(&self) -> f64 {
@@ -260,7 +258,6 @@ impl ShiftReference {
     /// use zeenmr_spectrum::ShiftReference;
     ///
     /// let reference = ShiftReference::from(10.0);
-    ///
     /// assert_eq!(reference.index(), 0);
     /// ```
     pub fn index(&self) -> usize {
@@ -275,7 +272,6 @@ impl ShiftReference {
     /// use zeenmr_spectrum::ShiftReference;
     ///
     /// let reference = ShiftReference::from(10.0);
-    ///
     /// assert!(reference.name().is_none());
     /// ```
     pub fn name(&self) -> Option<&str> {
@@ -290,7 +286,6 @@ impl ShiftReference {
     /// use zeenmr_spectrum::ShiftReference;
     ///
     /// let reference = ShiftReference::from(10.0);
-    ///
     /// assert!(reference.method().is_none());
     /// ```
     pub fn method(&self) -> Option<&ReferencingMethod> {
@@ -307,7 +302,6 @@ impl ShiftReference {
     ///
     /// let mut reference = ShiftReference::from(10.0);
     /// reference.set_chemical_shift(9.5);
-    ///
     /// assert_approx_eq!(f64, reference.chemical_shift(), 9.5);
     /// ```
     pub fn set_chemical_shift(&mut self, chemical_shift: f64) {
@@ -325,7 +319,6 @@ impl ShiftReference {
     ///
     /// let mut reference = ShiftReference::from(10.0);
     /// reference.set_index(5);
-    ///
     /// assert_eq!(reference.index(), 5);
     /// ```
     pub fn set_index(&mut self, index: usize) {
