@@ -207,7 +207,14 @@ impl Spectrum {
             intensities.len(),
             reference,
         )?;
-        let signal_boundaries = Self::validate_boundaries(Default::default(), &spectral_linspace)?;
+        let signal_boundaries = (
+            spectral_linspace
+                .relative_to_fractional(0.1)
+                .ceil() as usize,
+            spectral_linspace
+                .relative_to_fractional(0.9)
+                .floor() as usize,
+        );
 
         Ok(Self {
             id: None,
@@ -486,8 +493,7 @@ impl Spectrum {
     }
 
     pub fn set_signal_boundaries(&mut self, signal_boundaries: SignalBoundaries) -> Result<()> {
-        self.signal_boundaries =
-            Self::validate_boundaries(signal_boundaries, &self.spectral_linspace)?;
+        self.signal_boundaries = self.validate_boundaries(signal_boundaries)?;
 
         Ok(())
     }
@@ -539,10 +545,7 @@ impl Spectrum {
     ///
     /// The following errors can occur:
     /// - [`InvalidSignalBoundaries`](crate::error::Kind::InvalidSignalBoundaries)
-    fn validate_boundaries(
-        signal_boundaries: SignalBoundaries,
-        linspace: &SpectralLinspace,
-    ) -> Result<(usize, usize)> {
+    fn validate_boundaries(&self, signal_boundaries: SignalBoundaries) -> Result<(usize, usize)> {
         match signal_boundaries {
             SignalBoundaries::Relative(start, end) => {
                 match start.is_finite()
@@ -551,8 +554,12 @@ impl Spectrum {
                     && (0.0..=1.0).contains(&end)
                 {
                     true => Ok((
-                        linspace.relative_to_fractional(start).ceil() as usize,
-                        linspace.relative_to_fractional(end).floor() as usize,
+                        self.spectral_linspace
+                            .relative_to_fractional(start)
+                            .ceil() as usize,
+                        self.spectral_linspace
+                            .relative_to_fractional(end)
+                            .floor() as usize,
                     )),
                     false => Err(Error::invalid_signal_boundaries(
                         signal_boundaries,
@@ -561,10 +568,12 @@ impl Spectrum {
                 }
             }
             SignalBoundaries::Frequencies(start, end) => {
-                match linspace.contains_hz(start) && linspace.contains_hz(end) {
+                match self.spectral_linspace.contains_hz(start)
+                    && self.spectral_linspace.contains_hz(end)
+                {
                     true => {
-                        let start = linspace.hz_to_fractional(start);
-                        let end = linspace.hz_to_fractional(end);
+                        let start = self.spectral_linspace.hz_to_fractional(start);
+                        let end = self.spectral_linspace.hz_to_fractional(end);
 
                         match start < end {
                             true => Ok((start.ceil() as usize, end.floor() as usize)),
@@ -573,15 +582,17 @@ impl Spectrum {
                     }
                     false => Err(Error::invalid_signal_boundaries(
                         signal_boundaries,
-                        linspace.range_ppm(),
+                        self.spectral_linspace.range_ppm(),
                     )),
                 }
             }
             SignalBoundaries::ChemicalShifts(start, end) => {
-                match linspace.contains_ppm(start) && linspace.contains_ppm(end) {
+                match self.spectral_linspace.contains_ppm(start)
+                    && self.spectral_linspace.contains_ppm(end)
+                {
                     true => {
-                        let start = linspace.ppm_to_fractional(start);
-                        let end = linspace.ppm_to_fractional(end);
+                        let start = self.spectral_linspace.ppm_to_fractional(start);
+                        let end = self.spectral_linspace.ppm_to_fractional(end);
 
                         match start < end {
                             true => Ok((start.ceil() as usize, end.floor() as usize)),
@@ -590,7 +601,7 @@ impl Spectrum {
                     }
                     false => Err(Error::invalid_signal_boundaries(
                         signal_boundaries,
-                        linspace.range_ppm(),
+                        self.spectral_linspace.range_ppm(),
                     )),
                 }
             }
