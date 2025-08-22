@@ -5,7 +5,7 @@ authors = ["Maximilian Sombke <sombkemaximilian@gmail.com>"]
 edition = "2024"
 rust-version = "1.85.0"
 description = """
-    ZeeNMR spectrum-related data types.
+    Data structures for representing NMR spectra and their properties.
 """
 readme = "README.md"
 repository = "https://github.com/spang-lab/zeenmr"
