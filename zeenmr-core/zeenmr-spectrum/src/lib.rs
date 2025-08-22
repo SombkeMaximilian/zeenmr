@@ -1,7 +1,7 @@
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
-//! ZeeNMR spectrum-related data types.
+//! Data structures for representing NMR spectra and their properties.
 
 mod nucleus;
 pub use nucleus::Nucleus;
