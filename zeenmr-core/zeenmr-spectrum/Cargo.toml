@@ -7,7 +7,7 @@ rust-version = "1.85.0"
 description = """
     ZeeNMR spectrum-related data types.
 """
-readme = "../../README.md"
+readme = "README.md"
 repository = "https://github.com/spang-lab/zeenmr"
 license = "MIT"
 keywords = [
