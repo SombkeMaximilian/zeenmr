@@ -12,6 +12,7 @@ members = [
 
 [workspace.dependencies]
 zeenmr = { version = "0.1.0", path = "zeenmr" }
+zeenmr-peakshape = { version = "0.1.0", path = "zeenmr-core/zeenmr-peakshape" }
 zeenmr-spectrum = { version = "0.1.0", path = "zeenmr-core/zeenmr-spectrum" }
 
 num-traits = { version = "0.2.19" }
