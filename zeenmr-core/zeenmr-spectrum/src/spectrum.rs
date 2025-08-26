@@ -17,8 +17,7 @@ use serde::{Deserialize, Serialize};
 /// # Invariants
 ///
 /// A valid `Spectrum` instance maintains the following conditions:
-/// - None of the values are [`f64::NAN`], [`f64::INFINITY`], or
-///   [`f64::NEG_INFINITY`].
+/// - None of the values are NAN, INF or -INF.
 /// - The frequency range contains only values greater than or equal to zero.
 /// - The spectrometer frequency is a value greater than zero.
 /// - The index of the [`ShiftReference`] is within the bounds of the spectral
@@ -150,11 +149,9 @@ impl Spectrum {
     /// Returns an error if the input data violates any of the invariants
     /// required for a valid `Spectrum`. The following conditions are checked:
     ///
-    /// - Neither `spectrometer_frequency` nor `frequency_range` contain
-    ///   non-finite values (no [`f64::NAN`], [`f64::INFINITY`] or
-    ///   [`f64::NEG_INFINITY`]).
-    /// - The `intensities` are not empty and do not contain any non-finite
-    ///   values.
+    /// - Neither `spectrometer_frequency`, nor `frequency_range` nor
+    ///   `intensities` contain non-finite values (no NAN, INF, -INF).
+    /// - The `intensities` are not empty.
     ///
     /// # Example
     ///
