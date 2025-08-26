@@ -1,0 +1,28 @@
+[package]
+name = "zeenmr-deconvolution"
+version = "0.1.0"
+authors = ["Maximilian Sombke <sombkemaximilian@gmail.com>"]
+edition = "2024"
+rust-version = "1.85.0"
+description = """
+    Data structures for representing and manipulating NMR peak shapes.
+"""
+readme = "README.md"
+repository = "https://github.com/spang-lab/zeenmr"
+license = "MIT"
+keywords = [
+    "bioinformatics",
+    "metabolomics",
+    "nmr",
+    "deconvolution",
+]
+categories = [
+    "science::bioinformatics",
+    "mathematics",
+    "data-structures",
+]
+
+[dependencies]
+
+[lints]
+workspace = true
