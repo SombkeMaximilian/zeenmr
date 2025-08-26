@@ -20,7 +20,17 @@ categories = [
     "data-structures",
 ]
 
+[features]
+default = []
+rayon = ["dep:rayon"]
+
 [dependencies]
+num-traits = { workspace = true }
+rayon = { workspace = true, optional = true }
+
+[dev-dependencies]
+float-cmp = { workspace = true }
+static_assertions = { workspace = true }
 
 [lints]
 workspace = true
