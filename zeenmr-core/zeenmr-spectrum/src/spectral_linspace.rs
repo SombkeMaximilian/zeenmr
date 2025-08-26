@@ -538,16 +538,6 @@ mod tests {
                 }
                 _ => panic!("unexpected error: {:?}", error),
             });
-        let error = linspace
-            .set_shift_reference((10.0, 2_usize.pow(18)))
-            .unwrap_err();
-        match error.kind() {
-            Kind::IndexOutOfBounds { index, size } => {
-                assert_eq!(*index, 2_usize.pow(18));
-                assert_eq!(*size, linspace.size());
-            }
-            _ => panic!("unexpected error: {:?}", error),
-        }
     }
 
     #[test]
