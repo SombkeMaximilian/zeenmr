@@ -64,7 +64,7 @@ pub trait ParSuperposition: ParallelIterator {
 impl<I> ParSuperposition for I where I: ParallelIterator {}
 
 pub trait EvaluateMap: Iterator {
-    fn evaluate_map<E>(self, evaluator: E) -> impl Iterator<Item = E::Scalar>
+    fn evaluate_map<E>(self, evaluator: E) -> impl Iterator<Item = Self::Item>
     where
         Self: Sized,
         E: Evaluate<Scalar = Self::Item>,
@@ -77,7 +77,7 @@ impl<I> EvaluateMap for I where I: Iterator {}
 
 #[cfg(feature = "rayon")]
 pub trait ParEvaluateMap: ParallelIterator {
-    fn evaluate_map<E>(self, evaluator: E) -> impl ParallelIterator<Item = E::Scalar>
+    fn evaluate_map<E>(self, evaluator: E) -> impl ParallelIterator<Item = Self::Item>
     where
         Self: Sized,
         E: Evaluate<Scalar = Self::Item> + Send + Sync,
