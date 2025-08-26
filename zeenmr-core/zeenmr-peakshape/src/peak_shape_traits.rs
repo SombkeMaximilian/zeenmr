@@ -31,7 +31,7 @@ where
     type Scalar = T::Scalar;
 
     fn evaluate(&self, at: Self::Scalar) -> Self::Scalar {
-        (&**self).evaluate(at)
+        (**self).evaluate(at)
     }
 }
 
