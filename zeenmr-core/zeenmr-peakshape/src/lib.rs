@@ -1,7 +1,10 @@
-#![warn(missing_docs)]
+//#![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 //! Data structures for representing and manipulating NMR peak shapes.
+
+mod lorentzian;
+pub use lorentzian::Lorentzian;
 
 mod peak_shape_traits;
 pub use peak_shape_traits::{Evaluate, EvaluateMap, PeakShape, Superposition, SuperpositionMap};
