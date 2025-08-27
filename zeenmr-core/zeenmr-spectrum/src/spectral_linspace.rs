@@ -448,7 +448,7 @@ mod tests {
 
     #[test]
     fn thread_safety() {
-        assert_impl_all!(ShiftReference: Send, Sync);
+        assert_impl_all!(SpectralLinspace: Send, Sync);
     }
 
     #[test]
