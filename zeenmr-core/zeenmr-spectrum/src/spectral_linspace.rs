@@ -519,7 +519,7 @@ mod tests {
 
     #[test]
     fn index_out_of_bounds() {
-        let mut linspace = valid_linspace();
+        let linspace = valid_linspace();
         let errors = [
             linspace.index_to_hz(2_usize.pow(18)).unwrap_err(),
             linspace
