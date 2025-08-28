@@ -68,7 +68,7 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
-    serde(rename_all = "camelCase")
+    serde(into = "String", from = "String", rename_all = "camelCase")
 )]
 pub enum ReferencingMethod {
     /// Reference was added to the sample.
@@ -114,6 +114,12 @@ impl std::fmt::Display for ReferencingMethod {
         };
 
         write!(f, "{method}")
+    }
+}
+
+impl From<ReferencingMethod> for String {
+    fn from(value: ReferencingMethod) -> Self {
+        value.to_string()
     }
 }
 
