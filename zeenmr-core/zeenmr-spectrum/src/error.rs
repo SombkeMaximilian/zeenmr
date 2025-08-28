@@ -248,7 +248,7 @@ impl Error {
             intensities,
             positions,
         }
-            .into()
+        .into()
     }
 
     /// Returns the `Kind` of error that occurred.
