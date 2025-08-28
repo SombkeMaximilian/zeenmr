@@ -347,13 +347,15 @@ impl SpectralLinspace {
     /// The following errors can occur:
     /// - [`InvalidFrequencyRange`](crate::error::Kind::InvalidFrequencyRange)
     fn validate_frequency_range(frequency_range: (f64, f64)) -> Result<()> {
-        match frequency_range.0.is_finite()
-            && frequency_range.1.is_finite()
-            && frequency_range.0 >= 0.0
-            && frequency_range.1 >= 0.0
-        {
-            true => Ok(()),
-            false => Err(Error::invalid_frequency_range(frequency_range)),
+        match (
+            frequency_range.0.is_finite() && frequency_range.1.is_finite(),
+            frequency_range.0 >= 0.0 && frequency_range.1 >= 0.0,
+        ) {
+            (true, true) => Ok(()),
+            (false, _) => Err(Error::invalid_frequency_range(Some(
+                Error::non_finite_float(),
+            ))),
+            (_, false) => Err(Error::invalid_frequency_range(None)),
         }
     }
 
@@ -365,11 +367,15 @@ impl SpectralLinspace {
     /// The following errors can occur:
     /// - [`InvalidSpectrometerFrequency`](crate::error::Kind::InvalidSpectrometerFrequency)
     fn validate_spectrometer_frequency(spectrometer_frequency: f64) -> Result<()> {
-        match spectrometer_frequency.is_finite() && spectrometer_frequency > 0.0 {
-            true => Ok(()),
-            false => Err(Error::invalid_spectrometer_frequency(
-                spectrometer_frequency,
-            )),
+        match (
+            spectrometer_frequency.is_finite(),
+            spectrometer_frequency > 0.0,
+        ) {
+            (true, true) => Ok(()),
+            (false, _) => Err(Error::invalid_spectrometer_frequency(Some(
+                Error::non_finite_float(),
+            ))),
+            (_, false) => Err(Error::invalid_spectrometer_frequency(None)),
         }
     }
 
@@ -379,11 +385,11 @@ impl SpectralLinspace {
     /// # Errors
     ///
     /// The following errors can occur:
-    /// - [`NonFiniteChemicalShift`](crate::error::Kind::NonFiniteChemicalShift)
+    /// - [`NonFiniteFloat`](crate::error::Kind::NonFiniteFloat)
     fn validate_shift_value(chemical_shift: f64) -> Result<()> {
         match chemical_shift.is_finite() {
             true => Ok(()),
-            false => Err(Error::non_finite_chemical_shift(chemical_shift)),
+            false => Err(Error::non_finite_float()),
         }
     }
 
@@ -393,11 +399,11 @@ impl SpectralLinspace {
     /// # Errors
     ///
     /// The following errors can occur:
-    /// - [`IndexOutOfBounds`](crate::error::Kind::IndexOutOfBounds)
+    /// - [`OutOfBounds`](crate::error::Kind::OutOfBounds)
     fn validate_index(index: usize, size: usize) -> Result<()> {
         match index < size {
             true => Ok(()),
-            false => Err(Error::index_out_of_bounds(index, size)),
+            false => Err(Error::out_of_bounds()),
         }
     }
 
@@ -412,9 +418,9 @@ impl SpectralLinspace {
         match Self::validate_index(reference.index(), size) {
             Ok(_) => match Self::validate_shift_value(reference.chemical_shift()) {
                 Ok(_) => Ok(()),
-                Err(error) => Err(Error::invalid_shift_reference(reference.clone(), error)),
+                Err(error) => Err(Error::invalid_shift_reference(error)),
             },
-            Err(error) => Err(Error::invalid_shift_reference(reference.clone(), error)),
+            Err(error) => Err(Error::invalid_shift_reference(error)),
         }
     }
 }
@@ -462,6 +468,8 @@ mod tests {
     fn invalid_frequency_range() {
         let (spec_freq, _, size, reference) = valid_parameters();
         let invalid_ranges = [
+            (0.0, -12000.0),
+            (-6000.0, -12000.0),
             (f64::NAN, 0.0),
             (f64::INFINITY, 0.0),
             (f64::NEG_INFINITY, 0.0),
@@ -469,52 +477,71 @@ mod tests {
         let errors = invalid_ranges.map(|freq_range| {
             SpectralLinspace::new(spec_freq, freq_range, size, reference.clone()).unwrap_err()
         });
-        let expected_context = invalid_ranges;
+        let expected_sources = [
+            None,
+            None,
+            Some(Error::non_finite_float()),
+            Some(Error::non_finite_float()),
+            Some(Error::non_finite_float()),
+        ];
         errors
             .into_iter()
-            .zip(expected_context)
-            .for_each(|(error, context)| match error.kind() {
-                Kind::InvalidFrequencyRange { frequency_range } => {
-                    assert_approx_eq!(f64, frequency_range.0, context.0);
-                    assert_approx_eq!(f64, frequency_range.1, context.1);
-                }
+            .zip(expected_sources.clone())
+            .for_each(|(error, source)| match error.kind() {
+                Kind::InvalidFrequencyRange => assert_eq!(error.source(), source.as_ref()),
                 _ => panic!("unexpected error: {:?}", error),
             });
 
         let mut linspace = valid_linspace();
-        invalid_ranges.iter().for_each(|range| {
-            assert!(linspace.set_frequency_range(*range).is_err());
-        });
+        invalid_ranges
+            .iter()
+            .zip(expected_sources)
+            .for_each(|(range, source)| {
+                assert_eq!(
+                    linspace
+                        .set_frequency_range(*range)
+                        .unwrap_err()
+                        .source(),
+                    source.as_ref()
+                );
+            });
     }
 
     #[test]
     fn invalid_spectrometer_frequency() {
         let (_, freq_range, size, reference) = valid_parameters();
-        let invalid_frequencies = [f64::NAN, f64::INFINITY, f64::NEG_INFINITY];
+        let invalid_frequencies = [0.0, -600.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY];
         let errors = invalid_frequencies.map(|spec_freq| {
             SpectralLinspace::new(spec_freq, freq_range, size, reference.clone()).unwrap_err()
         });
-        let expected_context = invalid_frequencies.clone();
+        let expected_sources = [
+            None,
+            None,
+            Some(Error::non_finite_float()),
+            Some(Error::non_finite_float()),
+            Some(Error::non_finite_float()),
+        ];
         errors
             .into_iter()
-            .zip(expected_context)
-            .for_each(|(error, context)| match error.kind() {
-                Kind::InvalidSpectrometerFrequency {
-                    spectrometer_frequency,
-                } => {
-                    assert_approx_eq!(f64, *spectrometer_frequency, context);
-                }
+            .zip(expected_sources.clone())
+            .for_each(|(error, source)| match error.kind() {
+                Kind::InvalidSpectrometerFrequency => assert_eq!(error.source(), source.as_ref()),
                 _ => panic!("unexpected error: {:?}", error),
             });
 
         let mut linspace = valid_linspace();
-        invalid_frequencies.iter().for_each(|freq| {
-            assert!(
-                linspace
-                    .set_spectrometer_frequency(*freq)
-                    .is_err()
-            );
-        });
+        invalid_frequencies
+            .iter()
+            .zip(expected_sources)
+            .for_each(|(freq, source)| {
+                assert_eq!(
+                    linspace
+                        .set_spectrometer_frequency(*freq)
+                        .unwrap_err()
+                        .source(),
+                    source.as_ref()
+                );
+            });
     }
 
     #[test]
@@ -531,13 +558,7 @@ mod tests {
         ];
         errors
             .into_iter()
-            .for_each(|error| match error.kind() {
-                Kind::IndexOutOfBounds { index, size } => {
-                    assert_eq!(*index, 2_usize.pow(18));
-                    assert_eq!(*size, linspace.size());
-                }
-                _ => panic!("unexpected error: {:?}", error),
-            });
+            .for_each(|error| assert_eq!(error, Error::out_of_bounds()));
     }
 
     #[test]
@@ -550,17 +571,15 @@ mod tests {
         let errors = invalid_references.clone().map(|reference| {
             SpectralLinspace::new(spec_freq, freq_range, size, reference).unwrap_err()
         });
-        let expected_contexts = invalid_references;
+        let expected_sources = [
+            Some(Error::out_of_bounds()),
+            Some(Error::non_finite_float()),
+        ];
         errors
             .into_iter()
-            .zip(expected_contexts)
-            .for_each(|(error, context)| match error.kind() {
-                Kind::InvalidShiftReference { reference } => {
-                    assert_approx_eq!(f64, reference.chemical_shift(), context.chemical_shift());
-                    assert_eq!(reference.index(), context.index());
-                    assert_eq!(reference.name(), context.name());
-                    assert_eq!(reference.method(), context.method());
-                }
+            .zip(expected_sources)
+            .for_each(|(error, source)| match error.kind() {
+                Kind::InvalidShiftReference => assert_eq!(error.source(), source.as_ref()),
                 _ => panic!("unexpected error: {:?}", error),
             })
     }

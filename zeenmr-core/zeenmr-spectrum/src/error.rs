@@ -1,6 +1,5 @@
 //! Spectrum error types.
 
-use crate::{ShiftReference, SignalBoundaries};
 use std::sync::Arc;
 
 /// A specialized [`Result`] type.
@@ -19,12 +18,12 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// metadata within one of the files is missing.
 ///
 /// See the [`Kind`] enum for the different kinds of errors that can occur.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Error {
     /// `Kind` of error that occurred.
     kind: Kind,
     /// Source of the error, if any.
-    source: Option<Arc<dyn std::error::Error + Send + Sync>>,
+    source: Option<Arc<Self>>,
 }
 
 /// The kind of `Error` that can occur while constructing or manipulating a
@@ -35,8 +34,17 @@ pub struct Error {
 ///
 /// [`Spectrum`]: crate::Spectrum
 #[non_exhaustive]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Kind {
+    /// Received a non-finite float value.
+    ///
+    /// Since the data structures provided by this library are intended to be
+    /// used in numerical computation contexts, non-finite float values would
+    /// corrupt all further processing steps and are therefore not allowed at
+    /// the user boundary.
+    ///
+    /// [`InvalidShiftReference`]: Kind::InvalidShiftReference
+    NonFiniteFloat,
     /// The input data is empty.
     ///
     /// The length of a [`Spectrum`] is not intended to be changed after it is
@@ -44,6 +52,47 @@ pub enum Kind {
     ///
     /// [`Spectrum`]: crate::Spectrum
     EmptyData,
+    /// Frequency range is invalid.
+    ///
+    /// The frequency range of a [`Spectrum`] must be a tuple of finite values
+    /// to generate chemical shifts. While negative values could theoretically
+    /// also be used, they are not meaningful in this context and will lead to
+    /// an error as well.
+    ///
+    /// [`Spectrum`]: crate::Spectrum
+    InvalidFrequencyRange,
+    /// Spectrometer frequency is invalid.
+    ///
+    /// The spectrometer frequency of a [`Spectrum`] must be a finite, non-zero
+    /// value to generate chemical shifts from the frequency range. While
+    /// negative values could theoretically also be used, they are not
+    /// meaningful in this context and will lead to an error as well.
+    ///
+    /// [`Spectrum`]: crate::Spectrum
+    InvalidSpectrometerFrequency,
+    /// Signal boundaries are invalid.
+    ///
+    /// When overriding the signal boundaries, which are normally automatically
+    /// determined, some conditions must be met to ensure that the [`Spectrum`]
+    /// remains consistent and usable:
+    /// - Only finite values are allowed.
+    /// - Values must be within the valid range.
+    ///
+    /// [`Spectrum`]: crate::Spectrum
+    InvalidSignalBoundaries,
+    /// An index or a value is out of bounds.
+    ///
+    /// This error occurs when a provided index is greater than or equal to the
+    /// size of the [`Spectrum`], or when a relative, frequency or chemical
+    /// shift is not within the bounds of its spectral axis.
+    ///
+    /// [`Spectrum`]: crate::Spectrum
+    OutOfBounds,
+    /// The provided shift reference is invalid.
+    ///
+    /// This error can occur as a result of either a non-finite value in the
+    /// chemical shift or an out-of-bounds index.
+    InvalidShiftReference,
     /// The intensities contain invalid values.
     ///
     /// Non-finite intensity values will lead to problems in further processing
@@ -54,79 +103,6 @@ pub enum Kind {
         intensities: Vec<f64>,
         /// Positions of the invalid intensities.
         positions: Vec<usize>,
-    },
-    /// The frequency range is invalid.
-    ///
-    /// The frequency range of a [`Spectrum`] must be a tuple of finite values
-    /// to generate chemical shifts. While negative values could theoretically
-    /// also be used, they are not meaningful in this context and will lead to
-    /// an error as well.
-    ///
-    /// [`Spectrum`]: crate::Spectrum
-    InvalidFrequencyRange {
-        /// Frequency range of the spectrum.
-        frequency_range: (f64, f64),
-    },
-    /// The spectrometer frequency is invalid.
-    ///
-    /// The spectrometer frequency of a [`Spectrum`] must be a finite, non-zero
-    /// value to generate chemical shifts from the frequency range. While
-    /// negative values could theoretically also be used, they are not
-    /// meaningful in this context and will lead to an error as well.
-    ///
-    /// [`Spectrum`]: crate::Spectrum
-    InvalidSpectrometerFrequency {
-        /// Spectrometer frequency of the spectrum.
-        spectrometer_frequency: f64,
-    },
-    /// The signal boundaries are invalid.
-    ///
-    /// When overriding the signal boundaries, which are normally automatically
-    /// determined, some conditions must be met to ensure that the [`Spectrum`]
-    /// remains consistent and usable:
-    /// - Only finite values are allowed.
-    /// - Values must be within the valid range.
-    ///
-    /// [`Spectrum`]: crate::Spectrum
-    InvalidSignalBoundaries {
-        /// Signal boundaries of the spectrum.
-        signal_boundaries: SignalBoundaries,
-        /// Range of the chemical shifts.
-        valid_range: (f64, f64),
-    },
-    /// The index is out of bounds for the [`Spectrum`]'s size.
-    ///
-    /// This error occurs when a provided index is greater than or equal to the
-    /// size of the [`Spectrum`].
-    ///
-    /// [`Spectrum`]: crate::Spectrum
-    IndexOutOfBounds {
-        /// Provided index that is out of bounds.
-        index: usize,
-        /// Size of the spectrum.
-        size: usize,
-    },
-    /// The chemical shift is non-finite.
-    ///
-    /// This error occurs when a chemical shift is not a finite value.
-    ///
-    /// [`InvalidShiftReference`]: Kind::InvalidShiftReference
-    NonFiniteChemicalShift {
-        /// Chemical shift that is non-finite.
-        chemical_shift: f64,
-    },
-    /// The provided shift reference is invalid.
-    ///
-    /// This error can occur as a result of either a non-finite value in the
-    /// chemical shift or an out-of-bounds index, in which case, the source of
-    /// the error will be the [`NonFiniteChemicalShift`] or [`IndexOutOfBounds`]
-    /// error, respectively.
-    ///
-    /// [`NonFiniteChemicalShift`]: Kind::NonFiniteChemicalShift
-    /// [`IndexOutOfBounds`]: Kind::IndexOutOfBounds
-    InvalidShiftReference {
-        /// The invalid shift reference.
-        reference: ShiftReference,
     },
 }
 
@@ -145,7 +121,25 @@ impl std::error::Error for Error {
 impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let description = match self.kind() {
+            Kind::NonFiniteFloat => "non-finite float value received".to_string(),
             Kind::EmptyData => "intensities are empty".to_string(),
+            Kind::InvalidFrequencyRange => match &self.source {
+                Some(_) => "frequency range contains non-finite values".to_string(),
+                None => "frequency range contains non-finite or negative values".to_string(),
+            },
+            Kind::InvalidSpectrometerFrequency => match &self.source {
+                Some(_) => "spectrometer frequency is non-finite".to_string(),
+                None => "spectrometer frequency is non-finite, zero or negative".to_string(),
+            },
+            Kind::InvalidSignalBoundaries => match &self.source {
+                Some(source) => format!("invalid signal boundaries: {source}"),
+                None => unreachable!("valid signal boundaries falsely detected as invalid"),
+            },
+            Kind::OutOfBounds => "index or value is out of bounds".to_string(),
+            Kind::InvalidShiftReference => match &self.source {
+                Some(source) => format!("invalid shift reference: {source}"),
+                None => unreachable!("valid shift reference falsely detected as invalid"),
+            },
             Kind::InvalidIntensities {
                 intensities,
                 positions,
@@ -163,7 +157,7 @@ impl core::fmt::Display for Error {
                     .join(", ");
 
                 match length {
-                    0 => unreachable!("error should not be created without invalid intensities"),
+                    0 => unreachable!("valid intensities falsely detected as invalid"),
                     1 => format!(
                         "intensities contains a non-finite value [{values}] at index [{indices}]"
                     ),
@@ -178,71 +172,6 @@ impl core::fmt::Display for Error {
                     ),
                 }
             }
-            Kind::InvalidFrequencyRange {
-                frequency_range: (start, end),
-            } => {
-                format!("frequency range [{start}, {end}] contains non-finite or negative values")
-            }
-            Kind::InvalidSpectrometerFrequency {
-                spectrometer_frequency,
-            } => format!(
-                "spectrometer frequency [{spectrometer_frequency}] is \
-                 non-finite, not positive or zero"
-            ),
-            Kind::InvalidSignalBoundaries {
-                signal_boundaries,
-                valid_range,
-            } => {
-                let boundary_type = match signal_boundaries {
-                    SignalBoundaries::Relative(_, _) => "relative units",
-                    SignalBoundaries::Frequencies(_, _) => "frequencies",
-                    SignalBoundaries::ChemicalShifts(_, _) => "chemical shifts",
-                };
-                let start = signal_boundaries.start();
-                let end = signal_boundaries.end();
-                let valid_start = valid_range.0;
-                let valid_end = valid_range.1;
-                let is_finite = start.is_finite() && end.is_finite();
-                let is_contained = (start > valid_start && end < valid_end)
-                    || (start < valid_start && end > valid_end);
-
-                match (is_finite, is_contained) {
-                    (false, _) => {
-                        format!("signal boundaries [{start}, {end}] contain non-finite values",)
-                    }
-                    (true, false) => format!(
-                        "signal boundaries [{start}, {end}] are not within \
-                         the valid range of {boundary_type} [{valid_start}, {valid_end}]",
-                    ),
-                    _ => unreachable!("valid signal boundaries falsely detected as invalid"),
-                }
-            }
-            Kind::IndexOutOfBounds { index, size } => {
-                format!("index [{index}] is out of bounds for spectrum of size [{size}]")
-            }
-            Kind::NonFiniteChemicalShift { chemical_shift } => {
-                format!("chemical shift [{chemical_shift}] is invalid (non-finite)")
-            }
-            Kind::InvalidShiftReference { reference } => {
-                match (
-                    !reference.chemical_shift().is_finite(),
-                    self.source.is_some(),
-                ) {
-                    (true, true) => format!(
-                        "reference chemical shift [{}] is non-finite and its {}",
-                        reference.chemical_shift(),
-                        self.source.as_ref().unwrap(),
-                    ),
-                    (true, false) => format!(
-                        "reference chemical shift [{}] is non-finite",
-                        reference.chemical_shift()
-                    ),
-                    (false, true) => {
-                        format!("reference {}", self.source.as_ref().unwrap())
-                    }
-                    _ => unreachable!("invalid shift reference falsely detected as valid"),
-                }
-            }
         };
 
         write!(f, "{description}")
@@ -250,11 +179,65 @@ impl core::fmt::Display for Error {
 }
 
 impl Error {
+    /// Creates a new [`NonFiniteFloat`] error.
+    ///
+    /// [`NonFiniteFloat`]: Kind::NonFiniteFloat
+    pub(crate) fn non_finite_float() -> Self {
+        Kind::NonFiniteFloat.into()
+    }
+
     /// Creates a new [`EmptyData`] error.
     ///
     /// [`EmptyData`]: Kind::EmptyData
     pub(crate) fn empty_data() -> Self {
         Kind::EmptyData.into()
+    }
+
+    /// Creates a new [`InvalidFrequencyRange`] error.
+    ///
+    /// [`InvalidFrequencyRange`]: Kind::InvalidFrequencyRange
+    pub(crate) fn invalid_frequency_range(source: Option<Self>) -> Self {
+        Self {
+            kind: Kind::InvalidFrequencyRange,
+            source: source.map(|error| Arc::new(error)),
+        }
+    }
+
+    /// Creates a new [`InvalidSpectrometerFrequency`] error.
+    ///
+    /// [`InvalidSpectrometerFrequency`]: Kind::InvalidSpectrometerFrequency
+    pub(crate) fn invalid_spectrometer_frequency(source: Option<Self>) -> Self {
+        Self {
+            kind: Kind::InvalidSpectrometerFrequency,
+            source: source.map(|error| Arc::new(error)),
+        }
+    }
+
+    /// Creates a new [`InvalidSignalBoundaries`] error.
+    ///
+    /// [`InvalidSignalBoundaries`]: Kind::InvalidSignalBoundaries
+    pub(crate) fn invalid_signal_boundaries(source: Self) -> Self {
+        Self {
+            kind: Kind::InvalidSignalBoundaries,
+            source: Some(Arc::new(source)),
+        }
+    }
+
+    /// Creates a new [`OutOfBounds`] error.
+    ///
+    /// [`OutOfBounds`]: Kind::OutOfBounds
+    pub(crate) fn out_of_bounds() -> Self {
+        Kind::OutOfBounds.into()
+    }
+
+    /// Creates a new [`InvalidShiftReference`] error.
+    ///
+    /// [`InvalidShiftReference`]: Kind::InvalidShiftReference
+    pub(crate) fn invalid_shift_reference(source: Self) -> Self {
+        Self {
+            kind: Kind::InvalidShiftReference,
+            source: Some(Arc::new(source)),
+        }
     }
 
     /// Creates a new [`InvalidIntensities`] error.
@@ -265,67 +248,17 @@ impl Error {
             intensities,
             positions,
         }
-        .into()
-    }
-
-    /// Creates a new [`InvalidFrequencyRange`] error.
-    ///
-    /// [`InvalidFrequencyRange`]: Kind::InvalidFrequencyRange
-    pub(crate) fn invalid_frequency_range(frequency_range: (f64, f64)) -> Self {
-        Kind::InvalidFrequencyRange { frequency_range }.into()
-    }
-
-    /// Creates a new [`InvalidSpectrometerFrequency`] error.
-    ///
-    /// [`InvalidSpectrometerFrequency`]: Kind::InvalidSpectrometerFrequency
-    pub(crate) fn invalid_spectrometer_frequency(spectrometer_frequency: f64) -> Self {
-        Kind::InvalidSpectrometerFrequency {
-            spectrometer_frequency,
-        }
-        .into()
-    }
-
-    /// Creates a new [`InvalidSignalBoundaries`] error.
-    ///
-    /// [`InvalidSignalBoundaries`]: Kind::InvalidSignalBoundaries
-    pub(crate) fn invalid_signal_boundaries(
-        signal_boundaries: SignalBoundaries,
-        valid_range: (f64, f64),
-    ) -> Self {
-        Kind::InvalidSignalBoundaries {
-            signal_boundaries,
-            valid_range,
-        }
-        .into()
-    }
-
-    /// Creates a new [`IndexOutOfBounds`] error.
-    ///
-    /// [`IndexOutOfBounds`]: Kind::IndexOutOfBounds
-    pub(crate) fn index_out_of_bounds(index: usize, size: usize) -> Self {
-        Kind::IndexOutOfBounds { index, size }.into()
-    }
-
-    /// Creates a new [`NonFiniteChemicalShift`] error.
-    ///
-    /// [`NonFiniteChemicalShift`]: Kind::NonFiniteChemicalShift
-    pub(crate) fn non_finite_chemical_shift(chemical_shift: f64) -> Self {
-        Kind::NonFiniteChemicalShift { chemical_shift }.into()
-    }
-
-    /// Creates a new [`InvalidShiftReference`] error.
-    ///
-    /// [`InvalidShiftReference`]: Kind::InvalidShiftReference
-    pub(crate) fn invalid_shift_reference(reference: ShiftReference, source: Error) -> Self {
-        Self {
-            kind: Kind::InvalidShiftReference { reference },
-            source: Some(Arc::new(source)),
-        }
+            .into()
     }
 
     /// Returns the `Kind` of error that occurred.
     pub fn kind(&self) -> &Kind {
         &self.kind
+    }
+
+    /// Returns the source of this error, if any.
+    pub fn source(&self) -> Option<&Error> {
+        self.source.as_deref()
     }
 }
 
