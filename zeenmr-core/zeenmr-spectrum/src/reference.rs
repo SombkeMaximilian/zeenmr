@@ -86,8 +86,8 @@ impl<T: AsRef<str>> From<T> for ReferencingMethod {
         let method = value.as_ref().trim().to_uppercase();
 
         match method.as_str() {
-            "INTERNAL" => Self::Internal,
-            "EXTERNAL" => Self::External,
+            "INT" | "INTERNAL" => Self::Internal,
+            "EXT" | "EXTERNAL" => Self::External,
 
             // Graceful fallback for unrecognized referencing methods.
             _ => Self::Other(value.as_ref().to_string()),
