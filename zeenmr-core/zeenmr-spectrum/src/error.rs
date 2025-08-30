@@ -18,7 +18,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// metadata within one of the files is missing.
 ///
 /// See the [`Kind`] enum for the different kinds of errors that can occur.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Error {
     /// `Kind` of error that occurred.
     kind: Kind,
@@ -34,7 +34,7 @@ pub struct Error {
 ///
 /// [`Spectrum`]: crate::Spectrum
 #[non_exhaustive]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Kind {
     /// Received a non-finite float value.
     ///
@@ -73,10 +73,8 @@ pub enum Kind {
     /// Signal boundaries are invalid.
     ///
     /// When overriding the signal boundaries, which are normally automatically
-    /// determined, some conditions must be met to ensure that the [`Spectrum`]
-    /// remains consistent and usable:
-    /// - Only finite values are allowed.
-    /// - Values must be within the valid range.
+    /// determined, they must be finite floats and within the bounds of the
+    /// spectral axis.
     ///
     /// [`Spectrum`]: crate::Spectrum
     InvalidSignalBoundaries,
@@ -88,22 +86,18 @@ pub enum Kind {
     ///
     /// [`Spectrum`]: crate::Spectrum
     OutOfBounds,
-    /// The provided shift reference is invalid.
+    /// Provided shift reference is invalid.
     ///
-    /// This error can occur as a result of either a non-finite value in the
-    /// chemical shift or an out-of-bounds index.
+    /// This error can occur as a result of either a non-finite chemical shift
+    /// or an out-of-bounds index.
     InvalidShiftReference,
-    /// The intensities contain invalid values.
+    /// Received intensities containing non-finite floats.
     ///
-    /// Non-finite intensity values will lead to problems in further processing
-    /// steps. Therefore, this state is considered inconsistent and results in
-    /// an error.
-    InvalidIntensities {
-        /// Intensity data that contains invalid values.
-        intensities: Vec<f64>,
-        /// Positions of the invalid intensities.
-        positions: Vec<usize>,
-    },
+    /// Since the data structures provided by this library are intended to be
+    /// used in numerical computation contexts, non-finite float values would
+    /// corrupt all further processing steps and are therefore not allowed at
+    /// the user boundary.
+    InvalidIntensities(Vec<usize>),
 }
 
 impl From<Kind> for Error {
@@ -140,16 +134,8 @@ impl core::fmt::Display for Error {
                 Some(source) => format!("invalid shift reference: {source}"),
                 None => unreachable!("valid shift reference falsely detected as invalid"),
             },
-            Kind::InvalidIntensities {
-                intensities,
-                positions,
-            } => {
+            Kind::InvalidIntensities(positions) => {
                 let length = positions.len();
-                let values = positions[..usize::min(5, length)]
-                    .iter()
-                    .map(|i| intensities[*i].to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ");
                 let indices = positions[..usize::min(5, length)]
                     .iter()
                     .map(ToString::to_string)
@@ -158,17 +144,13 @@ impl core::fmt::Display for Error {
 
                 match length {
                     0 => unreachable!("valid intensities falsely detected as invalid"),
-                    1 => format!(
-                        "intensities contains a non-finite value [{values}] at index [{indices}]"
-                    ),
+                    1 => format!("intensities contains a non-finite value at index [{indices}]"),
                     2..=5 => {
-                        format!(
-                            "intensities contain non-finite values [{values}] at indices [{indices}]"
-                        )
+                        format!("intensities contain non-finite values at indices [{indices}]")
                     }
                     _ => format!(
-                        "intensities contain non-finite values [{values}, ...] \
-                         at indices [{indices}, ...] ({length} invalid values)",
+                        "intensities contain non-finite values at indices \
+                         [{indices}, ...] ({length} invalid values)",
                     ),
                 }
             }
@@ -243,12 +225,8 @@ impl Error {
     /// Creates a new [`InvalidIntensities`] error.
     ///
     /// [`InvalidIntensities`]: Kind::InvalidIntensities
-    pub(crate) fn invalid_intensities(intensities: Vec<f64>, positions: Vec<usize>) -> Self {
-        Kind::InvalidIntensities {
-            intensities,
-            positions,
-        }
-        .into()
+    pub(crate) fn invalid_intensities(positions: Vec<usize>) -> Self {
+        Kind::InvalidIntensities(positions).into()
     }
 
     /// Returns the `Kind` of error that occurred.
