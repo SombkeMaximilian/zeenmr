@@ -1190,10 +1190,7 @@ impl Spectrum {
             return Err(Error::empty_data());
         }
         if !invalid_positions.is_empty() {
-            return Err(Error::invalid_intensities(
-                intensities.as_ref().to_vec(),
-                invalid_positions,
-            ));
+            return Err(Error::invalid_intensities(invalid_positions));
         }
 
         Ok(intensities)
