@@ -1,8 +1,29 @@
+use uom::si::action::joule_second;
+use uom::si::f64::{Action, GyromagneticRatio, MagneticMoment, Ratio};
+use uom::si::gyromagnetic_ratio::megahertz_per_tesla;
+
 #[cfg(test)]
 use strum::EnumIter;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+
+/// Planck constant
+const PLANCK: f64 = 6.626_070_15e-34;
+
+/// Compile-time created spin (as [`Ratio`]).
+macro_rules! spin {
+    ($value:expr) => {
+        ::uom::si::f64::Ratio::new::<::uom::si::ratio::ratio>($value)
+    };
+}
+
+/// Compile-time created magnetic moment (as [`MagneticMoment`]).
+macro_rules! mag_mom {
+    ($value:expr) => {
+        ::uom::si::f64::MagneticMoment::new::<::uom::si::magnetic_moment::nuclear_magneton>($value)
+    };
+}
 
 /// Representing the nucleus observed in an NMR experiment.
 ///
@@ -98,10 +119,10 @@ pub enum Nucleus {
     Neon21,
     Sodium23,
     Magnesium25,
-    Aluminum27,
+    Aluminium27,
     Silicon29,
     Phosphorus31,
-    Sulfur33,
+    Sulphur33,
     Chlorine35,
     Chlorine37,
     Potassium39,
@@ -157,7 +178,7 @@ pub enum Nucleus {
     Iodine127,
     Xenon129,
     Xenon131,
-    Cesium133,
+    Caesium133,
     Barium135,
     Barium137,
     Lanthanum139,
@@ -239,10 +260,10 @@ impl<T: AsRef<str>> From<T> for Nucleus {
             "21NE" | "NEON21" => Self::Neon21,
             "23NA" | "SODIUM23" => Self::Sodium23,
             "25MG" | "MAGNESIUM25" => Self::Magnesium25,
-            "27AL" | "ALUMINUM27" => Self::Aluminum27,
+            "27AL" | "ALUMINIUM27" | "ALUMINUM27" => Self::Aluminium27,
             "29SI" | "SILICON29" => Self::Silicon29,
             "31P" | "PHOSPHORUS31" => Self::Phosphorus31,
-            "33S" | "SULFUR33" => Self::Sulfur33,
+            "33S" | "SULPHUR33" | "SULFUR33" => Self::Sulphur33,
             "35CL" | "CHLORINE35" => Self::Chlorine35,
             "37CL" | "CHLORINE37" => Self::Chlorine37,
             "39K" | "POTASSIUM39" => Self::Potassium39,
@@ -298,7 +319,7 @@ impl<T: AsRef<str>> From<T> for Nucleus {
             "127I" | "IODINE127" => Self::Iodine127,
             "129XE" | "XENON129" => Self::Xenon129,
             "131XE" | "XENON131" => Self::Xenon131,
-            "133CS" | "CESIUM133" => Self::Cesium133,
+            "133CS" | "CAESIUM133" | "CESIUM133" => Self::Caesium133,
             "135BA" | "BARIUM135" => Self::Barium135,
             "137BA" | "BARIUM137" => Self::Barium137,
             "139LA" | "LANTHANUM139" => Self::Lanthanum139,
@@ -377,10 +398,10 @@ impl std::fmt::Display for Nucleus {
             Self::Neon21 => "21Ne",
             Self::Sodium23 => "23Na",
             Self::Magnesium25 => "25Mg",
-            Self::Aluminum27 => "27Al",
+            Self::Aluminium27 => "27Al",
             Self::Silicon29 => "29Si",
             Self::Phosphorus31 => "31P",
-            Self::Sulfur33 => "33S",
+            Self::Sulphur33 => "33S",
             Self::Chlorine35 => "35Cl",
             Self::Chlorine37 => "37Cl",
             Self::Potassium39 => "39K",
@@ -436,7 +457,7 @@ impl std::fmt::Display for Nucleus {
             Self::Iodine127 => "127I",
             Self::Xenon129 => "129Xe",
             Self::Xenon131 => "131Xe",
-            Self::Cesium133 => "133Cs",
+            Self::Caesium133 => "133Cs",
             Self::Barium135 => "135Ba",
             Self::Barium137 => "137Ba",
             Self::Lanthanum139 => "139La",
@@ -491,6 +512,359 @@ impl std::fmt::Display for Nucleus {
 impl From<Nucleus> for String {
     fn from(value: Nucleus) -> Self {
         value.to_string()
+    }
+}
+
+impl Nucleus {
+    /// Returns the nuclear spin quantum number `I`.
+    ///
+    /// In the case of the fallback variant [`Nucleus::Other`], `None` is
+    /// returned.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use float_cmp::assert_approx_eq;
+    /// use uom::si::ratio::ratio;
+    /// use zeenmr_spectrum::Nucleus;
+    ///
+    /// assert_approx_eq!(f64, Nucleus::Hydrogen.spin().unwrap().get::<ratio>(), 0.5);
+    /// assert_approx_eq!(f64, Nucleus::Carbon13.spin().unwrap().get::<ratio>(), 0.5);
+    /// ```
+    pub fn spin(&self) -> Option<Ratio> {
+        match self {
+            // Main group and transition elements
+            Self::Hydrogen => Some(spin!(0.5)),
+            Self::Deuterium => Some(spin!(1.0)),
+            Self::Tritium => Some(spin!(0.5)),
+            Self::Helium3 => Some(spin!(0.5)),
+            Self::Lithium6 => Some(spin!(1.0)),
+            Self::Lithium7 => Some(spin!(1.5)),
+            Self::Beryllium9 => Some(spin!(1.5)),
+            Self::Boron10 => Some(spin!(3.0)),
+            Self::Boron11 => Some(spin!(1.5)),
+            Self::Carbon13 => Some(spin!(0.5)),
+            Self::Nitrogen14 => Some(spin!(1.0)),
+            Self::Nitrogen15 => Some(spin!(0.5)),
+            Self::Oxygen17 => Some(spin!(2.5)),
+            Self::Fluorine19 => Some(spin!(0.5)),
+            Self::Neon21 => Some(spin!(1.5)),
+            Self::Sodium23 => Some(spin!(1.5)),
+            Self::Magnesium25 => Some(spin!(2.5)),
+            Self::Aluminium27 => Some(spin!(2.5)),
+            Self::Silicon29 => Some(spin!(0.5)),
+            Self::Phosphorus31 => Some(spin!(0.5)),
+            Self::Sulphur33 => Some(spin!(1.5)),
+            Self::Chlorine35 => Some(spin!(1.5)),
+            Self::Chlorine37 => Some(spin!(1.5)),
+            Self::Potassium39 => Some(spin!(1.5)),
+            Self::Potassium41 => Some(spin!(1.5)),
+            Self::Calcium43 => Some(spin!(3.5)),
+            Self::Scandium45 => Some(spin!(3.5)),
+            Self::Titanium47 => Some(spin!(2.5)),
+            Self::Titanium49 => Some(spin!(3.5)),
+            Self::Vanadium50 => Some(spin!(6.0)),
+            Self::Vanadium51 => Some(spin!(3.5)),
+            Self::Chromium53 => Some(spin!(1.5)),
+            Self::Manganese55 => Some(spin!(2.5)),
+            Self::Iron57 => Some(spin!(0.5)),
+            Self::Cobalt59 => Some(spin!(3.5)),
+            Self::Nickel61 => Some(spin!(1.5)),
+            Self::Copper63 => Some(spin!(1.5)),
+            Self::Copper65 => Some(spin!(1.5)),
+            Self::Zinc67 => Some(spin!(2.5)),
+            Self::Gallium69 => Some(spin!(1.5)),
+            Self::Gallium71 => Some(spin!(1.5)),
+            Self::Germanium73 => Some(spin!(4.5)),
+            Self::Arsenic75 => Some(spin!(1.5)),
+            Self::Selenium77 => Some(spin!(0.5)),
+            Self::Bromine79 => Some(spin!(1.5)),
+            Self::Bromine81 => Some(spin!(1.5)),
+            Self::Krypton83 => Some(spin!(4.5)),
+            Self::Rubidium85 => Some(spin!(2.5)),
+            Self::Rubidium87 => Some(spin!(1.5)),
+            Self::Strontium87 => Some(spin!(4.5)),
+            Self::Yttrium89 => Some(spin!(0.5)),
+            Self::Zirconium91 => Some(spin!(2.5)),
+            Self::Niobium93 => Some(spin!(4.5)),
+            Self::Molybdenum95 => Some(spin!(2.5)),
+            Self::Molybdenum97 => Some(spin!(2.5)),
+            Self::Technetium99 => Some(spin!(4.5)),
+            Self::Ruthenium99 => Some(spin!(2.5)),
+            Self::Ruthenium101 => Some(spin!(2.5)),
+            Self::Rhodium103 => Some(spin!(0.5)),
+            Self::Palladium105 => Some(spin!(2.5)),
+            Self::Silver107 => Some(spin!(0.5)),
+            Self::Silver109 => Some(spin!(0.5)),
+            Self::Cadmium111 => Some(spin!(0.5)),
+            Self::Cadmium113 => Some(spin!(0.5)),
+            Self::Indium113 => Some(spin!(4.5)),
+            Self::Indium115 => Some(spin!(4.5)),
+            Self::Tin115 => Some(spin!(0.5)),
+            Self::Tin117 => Some(spin!(0.5)),
+            Self::Tin119 => Some(spin!(0.5)),
+            Self::Antimony121 => Some(spin!(2.5)),
+            Self::Antimony123 => Some(spin!(3.5)),
+            Self::Tellurium123 => Some(spin!(0.5)),
+            Self::Tellurium125 => Some(spin!(0.5)),
+            Self::Iodine127 => Some(spin!(2.5)),
+            Self::Xenon129 => Some(spin!(0.5)),
+            Self::Xenon131 => Some(spin!(1.5)),
+            Self::Caesium133 => Some(spin!(3.5)),
+            Self::Barium135 => Some(spin!(1.5)),
+            Self::Barium137 => Some(spin!(1.5)),
+            Self::Lanthanum139 => Some(spin!(3.5)),
+            Self::Hafnium177 => Some(spin!(3.5)),
+            Self::Hafnium179 => Some(spin!(4.5)),
+            Self::Tantalum181 => Some(spin!(3.5)),
+            Self::Tungsten183 => Some(spin!(0.5)),
+            Self::Rhenium185 => Some(spin!(2.5)),
+            Self::Rhenium187 => Some(spin!(2.5)),
+            Self::Osmium187 => Some(spin!(0.5)),
+            Self::Osmium189 => Some(spin!(1.5)),
+            Self::Iridium191 => Some(spin!(1.5)),
+            Self::Iridium193 => Some(spin!(1.5)),
+            Self::Platinum195 => Some(spin!(0.5)),
+            Self::Gold197 => Some(spin!(1.5)),
+            Self::Mercury199 => Some(spin!(0.5)),
+            Self::Mercury201 => Some(spin!(1.5)),
+            Self::Thallium203 => Some(spin!(0.5)),
+            Self::Thallium205 => Some(spin!(0.5)),
+            Self::Lead207 => Some(spin!(0.5)),
+            Self::Bismuth209 => Some(spin!(4.5)),
+
+            // Lanthanides
+            Self::Praseodymium141 => Some(spin!(2.5)),
+            Self::Neodymium143 => Some(spin!(3.5)),
+            Self::Neodymium145 => Some(spin!(3.5)),
+            Self::Samarium147 => Some(spin!(3.5)),
+            Self::Samarium149 => Some(spin!(3.5)),
+            Self::Europium151 => Some(spin!(2.5)),
+            Self::Europium153 => Some(spin!(2.5)),
+            Self::Gadolinium155 => Some(spin!(1.5)),
+            Self::Gadolinium157 => Some(spin!(1.5)),
+            Self::Terbium159 => Some(spin!(1.5)),
+            Self::Dysprosium161 => Some(spin!(2.5)),
+            Self::Dysprosium163 => Some(spin!(2.5)),
+            Self::Holmium165 => Some(spin!(3.5)),
+            Self::Erbium167 => Some(spin!(3.5)),
+            Self::Thulium169 => Some(spin!(0.5)),
+            Self::Ytterbium171 => Some(spin!(0.5)),
+            Self::Ytterbium173 => Some(spin!(2.5)),
+            Self::Lutetium175 => Some(spin!(3.5)),
+            Self::Lutetium176 => Some(spin!(7.0)),
+
+            // Graceful fallback for unrecognized nuclei
+            Self::Other(_) => None,
+        }
+    }
+
+    /// Returns the nuclear magnetic moment.
+    ///
+    /// In the case of the fallback variant [`Nucleus::Other`], `None` is
+    /// returned.
+    ///
+    /// The first value is the nuclear magnetic moment, the second value is the
+    /// one-sigma uncertainty.
+    ///
+    /// Values taken from CODATA ([1], [2], [3]) and [IAEA].
+    ///
+    /// [1]: https://physics.nist.gov/cgi-bin/cuu/Value?mupsmun
+    /// [2]: https://physics.nist.gov/cgi-bin/cuu/Value?mudsmun
+    /// [3]: https://physics.nist.gov/cgi-bin/cuu/Value?mutsmun
+    /// [IAEA]: https://www-nds.iaea.org/publications/indc/indc-nds-0794.pdf
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use float_cmp::assert_approx_eq;
+    /// use uom::si::magnetic_moment::nuclear_magneton;
+    /// use zeenmr_spectrum::Nucleus;
+    ///
+    /// let (mu, uncertainty) = Nucleus::Hydrogen.magnetic_moment().unwrap();
+    /// assert_approx_eq!(f64, mu.get::<nuclear_magneton>(), 2.792_847_344_63);
+    /// assert_approx_eq!(f64, uncertainty.get::<nuclear_magneton>(), 8.2e-10);
+    /// ```
+    pub fn magnetic_moment(&self) -> Option<(MagneticMoment, MagneticMoment)> {
+        match self {
+            // Main group and transition elements
+            Self::Hydrogen => Some((mag_mom!(2.792_847_344_63), mag_mom!(8.2e-10))),
+            Self::Deuterium => Some((mag_mom!(0.857_438_233_5), mag_mom!(2.2e-9))),
+            Self::Tritium => Some((mag_mom!(2.978_962_465_0), mag_mom!(5.9e-09))),
+            Self::Helium3 => Some((mag_mom!(-2.127_625_31), mag_mom!(3e-08))),
+            Self::Lithium6 => Some((mag_mom!(0.822_043), mag_mom!(3e-06))),
+            Self::Lithium7 => Some((mag_mom!(3.256_407), mag_mom!(1.2e-05))),
+            Self::Beryllium9 => Some((mag_mom!(-1.177_43), mag_mom!(5e-06))),
+            Self::Boron10 => Some((mag_mom!(1.800_463_6), mag_mom!(8e-07))),
+            Self::Boron11 => Some((mag_mom!(2.688_378), mag_mom!(1e-06))),
+            Self::Carbon13 => Some((mag_mom!(0.702_369), mag_mom!(4e-06))),
+            Self::Nitrogen14 => Some((mag_mom!(0.403_573), mag_mom!(2e-06))),
+            Self::Nitrogen15 => Some((mag_mom!(-0.283_056_9), mag_mom!(1.4e-06))),
+            Self::Oxygen17 => Some((mag_mom!(-1.893_543), mag_mom!(1e-05))),
+            Self::Fluorine19 => Some((mag_mom!(2.628_321), mag_mom!(4e-06))),
+            Self::Neon21 => Some((mag_mom!(-0.661_7), mag_mom!(3e-05))),
+            Self::Sodium23 => Some((mag_mom!(2.217_5), mag_mom!(3e-05))),
+            Self::Magnesium25 => Some((mag_mom!(-0.855_33), mag_mom!(3e-05))),
+            Self::Aluminium27 => Some((mag_mom!(3.640_7), mag_mom!(2e-05))),
+            Self::Silicon29 => Some((mag_mom!(-0.555_052), mag_mom!(3e-06))),
+            Self::Phosphorus31 => Some((mag_mom!(1.130_925), mag_mom!(5e-06))),
+            Self::Sulphur33 => Some((mag_mom!(0.643_25), mag_mom!(2e-05))),
+            Self::Chlorine35 => Some((mag_mom!(0.821_7), mag_mom!(2e-05))),
+            Self::Chlorine37 => Some((mag_mom!(0.684), mag_mom!(1e-05))),
+            Self::Potassium39 => Some((mag_mom!(0.391_47), mag_mom!(8e-06))),
+            Self::Potassium41 => Some((mag_mom!(0.214_872), mag_mom!(5e-06))),
+            Self::Calcium43 => Some((mag_mom!(-1.317_33), mag_mom!(6e-05))),
+            Self::Scandium45 => Some((mag_mom!(4.754), mag_mom!(8e-05))),
+            Self::Titanium47 => Some((mag_mom!(-0.788_14), mag_mom!(0.00011))),
+            Self::Titanium49 => Some((mag_mom!(-1.103_7), mag_mom!(0.00014))),
+            Self::Vanadium50 => Some((mag_mom!(3.344_2), mag_mom!(0.0004))),
+            Self::Vanadium51 => Some((mag_mom!(5.146_4), mag_mom!(0.0007))),
+            Self::Chromium53 => Some((mag_mom!(-0.474_31), mag_mom!(7e-05))),
+            Self::Manganese55 => Some((mag_mom!(3.466_9), mag_mom!(0.0006))),
+            Self::Iron57 => Some((mag_mom!(0.0906_4), mag_mom!(7e-05))),
+            Self::Cobalt59 => Some((mag_mom!(4.615), mag_mom!(0.025))),
+            Self::Nickel61 => Some((mag_mom!(-0.749_65), mag_mom!(5e-05))),
+            Self::Copper63 => Some((mag_mom!(2.225_9), mag_mom!(0.0004))),
+            Self::Copper65 => Some((mag_mom!(2.384_4), mag_mom!(0.0004))),
+            Self::Zinc67 => Some((mag_mom!(0.874_85), mag_mom!(0.00016))),
+            Self::Gallium69 => Some((mag_mom!(2.015_02), mag_mom!(6e-05))),
+            Self::Gallium71 => Some((mag_mom!(2.560_33), mag_mom!(9e-05))),
+            Self::Germanium73 => Some((mag_mom!(-0.878_24), mag_mom!(5e-05))),
+            Self::Arsenic75 => Some((mag_mom!(1.438_3), mag_mom!(0.0003))),
+            Self::Selenium77 => Some((mag_mom!(0.533_56), mag_mom!(5e-05))),
+            Self::Bromine79 => Some((mag_mom!(2.104_6), mag_mom!(0.0006))),
+            Self::Bromine81 => Some((mag_mom!(2.268_6), mag_mom!(0.0006))),
+            Self::Krypton83 => Some((mag_mom!(-0.970_73), mag_mom!(3e-06))),
+            Self::Rubidium85 => Some((mag_mom!(1.353_06), mag_mom!(4e-05))),
+            Self::Rubidium87 => Some((mag_mom!(2.751_29), mag_mom!(8e-05))),
+            Self::Strontium87 => Some((mag_mom!(-1.093_16), mag_mom!(0.00011))),
+            Self::Yttrium89 => Some((mag_mom!(-0.137_298), mag_mom!(5e-06))),
+            Self::Zirconium91 => Some((mag_mom!(-1.302_2), mag_mom!(0.0004))),
+            Self::Niobium93 => Some((mag_mom!(6.163), mag_mom!(0.002))),
+            Self::Molybdenum95 => Some((mag_mom!(-0.913_2), mag_mom!(0.0003))),
+            Self::Molybdenum97 => Some((mag_mom!(-0.932_4), mag_mom!(0.0003))),
+            Self::Technetium99 => Some((mag_mom!(5.678), mag_mom!(0.002))),
+            Self::Ruthenium99 => Some((mag_mom!(-0.641), mag_mom!(0.005))),
+            Self::Ruthenium101 => Some((mag_mom!(-0.718), mag_mom!(0.006))),
+            Self::Rhodium103 => Some((mag_mom!(-0.088_29), mag_mom!(3e-05))),
+            Self::Palladium105 => Some((mag_mom!(-0.642), mag_mom!(0.003))),
+            Self::Silver107 => Some((mag_mom!(-0.113_52), mag_mom!(5e-05))),
+            Self::Silver109 => Some((mag_mom!(0.130_51), mag_mom!(5e-05))),
+            Self::Cadmium111 => Some((mag_mom!(-0.594), mag_mom!(0.0003))),
+            Self::Cadmium113 => Some((mag_mom!(-0.621_3), mag_mom!(0.0003))),
+            Self::Indium113 => Some((mag_mom!(5.520_8), mag_mom!(0.0004))),
+            Self::Indium115 => Some((mag_mom!(5.532_6), mag_mom!(0.0004))),
+            Self::Tin115 => Some((mag_mom!(-0.917_4), mag_mom!(0.0004))),
+            Self::Tin117 => Some((mag_mom!(-0.999_5), mag_mom!(0.0005))),
+            Self::Tin119 => Some((mag_mom!(-1.045_9), mag_mom!(0.0005))),
+            Self::Antimony121 => Some((mag_mom!(3.358), mag_mom!(0.0016))),
+            Self::Antimony123 => Some((mag_mom!(2.545_7), mag_mom!(0.0012))),
+            Self::Tellurium123 => Some((mag_mom!(-0.735_8), mag_mom!(0.0003))),
+            Self::Tellurium125 => Some((mag_mom!(-0.887), mag_mom!(0.0005))),
+            Self::Iodine127 => Some((mag_mom!(2.808_7), mag_mom!(0.0014))),
+            Self::Xenon129 => Some((mag_mom!(-0.777_961), mag_mom!(1.6e-05))),
+            Self::Xenon131 => Some((mag_mom!(0.691_845), mag_mom!(7e-06))),
+            Self::Caesium133 => Some((mag_mom!(2.577_8), mag_mom!(0.0014))),
+            Self::Barium135 => Some((mag_mom!(0.838_1), mag_mom!(0.0002))),
+            Self::Barium137 => Some((mag_mom!(0.937_5), mag_mom!(0.0002))),
+            Self::Lanthanum139 => Some((mag_mom!(2.779_1), mag_mom!(0.0002))),
+            Self::Hafnium177 => Some((mag_mom!(0.791), mag_mom!(0.0009))),
+            Self::Hafnium179 => Some((mag_mom!(-0.638_9), mag_mom!(0.0014))),
+            Self::Tantalum181 => Some((mag_mom!(2.365), mag_mom!(0.004))),
+            Self::Tungsten183 => Some((mag_mom!(0.117_39), mag_mom!(0.00011))),
+            Self::Rhenium185 => Some((mag_mom!(3.176), mag_mom!(0.003))),
+            Self::Rhenium187 => Some((mag_mom!(3.209), mag_mom!(0.003))),
+            Self::Osmium187 => Some((mag_mom!(0.064_42), mag_mom!(7e-05))),
+            Self::Osmium189 => Some((mag_mom!(0.657_6), mag_mom!(0.0007))),
+            Self::Iridium191 => Some((mag_mom!(0.150_2), mag_mom!(0.0006))),
+            Self::Iridium193 => Some((mag_mom!(0.163), mag_mom!(0.0006))),
+            Self::Platinum195 => Some((mag_mom!(0.607_3), mag_mom!(0.0007))),
+            Self::Gold197 => Some((mag_mom!(0.145_2), mag_mom!(0.0002))),
+            Self::Mercury199 => Some((mag_mom!(0.503_9), mag_mom!(0.0006))),
+            Self::Mercury201 => Some((mag_mom!(-0.558), mag_mom!(0.0007))),
+            Self::Thallium203 => Some((mag_mom!(1.616), mag_mom!(0.002))),
+            Self::Thallium205 => Some((mag_mom!(1.632), mag_mom!(0.002))),
+            Self::Lead207 => Some((mag_mom!(0.590_6), mag_mom!(0.0004))),
+            Self::Bismuth209 => Some((mag_mom!(4.092), mag_mom!(0.002))),
+
+            // Lanthanides
+            Self::Praseodymium141 => Some((mag_mom!(4.266), mag_mom!(0.003))),
+            Self::Neodymium143 => Some((mag_mom!(-1.065), mag_mom!(0.005))),
+            Self::Neodymium145 => Some((mag_mom!(-0.656), mag_mom!(0.004))),
+            Self::Samarium147 => Some((mag_mom!(-0.809), mag_mom!(0.0014))),
+            Self::Samarium149 => Some((mag_mom!(-0.667_7), mag_mom!(0.0011))),
+            Self::Europium151 => Some((mag_mom!(3.463_5), mag_mom!(0.0025))),
+            Self::Europium153 => Some((mag_mom!(1.529_4), mag_mom!(0.0011))),
+            Self::Gadolinium155 => Some((mag_mom!(-0.259_1), mag_mom!(0.0004))),
+            Self::Gadolinium157 => Some((mag_mom!(-0.339_8), mag_mom!(0.0006))),
+            Self::Terbium159 => Some((mag_mom!(2.009), mag_mom!(0.004))),
+            Self::Dysprosium161 => Some((mag_mom!(-0.479), mag_mom!(0.003))),
+            Self::Dysprosium163 => Some((mag_mom!(0.671), mag_mom!(0.004))),
+            Self::Holmium165 => Some((mag_mom!(4.16), mag_mom!(0.03))),
+            Self::Erbium167 => Some((mag_mom!(-0.5623), mag_mom!(0.0004))),
+            Self::Thulium169 => Some((mag_mom!(-0.231), mag_mom!(0.0015))),
+            Self::Ytterbium171 => Some((mag_mom!(0.492_3), mag_mom!(0.0004))),
+            Self::Ytterbium173 => Some((mag_mom!(-0.678), mag_mom!(0.0006))),
+            Self::Lutetium175 => Some((mag_mom!(2.225_7), mag_mom!(0.0019))),
+            Self::Lutetium176 => Some((mag_mom!(3.16), mag_mom!(0.005))),
+
+            // Graceful fallback for unrecognized nuclei
+            Self::Other(_) => None,
+        }
+    }
+
+    /// Returns the gyromagnetic ratio.
+    ///
+    /// In the case of the fallback variant [`Nucleus::Other`], `None` is
+    /// returned.
+    ///
+    /// The first value is the gyromagnetic ratio and the second value is the
+    /// one-sigma uncertainty.
+    ///
+    /// Magnetic momenta taken from [IAEA] and converted to gyromagnetic ratios
+    /// using [CODATA] recommended values for the planck constant with the
+    /// formula:
+    ///
+    /// [IAEA]: https://www-nds.iaea.org/publications/indc/indc-nds-0794.pdf
+    /// [CODATA]: https://journals.aps.org/rmp/abstract/10.1103/RevModPhys.93.025010
+    ///
+    /// ```text
+    /// γ_n = μ / (I * h)
+    /// ```
+    ///
+    /// where μ is the nuclear magnetic moment, I is the spin quantum number
+    /// and h is the planck constant.
+    ///
+    /// The value for [`Nucleus::Hydrogen`] is not computed and instead uses the
+    /// gyromagnetic ratio of a proton provided by [CODATA].
+    ///
+    /// [CODATA]: https://physics.nist.gov/cgi-bin/cuu/Value?gammap
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use float_cmp::assert_approx_eq;
+    /// use uom::si::gyromagnetic_ratio::{megahertz_per_tesla, radian_per_second_tesla};
+    /// use zeenmr_spectrum::Nucleus;
+    ///
+    /// let (gamma, uncertainty) = Nucleus::Hydrogen.gyromagnetic_ratio().unwrap();
+    /// assert_approx_eq!(f64, gamma.get::<megahertz_per_tesla>(), 42.577_478_461);
+    /// assert_approx_eq!(f64, uncertainty.get::<megahertz_per_tesla>(), 1.8e-8);
+    /// ```
+    pub fn gyromagnetic_ratio(&self) -> Option<(GyromagneticRatio, GyromagneticRatio)> {
+        if *self == Self::Hydrogen {
+            Some((
+                GyromagneticRatio::new::<megahertz_per_tesla>(42.577_478_461),
+                GyromagneticRatio::new::<megahertz_per_tesla>(0.000_000_018),
+            ))
+        } else if let (Some(spin), Some((mu, dmu))) = (self.spin(), self.magnetic_moment()) {
+            Some((
+                mu / (spin * Action::new::<joule_second>(PLANCK)),
+                dmu / (spin * Action::new::<joule_second>(PLANCK)),
+            ))
+        } else {
+            None
+        }
     }
 }
 

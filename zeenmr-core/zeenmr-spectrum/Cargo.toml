@@ -26,6 +26,7 @@ default = []
 serde = ["dep:serde"]
 
 [dependencies]
+uom = { workspace = true }
 serde = { workspace = true, optional = true }
 
 [dev-dependencies]
