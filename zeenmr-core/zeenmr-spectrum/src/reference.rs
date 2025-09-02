@@ -126,12 +126,12 @@ impl From<ReferencingMethod> for String {
 /// Represents a reference used for calibrating chemical shifts in the NMR
 /// spectrum.
 ///
-/// # Conversion
+/// # Construction
 ///
 /// `ShiftReference` implements [`From<f64>`] and [`From<(f64, usize)>`] to
-/// allow for easy conversion from a chemical shift or chemical shift and index
-/// pair. In the former case, the index is set to 0, meaning that the leftmost
-/// chemical shift in the [`Spectrum`] is the reference.
+/// allow for easy construction from a chemical shift or chemical shift and
+/// index pair. In the former case, the index is set to 0, meaning that the
+/// leftmost chemical shift in the [`Spectrum`] is the reference point.
 ///
 /// [`From<f64>`]: From
 /// [`From<(f64, usize)>`]: From
