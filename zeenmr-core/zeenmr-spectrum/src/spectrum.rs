@@ -74,7 +74,7 @@ use serde::{Deserialize, Serialize};
 /// let mut spectrum = Spectrum::new(intensities, spectrometer_frequency, frequency_range)?;
 ///
 /// // Specify a chemical shift reference.
-/// let shift_reference = ShiftReference::new(0.0, 2_usize.pow(13), Some("ref"), Some("internal"));
+/// let shift_reference = ShiftReference::new_with_meta(0.0, 2_usize.pow(13), "ref", "internal");
 /// spectrum.set_shift_reference(shift_reference)?;
 ///
 /// // Add metadata.
@@ -897,8 +897,9 @@ impl Spectrum {
     /// axis is created, which corresponds to no shift. `ShiftReference` can be
     /// created from a tuple of a chemical shift value in ppm and an index
     /// in the spectral axis, or from just a chemical shift value (the index is
-    /// 0 in this case). When using [`ShiftReference::new`], a name and a method
-    /// can also be provided to describe the reference compound.
+    /// 0 in this case). When using [`ShiftReference::new_with_meta`], a name
+    /// and a method can also be provided to describe the reference
+    /// compound.
     ///
     /// # Errors
     ///
@@ -929,7 +930,7 @@ impl Spectrum {
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(12000.0 / 600.0 - 10.0));
     ///
     /// // create a custom shift reference with a name and method
-    /// let reference = ShiftReference::new(0.0, 1, Some("example ref"), Some("internal"));
+    /// let reference = ShiftReference::new_with_meta(0.0, 1, "example ref", "internal");
     /// spectrum.set_shift_reference(reference)?;
     /// let mut shifts = spectrum.chemical_shifts();
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(-10.0));
@@ -958,7 +959,7 @@ impl Spectrum {
     /// let mut spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
     ///
     /// // create a custom shift reference with a name and method
-    /// let reference = ShiftReference::new(0.0, 1, Some("example ref"), Some("internal"));
+    /// let reference = ShiftReference::new_with_meta(0.0, 1, "example ref", "internal");
     /// spectrum.set_shift_reference(reference)?;
     /// let mut shifts = spectrum.chemical_shifts();
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(-10.0));
@@ -996,7 +997,7 @@ impl Spectrum {
     /// let mut spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
     ///
     /// // create a custom shift reference with a name and method
-    /// let reference = ShiftReference::new(0.0, 1, Some("example ref"), Some("internal"));
+    /// let reference = ShiftReference::new_with_meta(0.0, 1, "example ref", "internal");
     /// spectrum.set_shift_reference(reference)?;
     /// let mut shifts = spectrum.chemical_shifts();
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(-10.0));
@@ -1028,7 +1029,7 @@ impl Spectrum {
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
     /// let mut spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
-    /// let reference = ShiftReference::new(0.0, 1, Some("example ref"), Some("internal"));
+    /// let reference = ShiftReference::new_with_meta(0.0, 1, "example ref", "internal");
     /// spectrum.set_shift_reference(reference)?;
     /// spectrum.set_shift_reference_name("new ref name");
     /// assert_eq!(spectrum.shift_reference().name(), Some("new ref name"));
@@ -1049,7 +1050,7 @@ impl Spectrum {
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
     /// let mut spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
-    /// let reference = ShiftReference::new(0.0, 1, Some("example ref"), Some("internal"));
+    /// let reference = ShiftReference::new_with_meta(0.0, 1, "example ref", "internal");
     /// spectrum.set_shift_reference(reference)?;
     /// spectrum.clear_shift_reference_name();
     /// assert!(spectrum.shift_reference().name().is_none());
@@ -1071,7 +1072,7 @@ impl Spectrum {
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
     /// let mut spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
-    /// let reference = ShiftReference::new(0.0, 1, Some("example ref"), Some("internal"));
+    /// let reference = ShiftReference::new_with_meta(0.0, 1, "example ref", "internal");
     /// spectrum.set_shift_reference(reference)?;
     /// spectrum.set_shift_reference_method("external");
     /// assert_eq!(
@@ -1096,7 +1097,7 @@ impl Spectrum {
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
     /// let mut spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
-    /// let reference = ShiftReference::new(0.0, 1, Some("example ref"), Some("internal"));
+    /// let reference = ShiftReference::new_with_meta(0.0, 1, "ref", "internal");
     /// spectrum.set_shift_reference(reference)?;
     /// spectrum.clear_shift_reference_method();
     /// assert!(spectrum.shift_reference().method().is_none());

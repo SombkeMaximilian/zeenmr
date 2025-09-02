@@ -212,7 +212,11 @@ impl From<(f64, usize)> for ShiftReference {
 }
 
 impl ShiftReference {
-    /// Constructs a new `ShiftReference` with all available metadata.
+    /// Constructs a new `ShiftReference`.
+    ///
+    /// Equivalent to using the [`From<(f64, usize)>`] implementation.
+    ///
+    /// [`From<(f64, usize)>`]: From
     ///
     /// # Example
     ///
@@ -220,13 +224,62 @@ impl ShiftReference {
     /// use float_cmp::assert_approx_eq;
     /// use zeenmr_spectrum::{ReferencingMethod, ShiftReference};
     ///
-    /// let reference = ShiftReference::new(4.8, 2_usize.pow(14) - 1, Some("H2O"), Some("internal"));
+    /// let reference = ShiftReference::new(4.8, 2_usize.pow(14) - 1);
+    /// assert_approx_eq!(f64, reference.chemical_shift(), 4.8);
+    /// assert_eq!(reference.index(), 2_usize.pow(14) - 1);
+    /// assert_eq!(reference.name(), None);
+    /// assert_eq!(reference.method(), None);
+    /// ```
+    pub fn new(chemical_shift: f64, index: usize) -> Self {
+        Self {
+            chemical_shift,
+            index,
+            name: None,
+            method: None,
+        }
+    }
+
+    /// Constructs a new `ShiftReference` with a name.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use float_cmp::assert_approx_eq;
+    /// use zeenmr_spectrum::{ReferencingMethod, ShiftReference};
+    ///
+    /// let reference = ShiftReference::new_with_name(4.8, 2_usize.pow(14) - 1, "H2O");
+    /// assert_approx_eq!(f64, reference.chemical_shift(), 4.8);
+    /// assert_eq!(reference.index(), 2_usize.pow(14) - 1);
+    /// assert_eq!(reference.name(), Some("H2O"));
+    /// assert_eq!(reference.method(), None);
+    /// ```
+    pub fn new_with_name<T>(chemical_shift: f64, index: usize, name: T) -> Self
+    where
+        T: Into<String>,
+    {
+        Self {
+            chemical_shift,
+            index,
+            name: Some(name.into()),
+            method: None,
+        }
+    }
+
+    /// Constructs a new `ShiftReference` with metadata.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use float_cmp::assert_approx_eq;
+    /// use zeenmr_spectrum::{ReferencingMethod, ShiftReference};
+    ///
+    /// let reference = ShiftReference::new_with_meta(4.8, 2_usize.pow(14) - 1, "H2O", "internal");
     /// assert_approx_eq!(f64, reference.chemical_shift(), 4.8);
     /// assert_eq!(reference.index(), 2_usize.pow(14) - 1);
     /// assert_eq!(reference.name(), Some("H2O"));
     /// assert_eq!(reference.method(), Some(&ReferencingMethod::Internal));
     /// ```
-    pub fn new<T, U>(chemical_shift: f64, index: usize, name: Option<T>, method: Option<U>) -> Self
+    pub fn new_with_meta<T, U>(chemical_shift: f64, index: usize, name: T, method: U) -> Self
     where
         T: Into<String>,
         U: Into<ReferencingMethod>,
@@ -234,8 +287,8 @@ impl ShiftReference {
         Self {
             chemical_shift,
             index,
-            name: name.map(Into::into),
-            method: method.map(Into::into),
+            name: Some(name.into()),
+            method: Some(method.into()),
         }
     }
 
@@ -413,7 +466,7 @@ mod tests {
         let references = [
             14_f64.into(),
             (4.8, 2_usize.pow(14)).into(),
-            ShiftReference::new(0.0, 12000, Some("TMS"), Some(ReferencingMethod::Internal)),
+            ShiftReference::new_with_meta(0.0, 12000, "TMS", ReferencingMethod::Internal),
         ];
         let serialized = references
             .clone()
@@ -442,8 +495,18 @@ mod tests {
         ];
         let expected = [
             14_f64.into(),
-            ShiftReference::new(4.8, 2_usize.pow(14), Some("H2O"), None::<&str>),
-            ShiftReference::new(0.0, 12000, None::<&str>, Some(ReferencingMethod::Internal)),
+            ShiftReference {
+                chemical_shift: 4.8,
+                index: 2_usize.pow(14),
+                name: Some("H2O".into()),
+                method: None,
+            },
+            ShiftReference {
+                chemical_shift: 0.0,
+                index: 12000,
+                name: None,
+                method: Some(ReferencingMethod::Internal),
+            },
         ];
         let deserialized =
             serialized.map(|reference| serde_json::from_str::<ShiftReference>(reference).unwrap());
