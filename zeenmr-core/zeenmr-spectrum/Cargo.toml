@@ -23,7 +23,7 @@ categories = [
 
 [features]
 default = []
-serde = ["dep:serde"]
+serde = ["dep:serde", "uom/serde"]
 
 [dependencies]
 uom = { workspace = true }
