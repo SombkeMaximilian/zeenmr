@@ -130,12 +130,18 @@ impl From<ReferencingMethod> for String {
 ///
 /// # Construction
 ///
-/// `ShiftReference` implements [`From<Ratio>`] and [`From<(Ratio, usize)>`] to
-/// allow for easy construction from a chemical shift or chemical shift and
-/// index pair. In the former case, the index is set to 0, meaning that the
-/// first data point in the [`Spectrum`] is the reference.
+/// `ShiftReference` implements [`From<T>`] to allow for easy construction from
+/// just a chemical shift, an index, or both, whenever metadata is not needed.
+/// The following conversions are supported:
+///
+/// - [`From<Ratio>`]: first point in the [`Spectrum`], shift set to the
+///   provided value.
+/// - [`From<usize>`]: provided point in the [`Spectrum`], shift set to 0 ppm.
+/// - [`From<(Ratio, usize)>`] and [`From<(usize, Ratio)>`]: provided shift and
+///   index.
 ///
 /// [`From<(Ratio, usize)>`]: From
+/// [`From<(usize, Ratio)>`]: From
 /// [`Spectrum`]: crate::spectrum::Spectrum
 ///
 /// ## Example
@@ -146,12 +152,21 @@ impl From<ReferencingMethod> for String {
 /// use uom::si::ratio::part_per_million as ppm;
 /// use zeenmr_spectrum::ShiftReference;
 ///
+/// // first data point is the reference at 10 ppm
 /// let left = ShiftReference::from(Ratio::new::<ppm>(10.0));
 /// assert_approx_eq!(f64, left.shift().get::<ppm>(), 10.0);
 /// assert_eq!(left.index(), 0);
 /// assert!(left.name().is_none());
 /// assert!(left.method().is_none());
 ///
+/// // point 24576 is the reference at 0 ppm
+/// let tms = ShiftReference::from(24576_usize);
+/// assert_approx_eq!(f64, tms.shift().get::<ppm>(), 0.0);
+/// assert_eq!(tms.index(), 24576);
+/// assert!(tms.name().is_none());
+/// assert!(tms.method().is_none());
+///
+/// // point 8192 is the reference at 4.8 ppm
 /// let water = ShiftReference::from((Ratio::new::<ppm>(4.8), 8192));
 /// assert_approx_eq!(f64, water.shift().get::<ppm>(), 4.8);
 /// assert_eq!(water.index(), 8192);
@@ -164,7 +179,8 @@ impl From<ReferencingMethod> for String {
 /// [Serde]: https://serde.rs/
 ///
 /// If the `serde` feature is enabled, `ShiftReference` implements
-/// [`Serialize`] and [`Deserialize`].
+/// [`Serialize`] and [`Deserialize`]. The chemical shift is serialized to and
+/// deserialized from values in parts per million (ppm).
 ///
 /// [`Serialize`]: serde::Serialize
 /// [`Deserialize`]: serde::Deserialize
@@ -225,6 +241,15 @@ impl From<Ratio> for ShiftReference {
     }
 }
 
+impl From<usize> for ShiftReference {
+    fn from(value: usize) -> Self {
+        Self {
+            index: value,
+            ..Default::default()
+        }
+    }
+}
+
 impl From<(Ratio, usize)> for ShiftReference {
     fn from(value: (Ratio, usize)) -> Self {
         Self {
@@ -235,12 +260,20 @@ impl From<(Ratio, usize)> for ShiftReference {
     }
 }
 
+impl From<(usize, Ratio)> for ShiftReference {
+    fn from(value: (usize, Ratio)) -> Self {
+        (value.1, value.0).into()
+    }
+}
+
 impl ShiftReference {
     /// Constructs a new [`ShiftReference`].
     ///
-    /// Equivalent to using the [`From<(Ratio, usize)>`] implementation.
+    /// Equivalent to the [`From<(Ratio, usize)>`] and [`From<(usize, Ratio)>`]
+    /// implementations.
     ///
     /// [`From<(Ratio, usize)>`]: From
+    /// [`From<(usize, Ratio)>`]: From
     ///
     /// # Example
     ///
