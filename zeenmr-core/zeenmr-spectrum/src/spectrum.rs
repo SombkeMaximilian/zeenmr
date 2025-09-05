@@ -1,9 +1,9 @@
 use crate::error::{Error, Result};
 use crate::{Nucleus, ReferencingMethod, ShiftReference, SignalBoundaries, SpectralLinspace};
 use std::sync::Arc;
-use uom::si::f64::Frequency;
+use uom::si::f64::{Frequency, Ratio};
 use uom::si::frequency::hertz;
-use uom::si::ratio::part_per_million;
+use uom::si::ratio::part_per_million as ppm;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -52,9 +52,9 @@ use serde::{Deserialize, Serialize};
 ///
 /// ```
 /// use num_traits::Zero;
-/// use uom::si::f64::Frequency;
+/// use uom::si::f64::{Frequency, Ratio};
 /// use uom::si::frequency::{hertz, megahertz};
-/// use uom::si::ratio::part_per_million;
+/// use uom::si::ratio::part_per_million as ppm;
 /// use zeenmr_spectrum::{ShiftReference, SignalBoundaries, Spectrum};
 ///
 /// # fn main() -> zeenmr_spectrum::error::Result<()> {
@@ -65,7 +65,7 @@ use serde::{Deserialize, Serialize};
 /// // Generate intensities using 3 Lorentzian peaks.
 /// let intensities = (0..2_u32.pow(15))
 ///     .map(|i| i as f64 * range.1 / ((2_u32.pow(15) - 1) as f64))
-///     .map(|f| (f / larmor).get::<part_per_million>())
+///     .map(|f| (f / larmor).get::<ppm>())
 ///     .map(|x| {
 ///         // Reference signal centered at 5 ppm.
 ///         10.0 * 0.25 / (0.15_f64.powi(2) + (x - 5.0).powi(2))
@@ -79,8 +79,8 @@ use serde::{Deserialize, Serialize};
 /// let mut spectrum = Spectrum::new(intensities, larmor, range)?;
 ///
 /// // Specify a chemical shift reference.
-/// let shift_reference = ShiftReference::new_with_meta(0.0, 2_usize.pow(13), "ref", "internal");
-/// spectrum.set_shift_reference(shift_reference)?;
+/// let reference = ShiftReference::new_with_meta(Ratio::zero(), 8192, "ref", "internal");
+/// spectrum.set_shift_reference(reference)?;
 ///
 /// // Add metadata.
 /// spectrum.set_id("example_spectrum");
@@ -161,7 +161,7 @@ impl Spectrum {
     /// use num_traits::Zero;
     /// use uom::si::f64::Frequency;
     /// use uom::si::frequency::{hertz, megahertz};
-    /// use uom::si::ratio::part_per_million;
+    /// use uom::si::ratio::part_per_million as ppm;
     /// use zeenmr_spectrum::{ShiftReference, SignalBoundaries, Spectrum};
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
@@ -169,7 +169,7 @@ impl Spectrum {
     /// let range = (Frequency::zero(), Frequency::new::<hertz>(12000.0));
     /// let intensities = (0..2_u32.pow(15))
     ///     .map(|i| i as f64 * range.1 / ((2_u32.pow(15) - 1) as f64))
-    ///     .map(|f| (f / larmor).get::<part_per_million>())
+    ///     .map(|f| (f / larmor).get::<ppm>())
     ///     .map(|x| {
     ///         // Reference signal centered at 5 ppm.
     ///         10.0 * 0.25 / (0.15_f64.powi(2) + (x - 5.0).powi(2))
@@ -187,7 +187,7 @@ impl Spectrum {
         I: IntoIterator<Item = f64>,
     {
         let intensities = Self::validate_intensities(intensities)?;
-        let reference = (range.0 / larmor).get::<part_per_million>();
+        let reference = range.0 / larmor;
         let spectral_linspace = SpectralLinspace::new(larmor, range, intensities.len(), reference)?;
         let signal_boundaries = (
             spectral_linspace
@@ -358,8 +358,9 @@ impl Spectrum {
     /// ```
     /// use float_cmp::assert_approx_eq;
     /// use num_traits::Zero;
-    /// use uom::si::f64::Frequency;
+    /// use uom::si::f64::{Frequency, Ratio};
     /// use uom::si::frequency::{hertz, megahertz};
+    /// use uom::si::ratio::part_per_million as ppm;
     /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
@@ -368,7 +369,7 @@ impl Spectrum {
     ///     Frequency::new::<megahertz>(600.0),
     ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
     /// )?;
-    /// assert_approx_eq!(f64, spectrum.shift_reference().shift(), 0.0);
+    /// assert_approx_eq!(f64, spectrum.shift_reference().shift().get::<ppm>(), 0.0);
     /// assert_eq!(spectrum.shift_reference().index(), 0);
     /// assert!(spectrum.shift_reference().name().is_none());
     /// assert!(spectrum.shift_reference().method().is_none());
@@ -414,6 +415,7 @@ impl Spectrum {
     /// use num_traits::Zero;
     /// use uom::si::f64::Frequency;
     /// use uom::si::frequency::{hertz, megahertz};
+    /// use uom::si::ratio::part_per_million as ppm;
     /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
@@ -422,12 +424,12 @@ impl Spectrum {
     ///     Frequency::new::<megahertz>(600.0),
     ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
     /// )?;
-    /// assert_approx_eq!(f64, spectrum.range_ppm().0, 0.0);
-    /// assert_approx_eq!(f64, spectrum.range_ppm().1, 12000.0 / 600.0);
+    /// assert_approx_eq!(f64, spectrum.range_ppm().0.get::<ppm>(), 0.0);
+    /// assert_approx_eq!(f64, spectrum.range_ppm().1.get::<ppm>(), 20.0);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn range_ppm(&self) -> (f64, f64) {
+    pub fn range_ppm(&self) -> (Ratio, Ratio) {
         self.spectral_linspace.range_ppm()
     }
 
@@ -465,6 +467,7 @@ impl Spectrum {
     /// use num_traits::Zero;
     /// use uom::si::f64::Frequency;
     /// use uom::si::frequency::{hertz, megahertz};
+    /// use uom::si::ratio::part_per_million as ppm;
     /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
@@ -473,11 +476,11 @@ impl Spectrum {
     ///     Frequency::new::<megahertz>(600.0),
     ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
     /// )?;
-    /// assert_approx_eq!(f64, spectrum.width_ppm(), 12000.0 / 600.0);
+    /// assert_approx_eq!(f64, spectrum.width_ppm().get::<ppm>(), 20.0);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn width_ppm(&self) -> f64 {
+    pub fn width_ppm(&self) -> Ratio {
         self.spectral_linspace.width_ppm()
     }
 
@@ -515,6 +518,7 @@ impl Spectrum {
     /// use num_traits::Zero;
     /// use uom::si::f64::Frequency;
     /// use uom::si::frequency::{hertz, megahertz};
+    /// use uom::si::ratio::part_per_million as ppm;
     /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
@@ -523,11 +527,11 @@ impl Spectrum {
     ///     Frequency::new::<megahertz>(600.0),
     ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
     /// )?;
-    /// assert_approx_eq!(f64, spectrum.center_ppm(), 6000.0 / 600.0);
+    /// assert_approx_eq!(f64, spectrum.center_ppm().get::<ppm>(), 10.0);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn center_ppm(&self) -> f64 {
+    pub fn center_ppm(&self) -> Ratio {
         self.spectral_linspace.center_ppm()
     }
 
@@ -548,7 +552,7 @@ impl Spectrum {
     ///     Frequency::new::<megahertz>(600.0),
     ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
     /// )?;
-    /// assert_approx_eq!(f64, spectrum.step_freq().get::<hertz>(), 12000.0 / 2.0);
+    /// assert_approx_eq!(f64, spectrum.step_freq().get::<hertz>(), 6000.0);
     /// # Ok(())
     /// # }
     /// ```
@@ -565,6 +569,7 @@ impl Spectrum {
     /// use num_traits::Zero;
     /// use uom::si::f64::Frequency;
     /// use uom::si::frequency::{hertz, megahertz};
+    /// use uom::si::ratio::part_per_million as ppm;
     /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
@@ -573,11 +578,11 @@ impl Spectrum {
     ///     Frequency::new::<megahertz>(600.0),
     ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
     /// )?;
-    /// assert_approx_eq!(f64, spectrum.step_ppm(), 12000.0 / (600.0 * 2.0));
+    /// assert_approx_eq!(f64, spectrum.step_ppm().get::<ppm>(), 10.0);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn step_ppm(&self) -> f64 {
+    pub fn step_ppm(&self) -> Ratio {
         self.spectral_linspace.step_ppm()
     }
 
@@ -625,6 +630,7 @@ impl Spectrum {
     /// use num_traits::Zero;
     /// use uom::si::f64::Frequency;
     /// use uom::si::frequency::{hertz, megahertz};
+    /// use uom::si::ratio::part_per_million as ppm;
     /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
@@ -633,7 +639,7 @@ impl Spectrum {
     ///     Frequency::new::<megahertz>(600.0),
     ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
     /// )?;
-    /// let mut shifts = spectrum.shifts();
+    /// let mut shifts = spectrum.shifts().map(|s| s.get::<ppm>());
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(0.0));
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(6000.0 / 600.0));
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(12000.0 / 600.0));
@@ -641,7 +647,7 @@ impl Spectrum {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn shifts(&self) -> impl Iterator<Item = f64> + use<> {
+    pub fn shifts(&self) -> impl Iterator<Item = Ratio> + use<> {
         self.spectral_linspace.shifts()
     }
 
@@ -807,10 +813,12 @@ impl Spectrum {
         SignalBoundaries::ChemicalShifts(
             self.spectral_linspace
                 .index_to_ppm(self.signal_boundaries.0)
-                .unwrap(),
+                .unwrap()
+                .get::<ppm>(),
             self.spectral_linspace
                 .index_to_ppm(self.signal_boundaries.1)
-                .unwrap(),
+                .unwrap()
+                .get::<ppm>(),
         )
     }
 
@@ -1006,6 +1014,7 @@ impl Spectrum {
     /// use num_traits::Zero;
     /// use uom::si::f64::Frequency;
     /// use uom::si::frequency::{hertz, megahertz};
+    /// use uom::si::ratio::part_per_million as ppm;
     /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
@@ -1026,7 +1035,7 @@ impl Spectrum {
     /// assert!(frequencies.next().is_none());
     ///
     /// // chemical shift reference still maps the first frequency to 0 ppm
-    /// let mut shifts = spectrum.shifts();
+    /// let mut shifts = spectrum.shifts().map(|s| s.get::<ppm>());
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(0.0));
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(-5000.0 / 600.0));
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(-10000.0 / 600.0));
@@ -1056,6 +1065,7 @@ impl Spectrum {
     /// use num_traits::Zero;
     /// use uom::si::f64::Frequency;
     /// use uom::si::frequency::{hertz, megahertz};
+    /// use uom::si::ratio::part_per_million as ppm;
     /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
@@ -1065,7 +1075,7 @@ impl Spectrum {
     ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
     /// )?;
     /// spectrum.set_larmor(Frequency::new::<megahertz>(450.0))?;
-    /// let mut shifts = spectrum.shifts();
+    /// let mut shifts = spectrum.shifts().map(|s| s.get::<ppm>());
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(0.0));
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(6000.0 / 450.0));
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(12000.0 / 450.0));
@@ -1097,8 +1107,9 @@ impl Spectrum {
     /// ```
     /// use float_cmp::assert_approx_eq;
     /// use num_traits::Zero;
-    /// use uom::si::f64::Frequency;
+    /// use uom::si::f64::{Frequency, Ratio};
     /// use uom::si::frequency::{hertz, megahertz};
+    /// use uom::si::ratio::part_per_million as ppm;
     /// use zeenmr_spectrum::{ShiftReference, Spectrum};
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
@@ -1109,23 +1120,23 @@ impl Spectrum {
     /// )?;
     ///
     /// // map the first frequency to -5.0 ppm
-    /// spectrum.set_shift_reference(-5.0)?;
-    /// let mut shifts = spectrum.shifts();
+    /// spectrum.set_shift_reference(Ratio::new::<ppm>(-5.0))?;
+    /// let mut shifts = spectrum.shifts().map(|s| s.get::<ppm>());
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(-5.0));
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(6000.0 / 600.0 - 5.0));
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(12000.0 / 600.0 - 5.0));
     ///
     /// // map the frequency at index 1 to 0.0 ppm
-    /// spectrum.set_shift_reference((0.0, 1))?;
-    /// let mut shifts = spectrum.shifts();
+    /// spectrum.set_shift_reference((Ratio::zero(), 1))?;
+    /// let mut shifts = spectrum.shifts().map(|s| s.get::<ppm>());
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(-10.0));
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(6000.0 / 600.0 - 10.0));
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(12000.0 / 600.0 - 10.0));
     ///
     /// // create a custom shift reference with a name and method
-    /// let reference = ShiftReference::new_with_meta(0.0, 1, "example ref", "internal");
+    /// let reference = ShiftReference::new_with_meta(Ratio::zero(), 1, "example ref", "internal");
     /// spectrum.set_shift_reference(reference)?;
-    /// let mut shifts = spectrum.shifts();
+    /// let mut shifts = spectrum.shifts().map(|s| s.get::<ppm>());
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(-10.0));
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(6000.0 / 600.0 - 10.0));
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(12000.0 / 600.0 - 10.0));
@@ -1150,8 +1161,9 @@ impl Spectrum {
     /// ```
     /// use float_cmp::assert_approx_eq;
     /// use num_traits::Zero;
-    /// use uom::si::f64::Frequency;
+    /// use uom::si::f64::{Frequency, Ratio};
     /// use uom::si::frequency::{hertz, megahertz};
+    /// use uom::si::ratio::part_per_million as ppm;
     /// use zeenmr_spectrum::{ShiftReference, Spectrum};
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
@@ -1160,15 +1172,15 @@ impl Spectrum {
     ///     Frequency::new::<megahertz>(600.0),
     ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
     /// )?;
-    /// spectrum.set_shift_reference_value(1.0)?;
-    /// let mut shifts = spectrum.shifts();
+    /// spectrum.set_shift_reference_value(Ratio::new::<ppm>(1.0))?;
+    /// let mut shifts = spectrum.shifts().map(|s| s.get::<ppm>());
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(1.0));
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(6000.0 / 600.0 + 1.0));
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(12000.0 / 600.0 + 1.0));
     /// # Ok(())
     /// # }
     /// ```
-    pub fn set_shift_reference_value(&mut self, shift: f64) -> Result<()> {
+    pub fn set_shift_reference_value(&mut self, shift: Ratio) -> Result<()> {
         self.spectral_linspace
             .set_shift_reference_value(shift)?;
 
@@ -1187,6 +1199,7 @@ impl Spectrum {
     /// use num_traits::Zero;
     /// use uom::si::f64::Frequency;
     /// use uom::si::frequency::{hertz, megahertz};
+    /// use uom::si::ratio::part_per_million as ppm;
     /// use zeenmr_spectrum::{ShiftReference, Spectrum};
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
@@ -1196,7 +1209,7 @@ impl Spectrum {
     ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
     /// )?;
     /// spectrum.set_shift_reference_index(1)?;
-    /// let mut shifts = spectrum.shifts();
+    /// let mut shifts = spectrum.shifts().map(|s| s.get::<ppm>());
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(-10.0));
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(6000.0 / 600.0 - 10.0));
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(12000.0 / 600.0 - 10.0));
@@ -1471,12 +1484,19 @@ impl Spectrum {
             SignalBoundaries::ChemicalShifts(start, end) => {
                 match (
                     start.is_finite() && end.is_finite(),
-                    self.spectral_linspace.contains_ppm(start)
-                        && self.spectral_linspace.contains_ppm(end),
+                    self.spectral_linspace
+                        .contains_ppm(Ratio::new::<ppm>(start))
+                        && self
+                            .spectral_linspace
+                            .contains_ppm(Ratio::new::<ppm>(end)),
                 ) {
                     (true, true) => {
-                        let start = self.spectral_linspace.ppm_to_fractional(start);
-                        let end = self.spectral_linspace.ppm_to_fractional(end);
+                        let start = self
+                            .spectral_linspace
+                            .ppm_to_fractional(Ratio::new::<ppm>(start));
+                        let end = self
+                            .spectral_linspace
+                            .ppm_to_fractional(Ratio::new::<ppm>(end));
 
                         match start < end {
                             true => Ok((start.ceil() as usize, end.floor() as usize)),

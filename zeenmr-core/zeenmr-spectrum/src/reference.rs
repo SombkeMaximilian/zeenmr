@@ -1,3 +1,5 @@
+use uom::si::f64::Ratio;
+
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -128,30 +130,31 @@ impl From<ReferencingMethod> for String {
 ///
 /// # Construction
 ///
-/// `ShiftReference` implements [`From<f64>`] and [`From<(f64, usize)>`] to
+/// `ShiftReference` implements [`From<Ratio>`] and [`From<(Ratio, usize)>`] to
 /// allow for easy construction from a chemical shift or chemical shift and
 /// index pair. In the former case, the index is set to 0, meaning that the
-/// leftmost chemical shift in the [`Spectrum`] is the reference point.
+/// first data point in the [`Spectrum`] is the reference.
 ///
-/// [`From<f64>`]: From
-/// [`From<(f64, usize)>`]: From
+/// [`From<(Ratio, usize)>`]: From
 /// [`Spectrum`]: crate::spectrum::Spectrum
 ///
 /// ## Example
 ///
 /// ```
 /// use float_cmp::assert_approx_eq;
+/// use uom::si::f64::Ratio;
+/// use uom::si::ratio::part_per_million as ppm;
 /// use zeenmr_spectrum::ShiftReference;
 ///
-/// let left = ShiftReference::from(10.0);
-/// assert_approx_eq!(f64, left.shift(), 10.0);
+/// let left = ShiftReference::from(Ratio::new::<ppm>(10.0));
+/// assert_approx_eq!(f64, left.shift().get::<ppm>(), 10.0);
 /// assert_eq!(left.index(), 0);
 /// assert!(left.name().is_none());
 /// assert!(left.method().is_none());
 ///
-/// let water = ShiftReference::from((4.8, 2_usize.pow(14) - 1));
-/// assert_approx_eq!(f64, water.shift(), 4.8);
-/// assert_eq!(water.index(), 2_usize.pow(14) - 1);
+/// let water = ShiftReference::from((Ratio::new::<ppm>(4.8), 8192));
+/// assert_approx_eq!(f64, water.shift().get::<ppm>(), 4.8);
+/// assert_eq!(water.index(), 8192);
 /// assert!(water.name().is_none());
 /// assert!(water.method().is_none());
 /// ```
@@ -173,7 +176,8 @@ impl From<ReferencingMethod> for String {
 )]
 pub struct ShiftReference {
     /// Chemical shift of the reference in parts per million (ppm).
-    shift: f64,
+    #[cfg_attr(feature = "serde", serde(with = "serialize_shift"))]
+    shift: Ratio,
     /// Index within the Spectrum that corresponds to the reference position.
     index: usize,
     /// Optional name for the reference.
@@ -190,8 +194,30 @@ pub struct ShiftReference {
     method: Option<ReferencingMethod>,
 }
 
-impl From<f64> for ShiftReference {
-    fn from(value: f64) -> Self {
+// There is probably a better way within uom, but I couldn't find it.
+#[cfg(feature = "serde")]
+mod serialize_shift {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use uom::si::f64::Ratio;
+    use uom::si::ratio::part_per_million as ppm;
+
+    pub(crate) fn serialize<S>(value: &Ratio, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_f64(value.get::<ppm>())
+    }
+
+    pub(crate) fn deserialize<'de, D>(deserializer: D) -> Result<Ratio, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        f64::deserialize(deserializer).map(|value| Ratio::new::<ppm>(value))
+    }
+}
+
+impl From<Ratio> for ShiftReference {
+    fn from(value: Ratio) -> Self {
         Self {
             shift: value,
             ..Default::default()
@@ -199,8 +225,8 @@ impl From<f64> for ShiftReference {
     }
 }
 
-impl From<(f64, usize)> for ShiftReference {
-    fn from(value: (f64, usize)) -> Self {
+impl From<(Ratio, usize)> for ShiftReference {
+    fn from(value: (Ratio, usize)) -> Self {
         Self {
             shift: value.0,
             index: value.1,
@@ -210,25 +236,27 @@ impl From<(f64, usize)> for ShiftReference {
 }
 
 impl ShiftReference {
-    /// Constructs a new `ShiftReference`.
+    /// Constructs a new [`ShiftReference`].
     ///
-    /// Equivalent to using the [`From<(f64, usize)>`] implementation.
+    /// Equivalent to using the [`From<(Ratio, usize)>`] implementation.
     ///
-    /// [`From<(f64, usize)>`]: From
+    /// [`From<(Ratio, usize)>`]: From
     ///
     /// # Example
     ///
     /// ```
     /// use float_cmp::assert_approx_eq;
+    /// use uom::si::f64::Ratio;
+    /// use uom::si::ratio::part_per_million as ppm;
     /// use zeenmr_spectrum::{ReferencingMethod, ShiftReference};
     ///
-    /// let reference = ShiftReference::new(4.8, 2_usize.pow(14) - 1);
-    /// assert_approx_eq!(f64, reference.shift(), 4.8);
-    /// assert_eq!(reference.index(), 2_usize.pow(14) - 1);
+    /// let reference = ShiftReference::new(Ratio::new::<ppm>(4.8), 8192);
+    /// assert_approx_eq!(f64, reference.shift().get::<ppm>(), 4.8);
+    /// assert_eq!(reference.index(), 8192);
     /// assert_eq!(reference.name(), None);
     /// assert_eq!(reference.method(), None);
     /// ```
-    pub fn new(shift: f64, index: usize) -> Self {
+    pub fn new(shift: Ratio, index: usize) -> Self {
         Self {
             shift,
             index,
@@ -243,15 +271,17 @@ impl ShiftReference {
     ///
     /// ```
     /// use float_cmp::assert_approx_eq;
+    /// use uom::si::f64::Ratio;
+    /// use uom::si::ratio::part_per_million as ppm;
     /// use zeenmr_spectrum::{ReferencingMethod, ShiftReference};
     ///
-    /// let reference = ShiftReference::new_with_name(4.8, 2_usize.pow(14) - 1, "H2O");
-    /// assert_approx_eq!(f64, reference.shift(), 4.8);
-    /// assert_eq!(reference.index(), 2_usize.pow(14) - 1);
+    /// let reference = ShiftReference::new_with_name(Ratio::new::<ppm>(4.8), 8192, "H2O");
+    /// assert_approx_eq!(f64, reference.shift().get::<ppm>(), 4.8);
+    /// assert_eq!(reference.index(), 8192);
     /// assert_eq!(reference.name(), Some("H2O"));
     /// assert_eq!(reference.method(), None);
     /// ```
-    pub fn new_with_name<T>(shift: f64, index: usize, name: T) -> Self
+    pub fn new_with_name<T>(shift: Ratio, index: usize, name: T) -> Self
     where
         T: Into<String>,
     {
@@ -269,15 +299,17 @@ impl ShiftReference {
     ///
     /// ```
     /// use float_cmp::assert_approx_eq;
+    /// use uom::si::f64::Ratio;
+    /// use uom::si::ratio::part_per_million as ppm;
     /// use zeenmr_spectrum::{ReferencingMethod, ShiftReference};
     ///
-    /// let reference = ShiftReference::new_with_meta(4.8, 2_usize.pow(14) - 1, "H2O", "internal");
-    /// assert_approx_eq!(f64, reference.shift(), 4.8);
-    /// assert_eq!(reference.index(), 2_usize.pow(14) - 1);
+    /// let reference = ShiftReference::new_with_meta(Ratio::new::<ppm>(4.8), 8192, "H2O", "internal");
+    /// assert_approx_eq!(f64, reference.shift().get::<ppm>(), 4.8);
+    /// assert_eq!(reference.index(), 8192);
     /// assert_eq!(reference.name(), Some("H2O"));
     /// assert_eq!(reference.method(), Some(&ReferencingMethod::Internal));
     /// ```
-    pub fn new_with_meta<T, U>(shift: f64, index: usize, name: T, method: U) -> Self
+    pub fn new_with_meta<T, U>(shift: Ratio, index: usize, name: T, method: U) -> Self
     where
         T: Into<String>,
         U: Into<ReferencingMethod>,
@@ -296,12 +328,14 @@ impl ShiftReference {
     ///
     /// ```
     /// use float_cmp::assert_approx_eq;
+    /// use uom::si::f64::Ratio;
+    /// use uom::si::ratio::part_per_million as ppm;
     /// use zeenmr_spectrum::ShiftReference;
     ///
-    /// let reference = ShiftReference::from(10.0);
-    /// assert_approx_eq!(f64, reference.shift(), 10.0);
+    /// let reference = ShiftReference::from(Ratio::new::<ppm>(10.0));
+    /// assert_approx_eq!(f64, reference.shift().get::<ppm>(), 10.0);
     /// ```
-    pub fn shift(&self) -> f64 {
+    pub fn shift(&self) -> Ratio {
         self.shift
     }
 
@@ -312,9 +346,11 @@ impl ShiftReference {
     /// # Example
     ///
     /// ```
+    /// use uom::si::f64::Ratio;
+    /// use uom::si::ratio::part_per_million as ppm;
     /// use zeenmr_spectrum::ShiftReference;
     ///
-    /// let reference = ShiftReference::from(10.0);
+    /// let reference = ShiftReference::from(Ratio::new::<ppm>(10.0));
     /// assert_eq!(reference.index(), 0);
     /// ```
     pub fn index(&self) -> usize {
@@ -326,9 +362,11 @@ impl ShiftReference {
     /// # Example
     ///
     /// ```
+    /// use uom::si::f64::Ratio;
+    /// use uom::si::ratio::part_per_million as ppm;
     /// use zeenmr_spectrum::ShiftReference;
     ///
-    /// let reference = ShiftReference::from(10.0);
+    /// let reference = ShiftReference::from(Ratio::new::<ppm>(10.0));
     /// assert!(reference.name().is_none());
     /// ```
     pub fn name(&self) -> Option<&str> {
@@ -340,9 +378,11 @@ impl ShiftReference {
     /// # Example
     ///
     /// ```
+    /// use uom::si::f64::Ratio;
+    /// use uom::si::ratio::part_per_million as ppm;
     /// use zeenmr_spectrum::ShiftReference;
     ///
-    /// let reference = ShiftReference::from(10.0);
+    /// let reference = ShiftReference::from(Ratio::new::<ppm>(10.0));
     /// assert!(reference.method().is_none());
     /// ```
     pub fn method(&self) -> Option<&ReferencingMethod> {
@@ -355,13 +395,15 @@ impl ShiftReference {
     ///
     /// ```
     /// use float_cmp::assert_approx_eq;
+    /// use uom::si::f64::Ratio;
+    /// use uom::si::ratio::part_per_million as ppm;
     /// use zeenmr_spectrum::ShiftReference;
     ///
-    /// let mut reference = ShiftReference::from(10.0);
-    /// reference.set_shift(9.5);
-    /// assert_approx_eq!(f64, reference.shift(), 9.5);
+    /// let mut reference = ShiftReference::from(Ratio::new::<ppm>(10.0));
+    /// reference.set_shift(Ratio::new::<ppm>(9.5));
+    /// assert_approx_eq!(f64, reference.shift().get::<ppm>(), 9.5);
     /// ```
-    pub fn set_shift(&mut self, shift: f64) {
+    pub fn set_shift(&mut self, shift: Ratio) {
         self.shift = shift;
     }
 
@@ -372,9 +414,11 @@ impl ShiftReference {
     /// # Example
     ///
     /// ```
+    /// use uom::si::f64::Ratio;
+    /// use uom::si::ratio::part_per_million as ppm;
     /// use zeenmr_spectrum::ShiftReference;
     ///
-    /// let mut reference = ShiftReference::from(10.0);
+    /// let mut reference = ShiftReference::from(Ratio::new::<ppm>(10.0));
     /// reference.set_index(5);
     /// assert_eq!(reference.index(), 5);
     /// ```
@@ -387,9 +431,11 @@ impl ShiftReference {
     /// # Example
     ///
     /// ```
+    /// use uom::si::f64::Ratio;
+    /// use uom::si::ratio::part_per_million as ppm;
     /// use zeenmr_spectrum::ShiftReference;
     ///
-    /// let mut reference = ShiftReference::from(10.0);
+    /// let mut reference = ShiftReference::from(Ratio::new::<ppm>(10.0));
     /// reference.set_name("TMS");
     /// assert_eq!(reference.name(), Some("TMS"));
     /// ```
@@ -402,9 +448,11 @@ impl ShiftReference {
     /// # Example
     ///
     /// ```
+    /// use uom::si::f64::Ratio;
+    /// use uom::si::ratio::part_per_million as ppm;
     /// use zeenmr_spectrum::ShiftReference;
     ///
-    /// let mut reference = ShiftReference::from(10.0);
+    /// let mut reference = ShiftReference::from(Ratio::new::<ppm>(10.0));
     /// reference.set_name("TMS");
     /// reference.clear_name();
     /// assert!(reference.name().is_none());
@@ -418,9 +466,11 @@ impl ShiftReference {
     /// # Example
     ///
     /// ```
+    /// use uom::si::f64::Ratio;
+    /// use uom::si::ratio::part_per_million as ppm;
     /// use zeenmr_spectrum::{ReferencingMethod, ShiftReference};
     ///
-    /// let mut reference = ShiftReference::from(10.0);
+    /// let mut reference = ShiftReference::from(Ratio::new::<ppm>(10.0));
     /// reference.set_method(ReferencingMethod::Internal);
     /// assert_eq!(reference.method(), Some(&ReferencingMethod::Internal));
     /// ```
@@ -433,9 +483,11 @@ impl ShiftReference {
     /// # Example
     ///
     /// ```
+    /// use uom::si::f64::Ratio;
+    /// use uom::si::ratio::part_per_million as ppm;
     /// use zeenmr_spectrum::{ReferencingMethod, ShiftReference};
     ///
-    /// let mut reference = ShiftReference::from(10.0);
+    /// let mut reference = ShiftReference::from(Ratio::new::<ppm>(10.0));
     /// reference.set_method(ReferencingMethod::Internal);
     /// reference.clear_method();
     /// assert!(reference.method().is_none());
@@ -450,7 +502,9 @@ mod tests {
     use super::*;
     #[cfg(feature = "serde")]
     use float_cmp::assert_approx_eq;
+    use num_traits::Zero;
     use static_assertions::assert_impl_all;
+    use uom::si::ratio::part_per_million as ppm;
 
     #[test]
     fn thread_safety() {
@@ -462,9 +516,9 @@ mod tests {
     #[test]
     fn serialization_round_trip() {
         let references = [
-            14_f64.into(),
-            (4.8, 2_usize.pow(14)).into(),
-            ShiftReference::new_with_meta(0.0, 12000, "TMS", ReferencingMethod::Internal),
+            Ratio::new::<ppm>(14.0).into(),
+            (Ratio::new::<ppm>(4.8), 2_usize.pow(13)).into(),
+            ShiftReference::new_with_meta(Ratio::zero(), 12000, "TMS", ReferencingMethod::Internal),
         ];
         let serialized = references
             .clone()
@@ -476,7 +530,7 @@ mod tests {
             .into_iter()
             .zip(deserialized)
             .for_each(|(init, rec)| {
-                assert_approx_eq!(f64, init.shift(), rec.shift());
+                assert_approx_eq!(f64, init.shift().get::<ppm>(), rec.shift().get::<ppm>());
                 assert_eq!(init.index(), rec.index());
                 assert_eq!(init.name(), rec.name());
                 assert_eq!(init.method(), rec.method());
@@ -492,15 +546,15 @@ mod tests {
             "{\"shift\": 0.0, \"index\": 12000, \"method\": \"internal\"}",
         ];
         let expected = [
-            14_f64.into(),
+            Ratio::new::<ppm>(14_f64).into(),
             ShiftReference {
-                shift: 4.8,
+                shift: Ratio::new::<ppm>(4.8),
                 index: 2_usize.pow(14),
                 name: Some("H2O".into()),
                 method: None,
             },
             ShiftReference {
-                shift: 0.0,
+                shift: Ratio::zero(),
                 index: 12000,
                 name: None,
                 method: Some(ReferencingMethod::Internal),
@@ -512,7 +566,7 @@ mod tests {
             .into_iter()
             .zip(deserialized)
             .for_each(|(init, rec)| {
-                assert_approx_eq!(f64, init.shift(), rec.shift());
+                assert_approx_eq!(f64, init.shift().get::<ppm>(), rec.shift().get::<ppm>());
                 assert_eq!(init.index(), rec.index());
                 assert_eq!(init.name(), rec.name());
                 assert_eq!(init.method(), rec.method());

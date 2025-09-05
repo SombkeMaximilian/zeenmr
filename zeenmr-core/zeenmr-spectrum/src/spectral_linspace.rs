@@ -1,8 +1,8 @@
 use crate::error::{Error, Result};
 use crate::{ReferencingMethod, ShiftReference};
-use uom::si::f64::Frequency;
+use uom::si::f64::{Frequency, Ratio};
 use uom::si::frequency::hertz;
-use uom::si::ratio::{part_per_million, ratio};
+use uom::si::ratio::ratio;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -13,16 +13,6 @@ use serde::{Deserialize, Serialize};
 /// iterators over frequency and chemical shift values.
 ///
 /// # Design
-///
-/// While chemical shifts could be expressed using [uom]'s [`Ratio`] type,
-/// this would impose the unnecessary unit normalization and cause a loss of
-/// precision. Further, the only unit that is actually used in this context is
-/// parts per million (ppm), and once converted to this scale, other units are
-/// no longer needed either, so we can simply use `f64` to represent chemical
-/// shifts at the user boundary.
-///
-/// [uom]: https://docs.rs/uom
-/// [`Ratio`]: uom::si::f64::Ratio
 ///
 /// Readjusting the chemical shift reference is a common operation in NMR data
 /// analysis, so we only store the information necessary to compute frequency
@@ -110,7 +100,7 @@ impl SpectralLinspace {
     }
 
     /// Calculates the offset from the chemical shift reference in ppm.
-    pub(crate) fn reference_offset(&self) -> f64 {
+    pub(crate) fn reference_offset(&self) -> Ratio {
         self.reference.shift() - self.reference.index() as f64 * self.step_ppm()
     }
 
@@ -120,7 +110,7 @@ impl SpectralLinspace {
     }
 
     /// Returns the chemical shift range of the spectral axis in ppm.
-    pub(crate) fn range_ppm(&self) -> (f64, f64) {
+    pub(crate) fn range_ppm(&self) -> (Ratio, Ratio) {
         let start = self.reference_offset();
 
         (start, start + self.width_ppm())
@@ -132,8 +122,8 @@ impl SpectralLinspace {
     }
 
     /// Returns the width of the spectral axis in ppm.
-    pub(crate) fn width_ppm(&self) -> f64 {
-        (self.width_freq() / self.larmor).get::<part_per_million>()
+    pub(crate) fn width_ppm(&self) -> Ratio {
+        self.width_freq() / self.larmor
     }
 
     /// Returns the center frequency of the spectral axis.
@@ -142,7 +132,7 @@ impl SpectralLinspace {
     }
 
     /// Returns the center chemical shift of the spectral axis in ppm.
-    pub(crate) fn center_ppm(&self) -> f64 {
+    pub(crate) fn center_ppm(&self) -> Ratio {
         let range = self.range_ppm();
 
         (range.1 + range.0) / 2.0
@@ -154,8 +144,8 @@ impl SpectralLinspace {
     }
 
     /// Returns the step size of the spectral axis in ppm.
-    pub(crate) fn step_ppm(&self) -> f64 {
-        (self.step_freq() / self.larmor).get::<part_per_million>()
+    pub(crate) fn step_ppm(&self) -> Ratio {
+        self.step_freq() / self.larmor
     }
 
     /// Returns the step size of the spectral axis in relative units.
@@ -171,7 +161,7 @@ impl SpectralLinspace {
 
     /// Calculates the fractional index of a chemical shift within the linear
     /// space.
-    pub(crate) fn ppm_to_fractional(&self, shift: f64) -> f64 {
+    pub(crate) fn ppm_to_fractional(&self, shift: Ratio) -> f64 {
         ((shift - self.reference_offset()) * ((self.size - 1) as f64) * self.larmor
             / (self.range.1 - self.range.0))
             .get::<ratio>()
@@ -200,7 +190,7 @@ impl SpectralLinspace {
     ///
     /// Returns an error if the index is out of bounds for the current size
     /// of the spectral axis.
-    pub(crate) fn index_to_ppm(&self, index: usize) -> Result<f64> {
+    pub(crate) fn index_to_ppm(&self, index: usize) -> Result<Ratio> {
         Self::validate_index(index, self.size)?;
         let step = self.step_ppm();
         let offset = self.reference_offset();
@@ -231,7 +221,7 @@ impl SpectralLinspace {
     }
 
     /// Checks if the given chemical shift in ppm is within the linear space.
-    pub(crate) fn contains_ppm(&self, shift: f64) -> bool {
+    pub(crate) fn contains_ppm(&self, shift: Ratio) -> bool {
         let range = self.range_ppm();
         let range = (range.0.min(range.1), range.0.max(range.1));
 
@@ -253,7 +243,7 @@ impl SpectralLinspace {
     ///
     /// Computing each chemical shift value only requires one addition and one
     /// multiplication, so we opt not to cache the chemical shifts in memory.
-    pub(crate) fn shifts(&self) -> impl Iterator<Item = f64> + use<> {
+    pub(crate) fn shifts(&self) -> impl Iterator<Item = Ratio> + use<> {
         let step = self.step_ppm();
         let offset = self.reference_offset();
 
@@ -316,7 +306,7 @@ impl SpectralLinspace {
     /// # Errors
     ///
     /// Returns an error if the chemical shift is not a finite float.
-    pub(crate) fn set_shift_reference_value(&mut self, shift: f64) -> Result<()> {
+    pub(crate) fn set_shift_reference_value(&mut self, shift: Ratio) -> Result<()> {
         Self::validate_shift_value(shift)?;
         self.reference.set_shift(shift);
 
@@ -401,7 +391,7 @@ impl SpectralLinspace {
     ///
     /// The following errors can occur:
     /// - [`NonFiniteFloat`](crate::error::Kind::NonFiniteFloat)
-    fn validate_shift_value(shift: f64) -> Result<()> {
+    fn validate_shift_value(shift: Ratio) -> Result<()> {
         match shift.is_finite() {
             true => Ok(()),
             false => Err(Error::non_finite_float()),
@@ -448,14 +438,13 @@ mod tests {
     use num_traits::Zero;
     use static_assertions::assert_impl_all;
     use uom::si::frequency::{hertz, megahertz};
+    use uom::si::ratio::part_per_million as ppm;
 
     fn valid_parameters() -> (Frequency, (Frequency, Frequency), usize, ShiftReference) {
         let larmor = Frequency::new::<megahertz>(600.0);
         let range = (Frequency::new::<hertz>(12000.0), Frequency::zero());
         let size = 2_usize.pow(17);
-        let reference = (range.0 / larmor)
-            .get::<part_per_million>()
-            .into();
+        let reference = (range.0 / larmor).into();
 
         (larmor, range, size, reference)
     }
@@ -575,8 +564,8 @@ mod tests {
     fn invalid_shift_reference() {
         let (larmor, range, size, _) = valid_parameters();
         let invalid_references = [
-            ShiftReference::from(((range.0 / larmor).get::<part_per_million>(), size)),
-            ShiftReference::from((f64::NAN, size / 2)),
+            ShiftReference::from((range.0 / larmor, size)),
+            ShiftReference::from((Ratio::new::<ratio>(f64::NAN), size / 2)),
         ];
         let errors = invalid_references
             .clone()
@@ -612,12 +601,12 @@ mod tests {
         assert_approx_eq!(f64, linspace.larmor().get::<megahertz>(), 800.0);
         assert!(
             linspace
-                .set_shift_reference((24000.0 / 800.0, 0))
+                .set_shift_reference((Ratio::new::<ppm>(24000.0 / 800.0), 0))
                 .is_ok()
         );
         assert_approx_eq!(
             f64,
-            linspace.shift_reference().shift(),
+            linspace.shift_reference().shift().get::<ppm>(),
             24000.0 / 800.0
         );
         assert_eq!(linspace.shift_reference().index(), 0);
@@ -631,7 +620,7 @@ mod tests {
         let larmor = Frequency::new::<megahertz>(600.25);
         let range = (Frequency::new::<hertz>(12000.0), Frequency::zero());
         let size = 2_usize.pow(15);
-        let reference = (range.0 / larmor).get::<part_per_million>();
+        let reference = range.0 / larmor;
         let linspace = SpectralLinspace::new(larmor, range, size, reference).unwrap();
         let serialized = serde_json::to_string(&linspace).unwrap();
         let deserialized = serde_json::from_str::<SpectralLinspace>(&serialized).unwrap();
@@ -653,8 +642,8 @@ mod tests {
         assert_eq!(linspace.size, deserialized.size);
         assert_approx_eq!(
             f64,
-            linspace.reference.shift(),
-            deserialized.reference.shift()
+            linspace.reference.shift().get::<ppm>(),
+            deserialized.reference.shift().get::<ppm>()
         );
         assert_eq!(linspace.reference.index(), deserialized.reference.index());
         assert_eq!(linspace.reference.name(), deserialized.reference.name());
