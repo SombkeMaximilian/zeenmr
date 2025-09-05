@@ -144,15 +144,13 @@ impl From<ReferencingMethod> for String {
 /// use zeenmr_spectrum::ShiftReference;
 ///
 /// let left = ShiftReference::from(10.0);
-///
-/// assert_approx_eq!(f64, left.chemical_shift(), 10.0);
+/// assert_approx_eq!(f64, left.shift(), 10.0);
 /// assert_eq!(left.index(), 0);
 /// assert!(left.name().is_none());
 /// assert!(left.method().is_none());
 ///
 /// let water = ShiftReference::from((4.8, 2_usize.pow(14) - 1));
-///
-/// assert_approx_eq!(f64, water.chemical_shift(), 4.8);
+/// assert_approx_eq!(f64, water.shift(), 4.8);
 /// assert_eq!(water.index(), 2_usize.pow(14) - 1);
 /// assert!(water.name().is_none());
 /// assert!(water.method().is_none());
@@ -175,7 +173,7 @@ impl From<ReferencingMethod> for String {
 )]
 pub struct ShiftReference {
     /// Chemical shift of the reference in parts per million (ppm).
-    chemical_shift: f64,
+    shift: f64,
     /// Index within the Spectrum that corresponds to the reference position.
     index: usize,
     /// Optional name for the reference.
@@ -195,7 +193,7 @@ pub struct ShiftReference {
 impl From<f64> for ShiftReference {
     fn from(value: f64) -> Self {
         Self {
-            chemical_shift: value,
+            shift: value,
             ..Default::default()
         }
     }
@@ -204,7 +202,7 @@ impl From<f64> for ShiftReference {
 impl From<(f64, usize)> for ShiftReference {
     fn from(value: (f64, usize)) -> Self {
         Self {
-            chemical_shift: value.0,
+            shift: value.0,
             index: value.1,
             ..Default::default()
         }
@@ -225,14 +223,14 @@ impl ShiftReference {
     /// use zeenmr_spectrum::{ReferencingMethod, ShiftReference};
     ///
     /// let reference = ShiftReference::new(4.8, 2_usize.pow(14) - 1);
-    /// assert_approx_eq!(f64, reference.chemical_shift(), 4.8);
+    /// assert_approx_eq!(f64, reference.shift(), 4.8);
     /// assert_eq!(reference.index(), 2_usize.pow(14) - 1);
     /// assert_eq!(reference.name(), None);
     /// assert_eq!(reference.method(), None);
     /// ```
-    pub fn new(chemical_shift: f64, index: usize) -> Self {
+    pub fn new(shift: f64, index: usize) -> Self {
         Self {
-            chemical_shift,
+            shift,
             index,
             name: None,
             method: None,
@@ -248,17 +246,17 @@ impl ShiftReference {
     /// use zeenmr_spectrum::{ReferencingMethod, ShiftReference};
     ///
     /// let reference = ShiftReference::new_with_name(4.8, 2_usize.pow(14) - 1, "H2O");
-    /// assert_approx_eq!(f64, reference.chemical_shift(), 4.8);
+    /// assert_approx_eq!(f64, reference.shift(), 4.8);
     /// assert_eq!(reference.index(), 2_usize.pow(14) - 1);
     /// assert_eq!(reference.name(), Some("H2O"));
     /// assert_eq!(reference.method(), None);
     /// ```
-    pub fn new_with_name<T>(chemical_shift: f64, index: usize, name: T) -> Self
+    pub fn new_with_name<T>(shift: f64, index: usize, name: T) -> Self
     where
         T: Into<String>,
     {
         Self {
-            chemical_shift,
+            shift,
             index,
             name: Some(name.into()),
             method: None,
@@ -274,18 +272,18 @@ impl ShiftReference {
     /// use zeenmr_spectrum::{ReferencingMethod, ShiftReference};
     ///
     /// let reference = ShiftReference::new_with_meta(4.8, 2_usize.pow(14) - 1, "H2O", "internal");
-    /// assert_approx_eq!(f64, reference.chemical_shift(), 4.8);
+    /// assert_approx_eq!(f64, reference.shift(), 4.8);
     /// assert_eq!(reference.index(), 2_usize.pow(14) - 1);
     /// assert_eq!(reference.name(), Some("H2O"));
     /// assert_eq!(reference.method(), Some(&ReferencingMethod::Internal));
     /// ```
-    pub fn new_with_meta<T, U>(chemical_shift: f64, index: usize, name: T, method: U) -> Self
+    pub fn new_with_meta<T, U>(shift: f64, index: usize, name: T, method: U) -> Self
     where
         T: Into<String>,
         U: Into<ReferencingMethod>,
     {
         Self {
-            chemical_shift,
+            shift,
             index,
             name: Some(name.into()),
             method: Some(method.into()),
@@ -301,10 +299,10 @@ impl ShiftReference {
     /// use zeenmr_spectrum::ShiftReference;
     ///
     /// let reference = ShiftReference::from(10.0);
-    /// assert_approx_eq!(f64, reference.chemical_shift(), 10.0);
+    /// assert_approx_eq!(f64, reference.shift(), 10.0);
     /// ```
-    pub fn chemical_shift(&self) -> f64 {
-        self.chemical_shift
+    pub fn shift(&self) -> f64 {
+        self.shift
     }
 
     /// Returns the position of the reference in the [`Spectrum`].
@@ -360,11 +358,11 @@ impl ShiftReference {
     /// use zeenmr_spectrum::ShiftReference;
     ///
     /// let mut reference = ShiftReference::from(10.0);
-    /// reference.set_chemical_shift(9.5);
-    /// assert_approx_eq!(f64, reference.chemical_shift(), 9.5);
+    /// reference.set_shift(9.5);
+    /// assert_approx_eq!(f64, reference.shift(), 9.5);
     /// ```
-    pub fn set_chemical_shift(&mut self, chemical_shift: f64) {
-        self.chemical_shift = chemical_shift;
+    pub fn set_shift(&mut self, shift: f64) {
+        self.shift = shift;
     }
 
     /// Sets a new index of the reference in the [`Spectrum`].
@@ -478,7 +476,7 @@ mod tests {
             .into_iter()
             .zip(deserialized)
             .for_each(|(init, rec)| {
-                assert_approx_eq!(f64, init.chemical_shift(), rec.chemical_shift());
+                assert_approx_eq!(f64, init.shift(), rec.shift());
                 assert_eq!(init.index(), rec.index());
                 assert_eq!(init.name(), rec.name());
                 assert_eq!(init.method(), rec.method());
@@ -489,20 +487,20 @@ mod tests {
     #[test]
     fn deserialization_missing_fields() {
         let serialized = [
-            "{\"chemicalShift\": 14.0, \"index\": 0}",
-            "{\"chemicalShift\": 4.8, \"index\": 16384, \"name\": \"H2O\"}",
-            "{\"chemicalShift\": 0.0, \"index\": 12000, \"method\": \"internal\"}",
+            "{\"shift\": 14.0, \"index\": 0}",
+            "{\"shift\": 4.8, \"index\": 16384, \"name\": \"H2O\"}",
+            "{\"shift\": 0.0, \"index\": 12000, \"method\": \"internal\"}",
         ];
         let expected = [
             14_f64.into(),
             ShiftReference {
-                chemical_shift: 4.8,
+                shift: 4.8,
                 index: 2_usize.pow(14),
                 name: Some("H2O".into()),
                 method: None,
             },
             ShiftReference {
-                chemical_shift: 0.0,
+                shift: 0.0,
                 index: 12000,
                 name: None,
                 method: Some(ReferencingMethod::Internal),
@@ -514,7 +512,7 @@ mod tests {
             .into_iter()
             .zip(deserialized)
             .for_each(|(init, rec)| {
-                assert_approx_eq!(f64, init.chemical_shift(), rec.chemical_shift());
+                assert_approx_eq!(f64, init.shift(), rec.shift());
                 assert_eq!(init.index(), rec.index());
                 assert_eq!(init.name(), rec.name());
                 assert_eq!(init.method(), rec.method());

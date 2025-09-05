@@ -55,21 +55,17 @@ pub enum Kind {
     /// Frequency range is invalid.
     ///
     /// The frequency range of a [`Spectrum`] must be a tuple of finite values
-    /// to generate chemical shifts. While negative values could theoretically
-    /// also be used, they are not meaningful in this context and will lead to
-    /// an error as well.
+    /// to generate chemical shifts.
     ///
     /// [`Spectrum`]: crate::Spectrum
-    InvalidFrequencyRange,
-    /// Spectrometer frequency is invalid.
+    InvalidRange,
+    /// Larmor frequency is invalid.
     ///
-    /// The spectrometer frequency of a [`Spectrum`] must be a finite, non-zero
-    /// value to generate chemical shifts from the frequency range. While
-    /// negative values could theoretically also be used, they are not
-    /// meaningful in this context and will lead to an error as well.
+    /// The larmor frequency of a [`Spectrum`] must be a finite, non-zero
+    /// value to generate chemical shifts from the frequency range.
     ///
     /// [`Spectrum`]: crate::Spectrum
-    InvalidSpectrometerFrequency,
+    InvalidLarmor,
     /// Signal boundaries are invalid.
     ///
     /// When overriding the signal boundaries, which are normally automatically
@@ -117,13 +113,10 @@ impl core::fmt::Display for Error {
         let description = match self.kind() {
             Kind::NonFiniteFloat => "non-finite float value received".to_string(),
             Kind::EmptyData => "intensities are empty".to_string(),
-            Kind::InvalidFrequencyRange => match &self.source {
-                Some(_) => "frequency range contains non-finite values".to_string(),
-                None => "frequency range contains non-finite or negative values".to_string(),
-            },
-            Kind::InvalidSpectrometerFrequency => match &self.source {
-                Some(_) => "spectrometer frequency is non-finite".to_string(),
-                None => "spectrometer frequency is non-finite, zero or negative".to_string(),
+            Kind::InvalidRange => "frequency range contains non-finite values".to_string(),
+            Kind::InvalidLarmor => match &self.source {
+                Some(_) => "larmor frequency is non-finite".to_string(),
+                None => "larmor frequency is non-finite or near zero".to_string(),
             },
             Kind::InvalidSignalBoundaries => match &self.source {
                 Some(source) => format!("invalid signal boundaries: {source}"),
@@ -175,22 +168,19 @@ impl Error {
         Kind::EmptyData.into()
     }
 
-    /// Creates a new [`InvalidFrequencyRange`] error.
+    /// Creates a new [`InvalidRange`] error.
     ///
-    /// [`InvalidFrequencyRange`]: Kind::InvalidFrequencyRange
-    pub(crate) fn invalid_frequency_range(source: Option<Self>) -> Self {
-        Self {
-            kind: Kind::InvalidFrequencyRange,
-            source: source.map(|error| Arc::new(error)),
-        }
+    /// [`InvalidRange`]: Kind::InvalidRange
+    pub(crate) fn invalid_range() -> Self {
+        Kind::InvalidRange.into()
     }
 
     /// Creates a new [`InvalidSpectrometerFrequency`] error.
     ///
-    /// [`InvalidSpectrometerFrequency`]: Kind::InvalidSpectrometerFrequency
-    pub(crate) fn invalid_spectrometer_frequency(source: Option<Self>) -> Self {
+    /// [`InvalidSpectrometerFrequency`]: Kind::InvalidLarmor
+    pub(crate) fn invalid_larmor(source: Option<Self>) -> Self {
         Self {
-            kind: Kind::InvalidSpectrometerFrequency,
+            kind: Kind::InvalidLarmor,
             source: source.map(|error| Arc::new(error)),
         }
     }

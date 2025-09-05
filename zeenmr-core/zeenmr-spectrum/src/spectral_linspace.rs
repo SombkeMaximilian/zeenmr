@@ -1,10 +1,28 @@
 use crate::error::{Error, Result};
 use crate::{ReferencingMethod, ShiftReference};
+use uom::si::f64::Frequency;
+use uom::si::frequency::hertz;
+use uom::si::ratio::{part_per_million, ratio};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 /// Represents a linear space of the spectral axis in a 1D NMR spectrum.
+///
+/// Converts raw NMR data into the known chemical shift scale and provides
+/// iterators over frequency and chemical shift values.
+///
+/// # Design
+///
+/// While chemical shifts could be expressed using [uom]'s [`Ratio`] type,
+/// this would impose the unnecessary unit normalization and cause a loss of
+/// precision. Further, the only unit that is actually used in this context is
+/// parts per million (ppm), and once converted to this scale, other units are
+/// no longer needed either, so we can simply use `f64` to represent chemical
+/// shifts at the user boundary.
+///
+/// [uom]: https://docs.rs/uom
+/// [`Ratio`]: uom::si::f64::Ratio
 ///
 /// Readjusting the chemical shift reference is a common operation in NMR data
 /// analysis, so we only store the information necessary to compute frequency
@@ -28,10 +46,16 @@ use serde::{Deserialize, Serialize};
     serde(rename_all = "camelCase")
 )]
 pub(crate) struct SpectralLinspace {
-    /// Spectrometer frequency in MHz.
-    spectrometer_frequency: f64,
-    /// Frequency range of the spectrum in Hz.
-    frequency_range: (f64, f64),
+    /// Larmor frequency of the nucleus used to convert frequency values to
+    /// chemical shifts.
+    ///
+    /// Typical order of magnitude is 1e6 Hz. Also known as operating frequency
+    /// and spectrometer frequency.
+    ///
+    /// See also: [NMRCentral](https://web.archive.org/web/20110926141002/http://nmrcentral.com/2011/08/chemical-shift/)
+    larmor: Frequency,
+    /// Frequency range of the spectrum.
+    range: (Frequency, Frequency),
     /// Number of points in the spectral axis.
     size: usize,
     /// Chemical shift reference.
@@ -41,20 +65,15 @@ pub(crate) struct SpectralLinspace {
 impl SpectralLinspace {
     /// Constructs a new `SpectralLinspace`.
     ///
-    /// The first value of the `frequency_range` (Hz) is the frequency of the
-    /// first point in the spectral axis, while the second value is the last
-    /// point. The `spectrometer_frequency` (MHz) is used to standardize the
-    /// chemical shifts in the spectrum. A `ShiftReference` is used to determine
-    /// the chemical shift reference point in the spectrum.
-    ///
     /// # Errors
     ///
     /// This function will return an error if the chemical shift reference index
     /// is out of bounds for the given size, or if the frequency range or
-    /// spectrometer frequency contains non-finite values.
+    /// larmor frequency contains non-finite values, or if the larmor frequency
+    /// is zero (<= [`f64::EPSILON`]).
     pub(crate) fn new<T>(
-        spectrometer_frequency: f64,
-        frequency_range: (f64, f64),
+        larmor: Frequency,
+        range: (Frequency, Frequency),
         size: usize,
         reference: T,
     ) -> Result<Self>
@@ -63,21 +82,21 @@ impl SpectralLinspace {
     {
         let reference = reference.into();
 
-        Self::validate_frequency_range(frequency_range)?;
-        Self::validate_spectrometer_frequency(spectrometer_frequency)?;
+        Self::validate_range(range)?;
+        Self::validate_larmor(larmor)?;
         Self::validate_reference(&reference, size)?;
 
         Ok(Self {
-            spectrometer_frequency,
-            frequency_range,
+            larmor,
+            range,
             size,
             reference,
         })
     }
 
-    /// Returns the spectrometer frequency in MHz.
-    pub(crate) fn spectrometer_frequency(&self) -> f64 {
-        self.spectrometer_frequency
+    /// Returns the larmor frequency.
+    pub(crate) fn larmor(&self) -> Frequency {
+        self.larmor
     }
 
     /// Returns the number of points in the spectral axis.
@@ -92,54 +111,51 @@ impl SpectralLinspace {
 
     /// Calculates the offset from the chemical shift reference in ppm.
     pub(crate) fn reference_offset(&self) -> f64 {
-        self.reference.chemical_shift() - self.reference.index() as f64 * self.step_ppm()
+        self.reference.shift() - self.reference.index() as f64 * self.step_ppm()
     }
 
-    /// Returns the frequency range of the spectral axis in Hz.
-    pub(crate) fn range_hz(&self) -> (f64, f64) {
-        self.frequency_range
+    /// Returns the frequency range of the spectral axis.
+    pub(crate) fn range_freq(&self) -> (Frequency, Frequency) {
+        self.range
     }
 
     /// Returns the chemical shift range of the spectral axis in ppm.
     pub(crate) fn range_ppm(&self) -> (f64, f64) {
         let start = self.reference_offset();
 
-        (
-            start,
-            start + (self.frequency_range.1 - self.frequency_range.0) / self.spectrometer_frequency,
-        )
+        (start, start + self.width_ppm())
     }
 
-    /// Returns the width of the spectral axis in Hz.
-    pub(crate) fn width_hz(&self) -> f64 {
-        f64::abs(self.frequency_range.1 - self.frequency_range.0)
+    /// Returns the width of the spectral axis.
+    pub(crate) fn width_freq(&self) -> Frequency {
+        (self.range.1 - self.range.0).abs()
     }
 
     /// Returns the width of the spectral axis in ppm.
     pub(crate) fn width_ppm(&self) -> f64 {
-        self.width_hz() / self.spectrometer_frequency
+        (self.width_freq() / self.larmor).get::<part_per_million>()
     }
 
-    /// Returns the center frequency of the spectral axis in Hz.
-    pub(crate) fn center_hz(&self) -> f64 {
-        (self.frequency_range.0 + self.frequency_range.1) / 2.0
+    /// Returns the center frequency of the spectral axis.
+    pub(crate) fn center_freq(&self) -> Frequency {
+        (self.range.0 + self.range.1) / 2.0
     }
 
-    /// Returns the center frequency of the spectral axis in ppm.
+    /// Returns the center chemical shift of the spectral axis in ppm.
     pub(crate) fn center_ppm(&self) -> f64 {
         let range = self.range_ppm();
 
         (range.1 + range.0) / 2.0
     }
 
-    /// Returns the step size of the spectral axis in Hz.
-    pub(crate) fn step_hz(&self) -> f64 {
-        (self.frequency_range.1 - self.frequency_range.0) / (self.size as f64 - 1.0)
+    /// Returns the step size of the spectral axis.
+    pub(crate) fn step_freq(&self) -> Frequency {
+        (self.range.1 - self.range.0) / (self.size as f64 - 1.0)
     }
 
     /// Returns the step size of the spectral axis in ppm.
     pub(crate) fn step_ppm(&self) -> f64 {
-        self.step_hz() / self.spectrometer_frequency
+        (self.step_freq() / self.larmor).get::<part_per_million>()
     }
 
     /// Returns the step size of the spectral axis in relative units.
@@ -148,36 +164,34 @@ impl SpectralLinspace {
     }
 
     /// Calculates the fractional index of a frequency within the linear space.
-    pub(crate) fn hz_to_fractional(&self, frequency: f64) -> f64 {
-        (frequency - self.frequency_range.0) * ((self.size - 1) as f64)
-            / (self.frequency_range.1 - self.frequency_range.0)
+    pub(crate) fn freq_to_fractional(&self, frequency: Frequency) -> f64 {
+        ((frequency - self.range.0) * ((self.size - 1) as f64) / (self.range.1 - self.range.0))
+            .get::<ratio>()
     }
 
     /// Calculates the fractional index of a chemical shift within the linear
     /// space.
-    pub(crate) fn ppm_to_fractional(&self, chemical_shift: f64) -> f64 {
-        (chemical_shift - self.reference_offset())
-            * ((self.size - 1) as f64)
-            * self.spectrometer_frequency
-            / (self.frequency_range.1 - self.frequency_range.0)
+    pub(crate) fn ppm_to_fractional(&self, shift: f64) -> f64 {
+        ((shift - self.reference_offset()) * ((self.size - 1) as f64) * self.larmor
+            / (self.range.1 - self.range.0))
+            .get::<ratio>()
     }
 
-    /// Calculates the fractional index in relative units within the linear
-    /// space.
+    /// Calculates the fractional index of a fraction of the linear space.
     pub(crate) fn relative_to_fractional(&self, relative: f64) -> f64 {
         relative * ((self.size - 1) as f64)
     }
 
-    /// Converts an index within the linear space to a frequency in Hz.
+    /// Converts an index within the linear space to a frequency.
     ///
     /// # Errors
     ///
     /// Returns an error if the index is out of bounds for the current size
     /// of the spectral axis.
-    pub(crate) fn index_to_hz(&self, index: usize) -> Result<f64> {
+    pub(crate) fn index_to_freq(&self, index: usize) -> Result<Frequency> {
         Self::validate_index(index, self.size)?;
 
-        Ok(self.frequency_range.0 + self.step_hz() * index as f64)
+        Ok(self.range.0 + self.step_freq() * index as f64)
     }
 
     /// Converts an index within the linear space to a chemical shift in ppm.
@@ -206,31 +220,31 @@ impl SpectralLinspace {
         Ok(self.step_relative() * index as f64)
     }
 
-    /// Checks if the given frequency in Hz is within the linear space.
-    pub(crate) fn contains_hz(&self, frequency: f64) -> bool {
+    /// Checks if the given frequency is within the linear space.
+    pub(crate) fn contains_freq(&self, frequency: Frequency) -> bool {
         let range = (
-            f64::min(self.frequency_range.0, self.frequency_range.1),
-            f64::max(self.frequency_range.0, self.frequency_range.1),
+            self.range.0.min(self.range.1),
+            self.range.0.max(self.range.1),
         );
 
         frequency.is_finite() && (range.0..=range.1).contains(&frequency)
     }
 
     /// Checks if the given chemical shift in ppm is within the linear space.
-    pub(crate) fn contains_ppm(&self, chemical_shift: f64) -> bool {
+    pub(crate) fn contains_ppm(&self, shift: f64) -> bool {
         let range = self.range_ppm();
-        let range = (f64::min(range.0, range.1), f64::max(range.0, range.1));
+        let range = (range.0.min(range.1), range.0.max(range.1));
 
-        chemical_shift.is_finite() && (range.0..=range.1).contains(&chemical_shift)
+        shift.is_finite() && (range.0..=range.1).contains(&shift)
     }
 
-    /// Returns an iterator over the frequencies in Hz.
+    /// Returns an iterator over the frequencies.
     ///
     /// Computing each frequency value only requires one addition and one
     /// multiplication, so we opt not to cache the frequencies in memory.
-    pub(crate) fn frequencies(&self) -> impl Iterator<Item = f64> + use<> {
-        let step = self.step_hz();
-        let start = self.frequency_range.0;
+    pub(crate) fn frequencies(&self) -> impl Iterator<Item = Frequency> + use<> {
+        let step = self.step_freq();
+        let start = self.range.0;
 
         (0..self.size).map(move |i| start + step * i as f64)
     }
@@ -239,14 +253,14 @@ impl SpectralLinspace {
     ///
     /// Computing each chemical shift value only requires one addition and one
     /// multiplication, so we opt not to cache the chemical shifts in memory.
-    pub(crate) fn chemical_shifts(&self) -> impl Iterator<Item = f64> + use<> {
+    pub(crate) fn shifts(&self) -> impl Iterator<Item = f64> + use<> {
         let step = self.step_ppm();
         let offset = self.reference_offset();
 
         (0..self.size).map(move |i| offset + step * i as f64)
     }
 
-    /// Sets the frequency range of the spectrum in Hz.
+    /// Sets the frequency range of the spectrum.
     ///
     /// The order of the range determines the direction of the spectral axis,
     /// where the first value is the first point, and the second value is the
@@ -255,23 +269,26 @@ impl SpectralLinspace {
     /// # Errors
     ///
     /// Returns an error if either frequency in the range is not a finite float.
-    pub(crate) fn set_frequency_range(&mut self, frequency_range: (f64, f64)) -> Result<()> {
-        Self::validate_frequency_range(frequency_range)?;
-        self.frequency_range = frequency_range;
+    pub(crate) fn set_range(&mut self, range: (Frequency, Frequency)) -> Result<()> {
+        Self::validate_range(range)?;
+        self.range = range;
 
         Ok(())
     }
 
-    /// Sets the spectrometer frequency in MHz.
+    /// Sets the larmor frequency.
     ///
     /// This value is used to standardize the chemical shifts in the spectrum.
     ///
+    /// See also: [NMRCentral](https://web.archive.org/web/20110926141002/http://nmrcentral.com/2011/08/chemical-shift/)
+    ///
     /// # Errors
     ///
-    /// Returns an error if the spectrometer frequency is not a finite float.
-    pub(crate) fn set_spectrometer_frequency(&mut self, spectrometer_frequency: f64) -> Result<()> {
-        Self::validate_spectrometer_frequency(spectrometer_frequency)?;
-        self.spectrometer_frequency = spectrometer_frequency;
+    /// Returns an error if the larmor frequency is not a finite float or
+    /// zero (<= [`f64::EPSILON`]).
+    pub(crate) fn set_larmor(&mut self, larmor: Frequency) -> Result<()> {
+        Self::validate_larmor(larmor)?;
+        self.larmor = larmor;
 
         Ok(())
     }
@@ -283,10 +300,10 @@ impl SpectralLinspace {
     /// Returns an error if the chemical shift value is not a finite float or
     /// the new reference index is out of bounds for the current size of the
     /// spectral axis.
-    pub(crate) fn set_shift_reference<T: Into<ShiftReference>>(
-        &mut self,
-        reference: T,
-    ) -> Result<()> {
+    pub(crate) fn set_shift_reference<T>(&mut self, reference: T) -> Result<()>
+    where
+        T: Into<ShiftReference>,
+    {
         let reference = reference.into();
         Self::validate_reference(&reference, self.size)?;
         self.reference = reference;
@@ -299,9 +316,9 @@ impl SpectralLinspace {
     /// # Errors
     ///
     /// Returns an error if the chemical shift is not a finite float.
-    pub(crate) fn set_shift_reference_value(&mut self, chemical_shift: f64) -> Result<()> {
-        Self::validate_shift_value(chemical_shift)?;
-        self.reference.set_chemical_shift(chemical_shift);
+    pub(crate) fn set_shift_reference_value(&mut self, shift: f64) -> Result<()> {
+        Self::validate_shift_value(shift)?;
+        self.reference.set_shift(shift);
 
         Ok(())
     }
@@ -320,7 +337,10 @@ impl SpectralLinspace {
     }
 
     /// Sets the chemical shift reference name.
-    pub(crate) fn set_shift_reference_name<T: Into<String>>(&mut self, name: T) {
+    pub(crate) fn set_shift_reference_name<T>(&mut self, name: T)
+    where
+        T: Into<String>,
+    {
         self.reference.set_name(name);
     }
 
@@ -330,7 +350,10 @@ impl SpectralLinspace {
     }
 
     /// Sets the chemical shift reference method.
-    pub(crate) fn set_shift_reference_method<T: Into<ReferencingMethod>>(&mut self, method: T) {
+    pub(crate) fn set_shift_reference_method<T>(&mut self, method: T)
+    where
+        T: Into<ReferencingMethod>,
+    {
         self.reference.set_method(method);
     }
 
@@ -345,37 +368,29 @@ impl SpectralLinspace {
     /// # Errors
     ///
     /// The following errors can occur:
-    /// - [`InvalidFrequencyRange`](crate::error::Kind::InvalidFrequencyRange)
-    fn validate_frequency_range(frequency_range: (f64, f64)) -> Result<()> {
-        match (
-            frequency_range.0.is_finite() && frequency_range.1.is_finite(),
-            frequency_range.0 >= 0.0 && frequency_range.1 >= 0.0,
-        ) {
-            (true, true) => Ok(()),
-            (false, _) => Err(Error::invalid_frequency_range(Some(
-                Error::non_finite_float(),
-            ))),
-            (_, false) => Err(Error::invalid_frequency_range(None)),
+    /// - [`InvalidRange`](crate::error::Kind::InvalidRange)
+    fn validate_range(range: (Frequency, Frequency)) -> Result<()> {
+        match range.0.is_finite() && range.1.is_finite() {
+            true => Ok(()),
+            false => Err(Error::invalid_range()),
         }
     }
 
-    /// Validates the spectrometer frequency and returns an error if it is not
-    /// a finite float or not greater than 0.
+    /// Validates the larmor frequency and returns an error if it is too close
+    /// to zero (<= [`f64::EPSILON`]) or not a finite float.
     ///
     /// # Errors
     ///
     /// The following errors can occur:
-    /// - [`InvalidSpectrometerFrequency`](crate::error::Kind::InvalidSpectrometerFrequency)
-    fn validate_spectrometer_frequency(spectrometer_frequency: f64) -> Result<()> {
+    /// - [`InvalidSpectrometerFrequency`](crate::error::Kind::InvalidLarmor)
+    fn validate_larmor(larmor: Frequency) -> Result<()> {
         match (
-            spectrometer_frequency.is_finite(),
-            spectrometer_frequency > 0.0,
+            larmor.is_finite(),
+            larmor.abs() > Frequency::new::<hertz>(f64::EPSILON),
         ) {
             (true, true) => Ok(()),
-            (false, _) => Err(Error::invalid_spectrometer_frequency(Some(
-                Error::non_finite_float(),
-            ))),
-            (_, false) => Err(Error::invalid_spectrometer_frequency(None)),
+            (false, _) => Err(Error::invalid_larmor(Some(Error::non_finite_float()))),
+            (_, false) => Err(Error::invalid_larmor(None)),
         }
     }
 
@@ -386,8 +401,8 @@ impl SpectralLinspace {
     ///
     /// The following errors can occur:
     /// - [`NonFiniteFloat`](crate::error::Kind::NonFiniteFloat)
-    fn validate_shift_value(chemical_shift: f64) -> Result<()> {
-        match chemical_shift.is_finite() {
+    fn validate_shift_value(shift: f64) -> Result<()> {
+        match shift.is_finite() {
             true => Ok(()),
             false => Err(Error::non_finite_float()),
         }
@@ -416,7 +431,7 @@ impl SpectralLinspace {
     /// - [`InvalidShiftReference`](crate::error::Kind::InvalidShiftReference)
     fn validate_reference(reference: &ShiftReference, size: usize) -> Result<()> {
         match Self::validate_index(reference.index(), size) {
-            Ok(_) => match Self::validate_shift_value(reference.chemical_shift()) {
+            Ok(_) => match Self::validate_shift_value(reference.shift()) {
                 Ok(_) => Ok(()),
                 Err(error) => Err(Error::invalid_shift_reference(error)),
             },
@@ -430,26 +445,25 @@ mod tests {
     use super::*;
     use crate::error::Kind;
     use float_cmp::assert_approx_eq;
+    use num_traits::Zero;
     use static_assertions::assert_impl_all;
+    use uom::si::frequency::{hertz, megahertz};
 
-    fn valid_parameters() -> (f64, (f64, f64), usize, ShiftReference) {
-        let frequency_range = (12000.0, 0.0);
-        let spectrometer_frequency = 600.0;
-        let spectrum_size = 2_usize.pow(17);
-        let reference = (frequency_range.0 / spectrometer_frequency).into();
+    fn valid_parameters() -> (Frequency, (Frequency, Frequency), usize, ShiftReference) {
+        let larmor = Frequency::new::<megahertz>(600.0);
+        let range = (Frequency::new::<hertz>(12000.0), Frequency::zero());
+        let size = 2_usize.pow(17);
+        let reference = (range.0 / larmor)
+            .get::<part_per_million>()
+            .into();
 
-        (
-            spectrometer_frequency,
-            frequency_range,
-            spectrum_size,
-            reference,
-        )
+        (larmor, range, size, reference)
     }
 
     fn valid_linspace() -> SpectralLinspace {
-        let (spec_freq, freq_range, size, reference) = valid_parameters();
+        let (larmor, range, size, reference) = valid_parameters();
 
-        SpectralLinspace::new(spec_freq, freq_range, size, reference).unwrap()
+        SpectralLinspace::new(larmor, range, size, reference).unwrap()
     }
 
     #[test]
@@ -459,28 +473,24 @@ mod tests {
 
     #[test]
     fn new() {
-        let (spec_freq, freq_range, size, reference) = valid_parameters();
-        let linspace = SpectralLinspace::new(spec_freq, freq_range, size, reference);
+        let (larmor, range, size, reference) = valid_parameters();
+        let linspace = SpectralLinspace::new(larmor, range, size, reference);
         assert!(linspace.is_ok());
     }
 
     #[test]
     fn invalid_frequency_range() {
-        let (spec_freq, _, size, reference) = valid_parameters();
+        let (larmor, _, size, reference) = valid_parameters();
         let invalid_ranges = [
-            (0.0, -12000.0),
-            (-6000.0, -12000.0),
-            (f64::NAN, 0.0),
-            (f64::INFINITY, 0.0),
-            (f64::NEG_INFINITY, 0.0),
+            (Frequency::new::<hertz>(f64::NAN), Frequency::zero()),
+            (Frequency::new::<hertz>(f64::INFINITY), Frequency::zero()),
         ];
-        let errors = invalid_ranges.map(|freq_range| {
-            SpectralLinspace::new(spec_freq, freq_range, size, reference.clone()).unwrap_err()
+        let errors = invalid_ranges.map(|range| {
+            SpectralLinspace::new(larmor, range, size, reference.clone()).unwrap_err()
         });
         let expected_sources = [
             None,
             None,
-            Some(Error::non_finite_float()),
             Some(Error::non_finite_float()),
             Some(Error::non_finite_float()),
         ];
@@ -488,7 +498,7 @@ mod tests {
             .into_iter()
             .zip(expected_sources.clone())
             .for_each(|(error, source)| match error.kind() {
-                Kind::InvalidFrequencyRange => assert_eq!(error.source(), source.as_ref()),
+                Kind::InvalidRange => assert_eq!(error.source(), source.as_ref()),
                 _ => panic!("unexpected error: {:?}", error),
             });
 
@@ -498,24 +508,25 @@ mod tests {
             .zip(expected_sources)
             .for_each(|(range, source)| {
                 assert_eq!(
-                    linspace
-                        .set_frequency_range(*range)
-                        .unwrap_err()
-                        .source(),
+                    linspace.set_range(*range).unwrap_err().source(),
                     source.as_ref()
                 );
             });
     }
 
     #[test]
-    fn invalid_spectrometer_frequency() {
-        let (_, freq_range, size, reference) = valid_parameters();
-        let invalid_frequencies = [0.0, -600.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY];
-        let errors = invalid_frequencies.map(|spec_freq| {
-            SpectralLinspace::new(spec_freq, freq_range, size, reference.clone()).unwrap_err()
+    fn invalid_larmor() {
+        let (_, range, size, reference) = valid_parameters();
+        let invalid_larmor = [
+            Frequency::zero(),
+            Frequency::new::<megahertz>(f64::NAN),
+            Frequency::new::<megahertz>(f64::INFINITY),
+            Frequency::new::<megahertz>(f64::NEG_INFINITY),
+        ];
+        let errors = invalid_larmor.map(|larmor| {
+            SpectralLinspace::new(larmor, range, size, reference.clone()).unwrap_err()
         });
         let expected_sources = [
-            None,
             None,
             Some(Error::non_finite_float()),
             Some(Error::non_finite_float()),
@@ -525,20 +536,17 @@ mod tests {
             .into_iter()
             .zip(expected_sources.clone())
             .for_each(|(error, source)| match error.kind() {
-                Kind::InvalidSpectrometerFrequency => assert_eq!(error.source(), source.as_ref()),
+                Kind::InvalidLarmor => assert_eq!(error.source(), source.as_ref()),
                 _ => panic!("unexpected error: {:?}", error),
             });
 
         let mut linspace = valid_linspace();
-        invalid_frequencies
+        invalid_larmor
             .iter()
             .zip(expected_sources)
             .for_each(|(freq, source)| {
                 assert_eq!(
-                    linspace
-                        .set_spectrometer_frequency(*freq)
-                        .unwrap_err()
-                        .source(),
+                    linspace.set_larmor(*freq).unwrap_err().source(),
                     source.as_ref()
                 );
             });
@@ -548,7 +556,9 @@ mod tests {
     fn index_out_of_bounds() {
         let linspace = valid_linspace();
         let errors = [
-            linspace.index_to_hz(2_usize.pow(18)).unwrap_err(),
+            linspace
+                .index_to_freq(2_usize.pow(18))
+                .unwrap_err(),
             linspace
                 .index_to_ppm(2_usize.pow(18))
                 .unwrap_err(),
@@ -563,14 +573,14 @@ mod tests {
 
     #[test]
     fn invalid_shift_reference() {
-        let (spec_freq, freq_range, size, _) = valid_parameters();
+        let (larmor, range, size, _) = valid_parameters();
         let invalid_references = [
-            ShiftReference::from((freq_range.0 / spec_freq, size)),
+            ShiftReference::from(((range.0 / larmor).get::<part_per_million>(), size)),
             ShiftReference::from((f64::NAN, size / 2)),
         ];
-        let errors = invalid_references.clone().map(|reference| {
-            SpectralLinspace::new(spec_freq, freq_range, size, reference).unwrap_err()
-        });
+        let errors = invalid_references
+            .clone()
+            .map(|reference| SpectralLinspace::new(larmor, range, size, reference).unwrap_err());
         let expected_sources = [
             Some(Error::out_of_bounds()),
             Some(Error::non_finite_float()),
@@ -589,13 +599,17 @@ mod tests {
         let mut linspace = valid_linspace();
         assert!(
             linspace
-                .set_frequency_range((24000.0, 0.0))
+                .set_range((Frequency::new::<hertz>(24000.0), Frequency::zero()))
                 .is_ok()
         );
-        assert_approx_eq!(f64, linspace.range_hz().0, 24000.0);
-        assert_approx_eq!(f64, linspace.range_hz().1, 0.0);
-        assert!(linspace.set_spectrometer_frequency(800.0).is_ok());
-        assert_approx_eq!(f64, linspace.spectrometer_frequency(), 800.0);
+        assert_approx_eq!(f64, linspace.range_freq().0.get::<hertz>(), 24000.0);
+        assert_approx_eq!(f64, linspace.range_freq().1.get::<hertz>(), 0.0);
+        assert!(
+            linspace
+                .set_larmor(Frequency::new::<megahertz>(800.0))
+                .is_ok()
+        );
+        assert_approx_eq!(f64, linspace.larmor().get::<megahertz>(), 800.0);
         assert!(
             linspace
                 .set_shift_reference((24000.0 / 800.0, 0))
@@ -603,7 +617,7 @@ mod tests {
         );
         assert_approx_eq!(
             f64,
-            linspace.shift_reference().chemical_shift(),
+            linspace.shift_reference().shift(),
             24000.0 / 800.0
         );
         assert_eq!(linspace.shift_reference().index(), 0);
@@ -614,39 +628,33 @@ mod tests {
     #[cfg(feature = "serde")]
     #[test]
     fn serialization_round_trip() {
-        let frequency_range = (12000.0, 0.0);
-        let spectrometer_frequency = 600.25;
-        let spectrum_size = 2_usize.pow(15);
-        let first_point = frequency_range.0 / spectrometer_frequency;
-        let linspace = SpectralLinspace::new(
-            spectrometer_frequency,
-            frequency_range,
-            spectrum_size,
-            first_point,
-        )
-        .unwrap();
+        let larmor = Frequency::new::<megahertz>(600.25);
+        let range = (Frequency::new::<hertz>(12000.0), Frequency::zero());
+        let size = 2_usize.pow(15);
+        let reference = (range.0 / larmor).get::<part_per_million>();
+        let linspace = SpectralLinspace::new(larmor, range, size, reference).unwrap();
         let serialized = serde_json::to_string(&linspace).unwrap();
         let deserialized = serde_json::from_str::<SpectralLinspace>(&serialized).unwrap();
         assert_approx_eq!(
             f64,
-            linspace.frequency_range.0,
-            deserialized.frequency_range.0
+            linspace.range.0.get::<hertz>(),
+            deserialized.range.0.get::<hertz>()
         );
         assert_approx_eq!(
             f64,
-            linspace.frequency_range.1,
-            deserialized.frequency_range.1
+            linspace.range.1.get::<hertz>(),
+            deserialized.range.1.get::<hertz>()
         );
         assert_approx_eq!(
             f64,
-            linspace.spectrometer_frequency,
-            deserialized.spectrometer_frequency
+            linspace.larmor.get::<megahertz>(),
+            deserialized.larmor.get::<megahertz>()
         );
         assert_eq!(linspace.size, deserialized.size);
         assert_approx_eq!(
             f64,
-            linspace.reference.chemical_shift(),
-            deserialized.reference.chemical_shift()
+            linspace.reference.shift(),
+            deserialized.reference.shift()
         );
         assert_eq!(linspace.reference.index(), deserialized.reference.index());
         assert_eq!(linspace.reference.name(), deserialized.reference.name());

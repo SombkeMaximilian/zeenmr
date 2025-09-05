@@ -1,6 +1,9 @@
 use crate::error::{Error, Result};
 use crate::{Nucleus, ReferencingMethod, ShiftReference, SignalBoundaries, SpectralLinspace};
 use std::sync::Arc;
+use uom::si::f64::Frequency;
+use uom::si::frequency::hertz;
+use uom::si::ratio::part_per_million;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -17,12 +20,11 @@ use serde::{Deserialize, Serialize};
 /// # Invariants
 ///
 /// A valid `Spectrum` instance maintains the following conditions:
-/// - None of the values are NAN, INF or -INF.
-/// - The frequency range contains only values greater than or equal to zero.
-/// - The spectrometer frequency is a value greater than zero.
+/// - None of the values are `NAN`, `INF` or `-INF`.
+/// - The larmor frequency's absolute value is not zero (<= [`f64::EPSILON`]).
 /// - The index of the [`ShiftReference`] is within the bounds of the spectral
 ///   axis.
-/// - Signal boundaries are within the spectral axis.
+/// - Signal boundaries are within bounds of the spectral axis.
 ///
 /// # Thread Safety
 ///
@@ -49,17 +51,21 @@ use serde::{Deserialize, Serialize};
 /// custom formats.
 ///
 /// ```
+/// use num_traits::Zero;
+/// use uom::si::f64::Frequency;
+/// use uom::si::frequency::{hertz, megahertz};
+/// use uom::si::ratio::part_per_million;
 /// use zeenmr_spectrum::{ShiftReference, SignalBoundaries, Spectrum};
 ///
 /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-/// // Define spectrometer frequency in MHz frequency range in Hz.
-/// let spectrometer_frequency = 600.0;
-/// let frequency_range = (0.0, 12000.0);
+/// // Define larmor frequency and frequency range.
+/// let larmor = Frequency::new::<megahertz>(600.0);
+/// let range = (Frequency::zero(), Frequency::new::<hertz>(12000.0));
 ///
 /// // Generate intensities using 3 Lorentzian peaks.
 /// let intensities = (0..2_u32.pow(15))
-///     .map(|i| i as f64 * frequency_range.1 / ((2_u32.pow(15) - 1) as f64))
-///     .map(|f| f / spectrometer_frequency)
+///     .map(|i| i as f64 * range.1 / ((2_u32.pow(15) - 1) as f64))
+///     .map(|f| (f / larmor).get::<part_per_million>())
 ///     .map(|x| {
 ///         // Reference signal centered at 5 ppm.
 ///         10.0 * 0.25 / (0.15_f64.powi(2) + (x - 5.0).powi(2))
@@ -67,11 +73,10 @@ use serde::{Deserialize, Serialize};
 ///             + 1.0 * 0.25 / (0.25_f64.powi(2) + (x - 8.0).powi(2))
 ///             // The right signal is centered at 12 ppm.
 ///             + 1.0 * 0.25 / (0.25_f64.powi(2) + (x - 12.0).powi(2))
-///     })
-///     .collect::<Vec<f64>>();
+///     });
 ///
 /// // Create a Spectrum object.
-/// let mut spectrum = Spectrum::new(intensities, spectrometer_frequency, frequency_range)?;
+/// let mut spectrum = Spectrum::new(intensities, larmor, range)?;
 ///
 /// // Specify a chemical shift reference.
 /// let shift_reference = ShiftReference::new_with_meta(0.0, 2_usize.pow(13), "ref", "internal");
@@ -137,36 +142,34 @@ mod serialize_intensities {
 }
 
 impl Spectrum {
-    /// Constructs a `Spectrum` from an iterator of `intensities` and parameters
-    /// for the spectral axis.
-    ///
-    /// `frequency_range` is specified in Hz, and `spectrometer_frequency` is
-    /// specified in MHz. Note that the `intensities` cannot be modified after
-    /// construction.
+    /// Constructs a [`Spectrum`] from an iterator of `intensities` and
+    /// parameters for the spectral axis.
     ///
     /// # Errors
     ///
     /// Returns an error if the input data violates any of the invariants
-    /// required for a valid `Spectrum`. The following conditions are checked:
+    /// required for a valid [`Spectrum`]. The following conditions are checked:
     ///
-    /// - Neither `spectrometer_frequency`, nor `frequency_range` nor
-    ///   `intensities` contain non-finite values (no NAN, INF, -INF).
-    /// - The `intensities` are not empty.
+    /// - Neither `intensities`, nor `larmor`, nor `range` contain non-finite
+    ///   floats (no NAN, INF, -INF).
+    /// - Absolute value of `larmor` is not zero (<= [`f64::EPSILON`]).
+    /// - `intensities` are not empty.
     ///
     /// # Example
     ///
     /// ```
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
+    /// use uom::si::ratio::part_per_million;
     /// use zeenmr_spectrum::{ShiftReference, SignalBoundaries, Spectrum};
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// // Define spectrometer frequency in MHz frequency range in Hz.
-    /// let spectrometer_frequency = 600.0;
-    /// let frequency_range = (0.0, 12000.0);
-    ///
-    /// // Generate intensities using 3 Lorentzian peaks.
+    /// let larmor = Frequency::new::<megahertz>(600.0);
+    /// let range = (Frequency::zero(), Frequency::new::<hertz>(12000.0));
     /// let intensities = (0..2_u32.pow(15))
-    ///     .map(|i| i as f64 * frequency_range.1 / ((2_u32.pow(15) - 1) as f64))
-    ///     .map(|f| f / spectrometer_frequency)
+    ///     .map(|i| i as f64 * range.1 / ((2_u32.pow(15) - 1) as f64))
+    ///     .map(|f| (f / larmor).get::<part_per_million>())
     ///     .map(|x| {
     ///         // Reference signal centered at 5 ppm.
     ///         10.0 * 0.25 / (0.15_f64.powi(2) + (x - 5.0).powi(2))
@@ -174,30 +177,18 @@ impl Spectrum {
     ///             + 1.0 * 0.25 / (0.25_f64.powi(2) + (x - 8.0).powi(2))
     ///             // The right signal is centered at 12 ppm.
     ///             + 1.0 * 0.25 / (0.25_f64.powi(2) + (x - 12.0).powi(2))
-    ///     })
-    ///     .collect::<Vec<f64>>();
-    ///
-    /// // Create a Spectrum object.
-    /// let spectrum = Spectrum::new(intensities, spectrometer_frequency, frequency_range)?;
+    ///     });
+    /// let spectrum = Spectrum::new(intensities, larmor, range)?;
     /// # Ok(())
     /// # }
     /// ```
-    pub fn new<I>(
-        intensities: I,
-        spectrometer_frequency: f64,
-        frequency_range: (f64, f64),
-    ) -> Result<Self>
+    pub fn new<I>(intensities: I, larmor: Frequency, range: (Frequency, Frequency)) -> Result<Self>
     where
         I: IntoIterator<Item = f64>,
     {
         let intensities = Self::validate_intensities(intensities)?;
-        let reference = frequency_range.0 / spectrometer_frequency;
-        let spectral_linspace = SpectralLinspace::new(
-            spectrometer_frequency,
-            frequency_range,
-            intensities.len(),
-            reference,
-        )?;
+        let reference = (range.0 / larmor).get::<part_per_million>();
+        let spectral_linspace = SpectralLinspace::new(larmor, range, intensities.len(), reference)?;
         let signal_boundaries = (
             spectral_linspace
                 .relative_to_fractional(0.1)
@@ -216,20 +207,24 @@ impl Spectrum {
         })
     }
 
-    /// Returns the ID of the `Spectrum`, if available.
+    /// Returns the ID, if available.
     ///
-    /// At construction, the ID is `None`. Use [`set_id`] to set a custom
-    /// identifier.
-    ///
-    /// [`set_id`]: Spectrum::set_id
+    /// Use [`Spectrum::set_id`] to set a custom identifier.
     ///
     /// # Example
     ///
     /// ```
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    /// let spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
     /// assert!(spectrum.id().is_none());
     /// # Ok(())
     /// # }
@@ -240,18 +235,22 @@ impl Spectrum {
 
     /// Returns the nucleus observed in the NMR experiment, if available.
     ///
-    /// At construction, the nucleus `None`. Use [`set_nucleus`] to set a custom
-    /// nucleus.
-    ///
-    /// [`set_nucleus`]: Spectrum::set_nucleus
+    /// Use [`Spectrum::set_nucleus`] to set a custom nucleus.
     ///
     /// # Example
     ///
     /// ```
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    /// let spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
     /// assert!(spectrum.nucleus().is_none());
     /// # Ok(())
     /// # }
@@ -260,22 +259,33 @@ impl Spectrum {
         self.nucleus.as_ref()
     }
 
-    /// Returns the spectrometer frequency in MHz.
+    /// Returns the larmor frequency.
+    ///
+    /// This value is used to standardize the chemical shifts in the spectrum.
+    ///
+    /// See also: [NMRCentral](https://web.archive.org/web/20110926141002/http://nmrcentral.com/2011/08/chemical-shift/)
     ///
     /// # Example
     ///
     /// ```
     /// use float_cmp::assert_approx_eq;
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
-    /// assert_approx_eq!(f64, spectrum.spectrometer_frequency(), 600.0);
+    /// let spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
+    /// assert_approx_eq!(f64, spectrum.larmor().get::<megahertz>(), 600.0);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn spectrometer_frequency(&self) -> f64 {
-        self.spectral_linspace.spectrometer_frequency()
+    pub fn larmor(&self) -> Frequency {
+        self.spectral_linspace.larmor()
     }
 
     /// Returns the number of data points in the `Spectrum`, sometimes
@@ -284,10 +294,17 @@ impl Spectrum {
     /// # Example
     ///
     /// ```
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    /// let spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
     /// assert_eq!(spectrum.len(), 3);
     /// # Ok(())
     /// # }
@@ -298,18 +315,26 @@ impl Spectrum {
         self.spectral_linspace.size()
     }
 
-    /// Returns `true` if the `Spectrum` has no data points.
+    /// Returns `true` if the [`Spectrum`] has no data points.
     ///
     /// A valid `Spectrum` is guaranteed to be non-empty, so this method will
     /// always return `false` and is only provided by convention.
+    /// Deserialization may produce an empty [`Spectrum`].
     ///
     /// # Example
     ///
     /// ```
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    /// let spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
     /// assert!(!spectrum.is_empty());
     /// # Ok(())
     /// # }
@@ -320,7 +345,7 @@ impl Spectrum {
         self.len() == 0
     }
 
-    /// Returns the chemical shift reference of the `Spectrum`.
+    /// Returns the chemical shift reference.
     ///
     /// At construction, a `ShiftReference` anchored at index 0 of the spectral
     /// axis is created, which corresponds to no shift. Use
@@ -332,11 +357,18 @@ impl Spectrum {
     ///
     /// ```
     /// use float_cmp::assert_approx_eq;
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
-    /// assert_approx_eq!(f64, spectrum.shift_reference().chemical_shift(), 0.0);
+    /// let spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
+    /// assert_approx_eq!(f64, spectrum.shift_reference().shift(), 0.0);
     /// assert_eq!(spectrum.shift_reference().index(), 0);
     /// assert!(spectrum.shift_reference().name().is_none());
     /// assert!(spectrum.shift_reference().method().is_none());
@@ -347,23 +379,30 @@ impl Spectrum {
         self.spectral_linspace.shift_reference()
     }
 
-    /// Returns the frequency range of the spectral axis in Hz.
+    /// Returns the frequency range of the spectral axis.
     ///
     /// # Example
     ///
     /// ```
     /// use float_cmp::assert_approx_eq;
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
-    /// assert_approx_eq!(f64, spectrum.range_hz().0, 0.0);
-    /// assert_approx_eq!(f64, spectrum.range_hz().1, 12000.0);
+    /// let spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
+    /// assert_approx_eq!(f64, spectrum.range_freq().0.get::<hertz>(), 0.0);
+    /// assert_approx_eq!(f64, spectrum.range_freq().1.get::<hertz>(), 12000.0);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn range_hz(&self) -> (f64, f64) {
-        self.spectral_linspace.range_hz()
+    pub fn range_freq(&self) -> (Frequency, Frequency) {
+        self.spectral_linspace.range_freq()
     }
 
     /// Returns the chemical shift range of the spectral axis in ppm.
@@ -372,10 +411,17 @@ impl Spectrum {
     ///
     /// ```
     /// use float_cmp::assert_approx_eq;
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    /// let spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
     /// assert_approx_eq!(f64, spectrum.range_ppm().0, 0.0);
     /// assert_approx_eq!(f64, spectrum.range_ppm().1, 12000.0 / 600.0);
     /// # Ok(())
@@ -385,22 +431,29 @@ impl Spectrum {
         self.spectral_linspace.range_ppm()
     }
 
-    /// Returns the width of the spectral axis in Hz.
+    /// Returns the width of the spectral axis.
     ///
     /// # Example
     ///
     /// ```
     /// use float_cmp::assert_approx_eq;
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
-    /// assert_approx_eq!(f64, spectrum.width_hz(), 12000.0);
+    /// let spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
+    /// assert_approx_eq!(f64, spectrum.width_freq().get::<hertz>(), 12000.0);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn width_hz(&self) -> f64 {
-        self.spectral_linspace.width_hz()
+    pub fn width_freq(&self) -> Frequency {
+        self.spectral_linspace.width_freq()
     }
 
     /// Returns the width of the spectral axis in ppm.
@@ -409,10 +462,17 @@ impl Spectrum {
     ///
     /// ```
     /// use float_cmp::assert_approx_eq;
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    /// let spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
     /// assert_approx_eq!(f64, spectrum.width_ppm(), 12000.0 / 600.0);
     /// # Ok(())
     /// # }
@@ -421,22 +481,29 @@ impl Spectrum {
         self.spectral_linspace.width_ppm()
     }
 
-    /// Returns the center frequency of the spectral axis in Hz.
+    /// Returns the center frequency of the spectral axis.
     ///
     /// # Example
     ///
     /// ```
     /// use float_cmp::assert_approx_eq;
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
-    /// assert_approx_eq!(f64, spectrum.center_hz(), 6000.0);
+    /// let spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
+    /// assert_approx_eq!(f64, spectrum.center_freq().get::<hertz>(), 6000.0);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn center_hz(&self) -> f64 {
-        self.spectral_linspace.center_hz()
+    pub fn center_freq(&self) -> Frequency {
+        self.spectral_linspace.center_freq()
     }
 
     /// Returns the center chemical shift of the spectral axis in ppm.
@@ -445,10 +512,17 @@ impl Spectrum {
     ///
     /// ```
     /// use float_cmp::assert_approx_eq;
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    /// let spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
     /// assert_approx_eq!(f64, spectrum.center_ppm(), 6000.0 / 600.0);
     /// # Ok(())
     /// # }
@@ -457,22 +531,29 @@ impl Spectrum {
         self.spectral_linspace.center_ppm()
     }
 
-    /// Returns the step size of the spectral axis in Hz.
+    /// Returns the step size of the spectral axis.
     ///
     /// # Example
     ///
     /// ```
     /// use float_cmp::assert_approx_eq;
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
-    /// assert_approx_eq!(f64, spectrum.step_hz(), 12000.0 / 2.0);
+    /// let spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
+    /// assert_approx_eq!(f64, spectrum.step_freq().get::<hertz>(), 12000.0 / 2.0);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn step_hz(&self) -> f64 {
-        self.spectral_linspace.step_hz()
+    pub fn step_freq(&self) -> Frequency {
+        self.spectral_linspace.step_freq()
     }
 
     /// Returns the step size of the spectral axis in ppm.
@@ -481,10 +562,17 @@ impl Spectrum {
     ///
     /// ```
     /// use float_cmp::assert_approx_eq;
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    /// let spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
     /// assert_approx_eq!(f64, spectrum.step_ppm(), 12000.0 / (600.0 * 2.0));
     /// # Ok(())
     /// # }
@@ -493,7 +581,7 @@ impl Spectrum {
         self.spectral_linspace.step_ppm()
     }
 
-    /// Returns an iterator over the spectral frequencies in Hz.
+    /// Returns an iterator over the spectral frequencies.
     ///
     /// A new iterator is created each time this method is called, only
     /// computing the frequency values on demand.
@@ -502,11 +590,18 @@ impl Spectrum {
     ///
     /// ```
     /// use float_cmp::assert_approx_eq;
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
-    /// let mut frequencies = spectrum.frequencies();
+    /// let spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
+    /// let mut frequencies = spectrum.frequencies().map(|f| f.get::<hertz>());
     /// assert_approx_eq!(Option<f64>, frequencies.next(), Some(0.0));
     /// assert_approx_eq!(Option<f64>, frequencies.next(), Some(6000.0));
     /// assert_approx_eq!(Option<f64>, frequencies.next(), Some(12000.0));
@@ -514,7 +609,7 @@ impl Spectrum {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn frequencies(&self) -> impl Iterator<Item = f64> + use<> {
+    pub fn frequencies(&self) -> impl Iterator<Item = Frequency> + use<> {
         self.spectral_linspace.frequencies()
     }
 
@@ -527,20 +622,27 @@ impl Spectrum {
     ///
     /// ```
     /// use float_cmp::assert_approx_eq;
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
-    /// let mut chemical_shifts = spectrum.chemical_shifts();
-    /// assert_approx_eq!(Option<f64>, chemical_shifts.next(), Some(0.0));
-    /// assert_approx_eq!(Option<f64>, chemical_shifts.next(), Some(6000.0 / 600.0));
-    /// assert_approx_eq!(Option<f64>, chemical_shifts.next(), Some(12000.0 / 600.0));
-    /// assert!(chemical_shifts.next().is_none());
+    /// let spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
+    /// let mut shifts = spectrum.shifts();
+    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(0.0));
+    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(6000.0 / 600.0));
+    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(12000.0 / 600.0));
+    /// assert!(shifts.next().is_none());
     /// # Ok(())
     /// # }
     /// ```
-    pub fn chemical_shifts(&self) -> impl Iterator<Item = f64> + use<> {
-        self.spectral_linspace.chemical_shifts()
+    pub fn shifts(&self) -> impl Iterator<Item = f64> + use<> {
+        self.spectral_linspace.shifts()
     }
 
     /// Returns the signal intensities of the spectrum as a slice.
@@ -549,10 +651,17 @@ impl Spectrum {
     ///
     /// ```
     /// use float_cmp::assert_approx_eq;
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    /// let spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
     /// assert_eq!(spectrum.intensities().len(), 3);
     /// assert_approx_eq!(f64, spectrum.intensities()[0], 1.0);
     /// assert_approx_eq!(f64, spectrum.intensities()[1], 2.0);
@@ -578,10 +687,17 @@ impl Spectrum {
     /// # Example
     ///
     /// ```
-    /// use zeenmr_spectrum::{SignalBoundaries, Spectrum};
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
+    /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let spectrum = Spectrum::new((0..=10).map(|i| i as f64), 600.0, (0.0, 12000.0))?;
+    /// let spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
     /// assert_eq!(spectrum.signal_boundaries(), (1, 9));
     /// # Ok(())
     /// # }
@@ -607,10 +723,17 @@ impl Spectrum {
     ///
     /// ```
     /// use float_cmp::assert_approx_eq;
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::{SignalBoundaries, Spectrum};
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let spectrum = Spectrum::new((0..=10).map(|i| i as f64), 600.0, (0.0, 12000.0))?;
+    /// let spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
     /// match spectrum.signal_boundaries_hz() {
     ///     SignalBoundaries::Frequencies(start, end) => {
     ///         assert_approx_eq!(f64, start, 1200.0);
@@ -628,11 +751,13 @@ impl Spectrum {
         // unwrapping is safe because signal_boundaries is validated during construction
         SignalBoundaries::Frequencies(
             self.spectral_linspace
-                .index_to_hz(self.signal_boundaries.0)
-                .unwrap(),
+                .index_to_freq(self.signal_boundaries.0)
+                .unwrap()
+                .get::<hertz>(),
             self.spectral_linspace
-                .index_to_hz(self.signal_boundaries.1)
-                .unwrap(),
+                .index_to_freq(self.signal_boundaries.1)
+                .unwrap()
+                .get::<hertz>(),
         )
     }
 
@@ -653,10 +778,17 @@ impl Spectrum {
     ///
     /// ```
     /// use float_cmp::assert_approx_eq;
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::{SignalBoundaries, Spectrum};
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let spectrum = Spectrum::new((0..=10).map(|i| i as f64), 600.0, (0.0, 12000.0))?;
+    /// let spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
     /// match spectrum.signal_boundaries_ppm() {
     ///     SignalBoundaries::ChemicalShifts(start, end) => {
     ///         assert_approx_eq!(f64, start, 1200.0 / 600.0);
@@ -699,10 +831,17 @@ impl Spectrum {
     ///
     /// ```
     /// use float_cmp::assert_approx_eq;
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::{SignalBoundaries, Spectrum};
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let spectrum = Spectrum::new((0..=10).map(|i| i as f64), 600.0, (0.0, 12000.0))?;
+    /// let spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
     /// match spectrum.signal_boundaries_relative() {
     ///     SignalBoundaries::Relative(start, end) => {
     ///         assert_approx_eq!(f64, start, 0.1);
@@ -737,16 +876,26 @@ impl Spectrum {
     /// # Example
     ///
     /// ```
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let mut spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    /// let mut spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
     /// spectrum.set_id("example_spectrum");
     /// assert_eq!(spectrum.id(), Some("example_spectrum"));
     /// # Ok(())
     /// # }
     /// ```
-    pub fn set_id<T: Into<String>>(&mut self, id: T) {
+    pub fn set_id<T>(&mut self, id: T)
+    where
+        T: Into<String>,
+    {
         self.id = Some(id.into());
     }
 
@@ -755,10 +904,17 @@ impl Spectrum {
     /// # Example
     ///
     /// ```
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let mut spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    /// let mut spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
     /// spectrum.set_id("example_spectrum");
     /// assert_eq!(spectrum.id(), Some("example_spectrum"));
     /// spectrum.clear_id();
@@ -780,10 +936,17 @@ impl Spectrum {
     /// # Example
     ///
     /// ```
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::{Nucleus, Spectrum};
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let mut spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    /// let mut spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
     /// spectrum.set_nucleus("proton");
     /// assert_eq!(spectrum.nucleus(), Some(Nucleus::Hydrogen).as_ref());
     /// spectrum.set_nucleus("Carbon-13");
@@ -793,19 +956,29 @@ impl Spectrum {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn set_nucleus<T: Into<Nucleus>>(&mut self, nucleus: T) {
+    pub fn set_nucleus<T>(&mut self, nucleus: T)
+    where
+        T: Into<Nucleus>,
+    {
         self.nucleus = Some(nucleus.into());
     }
 
-    /// Clears the nucleus of the `Spectrum`, setting it to `None`.
+    /// Clears the nucleus, setting it to `None`.
     ///
     /// # Example
     ///
     /// ```
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::{Nucleus, Spectrum};
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let mut spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    /// let mut spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
     /// spectrum.set_nucleus("deuterium");
     /// assert_eq!(spectrum.nucleus(), Some(Nucleus::Deuterium).as_ref());
     /// spectrum.clear_nucleus();
@@ -817,68 +990,82 @@ impl Spectrum {
         self.nucleus = None;
     }
 
-    /// Sets the frequency range of the spectral axis in Hz.
+    /// Sets the frequency range of the spectral axis.
     ///
     /// Note that this does not adjust the chemical shift reference, which
     /// may lead to unexpected results.
     ///
     /// # Errors
     ///
-    /// Returns an error if the frequency range contains non-finite or negative
-    /// values.
+    /// Returns an error if the frequency range contains non-finite floats.
     ///
     /// # Example
     ///
     /// ```
     /// use float_cmp::assert_approx_eq;
-    /// use zeenmr_spectrum::{Nucleus, Spectrum};
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
+    /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let mut spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
-    /// spectrum.set_frequency_range((10000.0, 0.0))?;
+    /// let mut spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
+    /// spectrum.set_range((
+    ///     Frequency::new::<hertz>(10000.0),
+    ///     Frequency::new::<hertz>(0.0),
+    /// ))?;
     ///
-    /// let mut frequencies = spectrum.frequencies();
+    /// let mut frequencies = spectrum.frequencies().map(|f| f.get::<hertz>());
     /// assert_approx_eq!(Option<f64>, frequencies.next(), Some(10000.0));
     /// assert_approx_eq!(Option<f64>, frequencies.next(), Some(5000.0));
     /// assert_approx_eq!(Option<f64>, frequencies.next(), Some(0.0));
     /// assert!(frequencies.next().is_none());
     ///
-    /// // chemical shift reference maps the first frequency to 0 ppm
-    /// let mut chemical_shifts = spectrum.chemical_shifts();
-    /// assert_approx_eq!(Option<f64>, chemical_shifts.next(), Some(0.0));
-    /// assert_approx_eq!(Option<f64>, chemical_shifts.next(), Some(-5000.0 / 600.0));
-    /// assert_approx_eq!(Option<f64>, chemical_shifts.next(), Some(-10000.0 / 600.0));
-    /// assert!(chemical_shifts.next().is_none());
+    /// // chemical shift reference still maps the first frequency to 0 ppm
+    /// let mut shifts = spectrum.shifts();
+    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(0.0));
+    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(-5000.0 / 600.0));
+    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(-10000.0 / 600.0));
+    /// assert!(shifts.next().is_none());
     /// # Ok(())
     /// # }
     /// ```
-    pub fn set_frequency_range(&mut self, frequency_range: (f64, f64)) -> Result<()> {
-        self.spectral_linspace
-            .set_frequency_range(frequency_range)
+    pub fn set_range(&mut self, range: (Frequency, Frequency)) -> Result<()> {
+        self.spectral_linspace.set_range(range)
     }
 
-    /// Sets the spectrometer frequency in MHz.
+    /// Sets the larmor frequency.
     ///
-    /// This value is a divisor when calculating the chemical shift values. As
-    /// such, it is important that this value does not approach zero. For
-    /// typical NMR experiments, this should not be an issue.
+    /// This value is used to standardize the chemical shifts in the spectrum.
+    ///
+    /// See also: [NMRCentral](https://web.archive.org/web/20110926141002/http://nmrcentral.com/2011/08/chemical-shift/)
     ///
     /// # Errors
     ///
-    /// Returns an error if the spectrometer frequency is not finite or
-    /// if it is less than or equal to zero.
+    /// Returns an error if the larmor frequency is not finite or too small
+    /// (<= [`f64::EPSILON`]).
     ///
     /// # Example
     ///
     /// ```
     /// use float_cmp::assert_approx_eq;
-    /// use zeenmr_spectrum::{Nucleus, Spectrum};
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
+    /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let mut spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
-    /// spectrum.set_spectrometer_frequency(450.0)?;
-    ///
-    /// let mut shifts = spectrum.chemical_shifts();
+    /// let mut spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
+    /// spectrum.set_larmor(Frequency::new::<megahertz>(450.0))?;
+    /// let mut shifts = spectrum.shifts();
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(0.0));
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(6000.0 / 450.0));
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(12000.0 / 450.0));
@@ -886,12 +1073,11 @@ impl Spectrum {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn set_spectrometer_frequency(&mut self, spectrometer_frequency: f64) -> Result<()> {
-        self.spectral_linspace
-            .set_spectrometer_frequency(spectrometer_frequency)
+    pub fn set_larmor(&mut self, larmor: Frequency) -> Result<()> {
+        self.spectral_linspace.set_larmor(larmor)
     }
 
-    /// Sets the chemical shift reference of the `Spectrum`.
+    /// Sets the chemical shift reference.
     ///
     /// At construction, a `ShiftReference` anchored at index 0 of the spectral
     /// axis is created, which corresponds to no shift. `ShiftReference` can be
@@ -910,21 +1096,28 @@ impl Spectrum {
     ///
     /// ```
     /// use float_cmp::assert_approx_eq;
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::{ShiftReference, Spectrum};
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let mut spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
+    /// let mut spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
     ///
     /// // map the first frequency to -5.0 ppm
     /// spectrum.set_shift_reference(-5.0)?;
-    /// let mut shifts = spectrum.chemical_shifts();
+    /// let mut shifts = spectrum.shifts();
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(-5.0));
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(6000.0 / 600.0 - 5.0));
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(12000.0 / 600.0 - 5.0));
     ///
     /// // map the frequency at index 1 to 0.0 ppm
     /// spectrum.set_shift_reference((0.0, 1))?;
-    /// let mut shifts = spectrum.chemical_shifts();
+    /// let mut shifts = spectrum.shifts();
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(-10.0));
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(6000.0 / 600.0 - 10.0));
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(12000.0 / 600.0 - 10.0));
@@ -932,19 +1125,22 @@ impl Spectrum {
     /// // create a custom shift reference with a name and method
     /// let reference = ShiftReference::new_with_meta(0.0, 1, "example ref", "internal");
     /// spectrum.set_shift_reference(reference)?;
-    /// let mut shifts = spectrum.chemical_shifts();
+    /// let mut shifts = spectrum.shifts();
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(-10.0));
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(6000.0 / 600.0 - 10.0));
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(12000.0 / 600.0 - 10.0));
     /// # Ok(())
     /// # }
     /// ```
-    pub fn set_shift_reference<T: Into<ShiftReference>>(&mut self, reference: T) -> Result<()> {
+    pub fn set_shift_reference<T>(&mut self, reference: T) -> Result<()>
+    where
+        T: Into<ShiftReference>,
+    {
         self.spectral_linspace
             .set_shift_reference(reference)
     }
 
-    /// Sets the chemical shift reference value of the `Spectrum`.
+    /// Sets the chemical shift reference value.
     ///
     /// Useful for fine-tuning the chemical shift reference without changing all
     /// of its properties.
@@ -953,36 +1149,33 @@ impl Spectrum {
     ///
     /// ```
     /// use float_cmp::assert_approx_eq;
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::{ShiftReference, Spectrum};
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let mut spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
-    ///
-    /// // create a custom shift reference with a name and method
-    /// let reference = ShiftReference::new_with_meta(0.0, 1, "example ref", "internal");
-    /// spectrum.set_shift_reference(reference)?;
-    /// let mut shifts = spectrum.chemical_shifts();
-    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(-10.0));
-    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(6000.0 / 600.0 - 10.0));
-    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(12000.0 / 600.0 - 10.0));
-    ///
-    /// // adjust the chemical shift reference value from 0.0 to 1.0 ppm
+    /// let mut spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
     /// spectrum.set_shift_reference_value(1.0)?;
-    /// let mut shifts = spectrum.chemical_shifts();
-    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(-9.0));
-    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(6000.0 / 600.0 - 9.0));
-    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(12000.0 / 600.0 - 9.0));
+    /// let mut shifts = spectrum.shifts();
+    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(1.0));
+    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(6000.0 / 600.0 + 1.0));
+    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(12000.0 / 600.0 + 1.0));
     /// # Ok(())
     /// # }
     /// ```
-    pub fn set_shift_reference_value(&mut self, chemical_shift: f64) -> Result<()> {
+    pub fn set_shift_reference_value(&mut self, shift: f64) -> Result<()> {
         self.spectral_linspace
-            .set_shift_reference_value(chemical_shift)?;
+            .set_shift_reference_value(shift)?;
 
         Ok(())
     }
 
-    /// Sets the chemical shift reference index of the `Spectrum`.
+    /// Sets the chemical shift reference index.
     ///
     /// Useful for fine-tuning the chemical shift reference without changing all
     /// of its properties.
@@ -991,25 +1184,22 @@ impl Spectrum {
     ///
     /// ```
     /// use float_cmp::assert_approx_eq;
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::{ShiftReference, Spectrum};
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let mut spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
-    ///
-    /// // create a custom shift reference with a name and method
-    /// let reference = ShiftReference::new_with_meta(0.0, 1, "example ref", "internal");
-    /// spectrum.set_shift_reference(reference)?;
-    /// let mut shifts = spectrum.chemical_shifts();
+    /// let mut spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
+    /// spectrum.set_shift_reference_index(1)?;
+    /// let mut shifts = spectrum.shifts();
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(-10.0));
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(6000.0 / 600.0 - 10.0));
     /// assert_approx_eq!(Option<f64>, shifts.next(), Some(12000.0 / 600.0 - 10.0));
-    ///
-    /// // adjust the chemical shift reference index to the first point
-    /// spectrum.set_shift_reference_index(0)?;
-    /// let mut shifts = spectrum.chemical_shifts();
-    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(0.0));
-    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(6000.0 / 600.0));
-    /// assert_approx_eq!(Option<f64>, shifts.next(), Some(12000.0 / 600.0));
     /// # Ok(())
     /// # }
     /// ```
@@ -1025,12 +1215,17 @@ impl Spectrum {
     /// # Example
     ///
     /// ```
-    /// use zeenmr_spectrum::{ShiftReference, Spectrum};
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
+    /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let mut spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
-    /// let reference = ShiftReference::new_with_meta(0.0, 1, "example ref", "internal");
-    /// spectrum.set_shift_reference(reference)?;
+    /// let mut spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
     /// spectrum.set_shift_reference_name("new ref name");
     /// assert_eq!(spectrum.shift_reference().name(), Some("new ref name"));
     /// # Ok(())
@@ -1041,17 +1236,23 @@ impl Spectrum {
             .set_shift_reference_name(name);
     }
 
-    /// Clears the name of the chemical shift reference of the `Spectrum`.
+    /// Clears the name of the chemical shift reference.
     ///
     /// # Example
     ///
     /// ```
-    /// use zeenmr_spectrum::{ShiftReference, Spectrum};
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
+    /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let mut spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
-    /// let reference = ShiftReference::new_with_meta(0.0, 1, "example ref", "internal");
-    /// spectrum.set_shift_reference(reference)?;
+    /// let mut spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
+    /// spectrum.set_shift_reference_name("example ref");
     /// spectrum.clear_shift_reference_name();
     /// assert!(spectrum.shift_reference().name().is_none());
     /// # Ok(())
@@ -1062,22 +1263,26 @@ impl Spectrum {
             .clear_shift_reference_name();
     }
 
-    /// Sets the referencing method of the chemical shift reference of the
-    /// `Spectrum`.
+    /// Sets the referencing method of the chemical shift reference.
     ///
     /// # Example
     ///
     /// ```
-    /// use zeenmr_spectrum::{ReferencingMethod, ShiftReference, Spectrum};
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
+    /// use zeenmr_spectrum::{ReferencingMethod, Spectrum};
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let mut spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
-    /// let reference = ShiftReference::new_with_meta(0.0, 1, "example ref", "internal");
-    /// spectrum.set_shift_reference(reference)?;
+    /// let mut spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
     /// spectrum.set_shift_reference_method("external");
     /// assert_eq!(
     ///     spectrum.shift_reference().method(),
-    ///     Some(ReferencingMethod::External).as_ref()
+    ///     Some(&ReferencingMethod::External)
     /// );
     /// # Ok(())
     /// # }
@@ -1093,12 +1298,18 @@ impl Spectrum {
     /// # Example
     ///
     /// ```
-    /// use zeenmr_spectrum::{ShiftReference, Spectrum};
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
+    /// use zeenmr_spectrum::Spectrum;
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let mut spectrum = Spectrum::new(vec![1.0, 2.0, 3.0], 600.0, (0.0, 12000.0))?;
-    /// let reference = ShiftReference::new_with_meta(0.0, 1, "ref", "internal");
-    /// spectrum.set_shift_reference(reference)?;
+    /// let mut spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
+    /// spectrum.set_shift_reference_method("external");
     /// spectrum.clear_shift_reference_method();
     /// assert!(spectrum.shift_reference().method().is_none());
     /// # Ok(())
@@ -1146,10 +1357,17 @@ impl Spectrum {
     ///
     /// ```
     /// use float_cmp::assert_approx_eq;
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
     /// use zeenmr_spectrum::{SignalBoundaries, Spectrum};
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let mut spectrum = Spectrum::new((0..=10).map(|i| i as f64), 600.0, (0.0, 12000.0))?;
+    /// let mut spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
     /// spectrum.set_signal_boundaries(SignalBoundaries::Frequencies(2000.0, 10000.0))?;
     /// assert_eq!(spectrum.signal_boundaries(), (2, 8));
     /// # Ok(())
@@ -1227,12 +1445,19 @@ impl Spectrum {
             SignalBoundaries::Frequencies(start, end) => {
                 match (
                     start.is_finite() && end.is_finite(),
-                    self.spectral_linspace.contains_hz(start)
-                        && self.spectral_linspace.contains_hz(end),
+                    self.spectral_linspace
+                        .contains_freq(Frequency::new::<hertz>(start))
+                        && self
+                            .spectral_linspace
+                            .contains_freq(Frequency::new::<hertz>(end)),
                 ) {
                     (true, true) => {
-                        let start = self.spectral_linspace.hz_to_fractional(start);
-                        let end = self.spectral_linspace.hz_to_fractional(end);
+                        let start = self
+                            .spectral_linspace
+                            .freq_to_fractional(Frequency::new::<hertz>(start));
+                        let end = self
+                            .spectral_linspace
+                            .freq_to_fractional(Frequency::new::<hertz>(end));
 
                         match start < end {
                             true => Ok((start.ceil() as usize, end.floor() as usize)),

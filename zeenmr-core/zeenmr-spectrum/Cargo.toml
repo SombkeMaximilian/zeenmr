@@ -26,6 +26,7 @@ default = []
 serde = ["dep:serde", "uom/serde"]
 
 [dependencies]
+num-traits = { workspace = true }
 uom = { workspace = true }
 serde = { workspace = true, optional = true }
 
