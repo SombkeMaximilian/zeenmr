@@ -101,55 +101,55 @@ impl SpectralLinspace {
 
     /// Calculates the offset from the chemical shift reference in ppm.
     pub(crate) fn reference_offset(&self) -> Ratio {
-        self.reference.shift() - self.reference.index() as f64 * self.step_ppm()
+        self.reference.shift() - self.reference.index() as f64 * self.shift_step()
     }
 
     /// Returns the frequency range of the spectral axis.
-    pub(crate) fn range_freq(&self) -> (Frequency, Frequency) {
+    pub(crate) fn freq_range(&self) -> (Frequency, Frequency) {
         self.range
     }
 
-    /// Returns the chemical shift range of the spectral axis in ppm.
-    pub(crate) fn range_ppm(&self) -> (Ratio, Ratio) {
+    /// Returns the chemical shift range of the spectral axis.
+    pub(crate) fn shift_range(&self) -> (Ratio, Ratio) {
         let start = self.reference_offset();
 
         (start, start + self.width_ppm())
     }
 
-    /// Returns the width of the spectral axis.
-    pub(crate) fn width_freq(&self) -> Frequency {
+    /// Returns the width of the spectral axis in terms of frequency.
+    pub(crate) fn freq_width(&self) -> Frequency {
         (self.range.1 - self.range.0).abs()
     }
 
-    /// Returns the width of the spectral axis in ppm.
+    /// Returns the width of the spectral axis in terms of chemical shift.
     pub(crate) fn width_ppm(&self) -> Ratio {
-        self.width_freq() / self.larmor
+        self.freq_width() / self.larmor
     }
 
-    /// Returns the center frequency of the spectral axis.
-    pub(crate) fn center_freq(&self) -> Frequency {
+    /// Returns the central frequency of the spectral axis.
+    pub(crate) fn freq_center(&self) -> Frequency {
         (self.range.0 + self.range.1) / 2.0
     }
 
-    /// Returns the center chemical shift of the spectral axis in ppm.
-    pub(crate) fn center_ppm(&self) -> Ratio {
-        let range = self.range_ppm();
+    /// Returns the central chemical shift of the spectral axis.
+    pub(crate) fn shift_center(&self) -> Ratio {
+        let range = self.shift_range();
 
         (range.1 + range.0) / 2.0
     }
 
-    /// Returns the step size of the spectral axis.
-    pub(crate) fn step_freq(&self) -> Frequency {
+    /// Returns the step size of the spectral axis in terms of frequency.
+    pub(crate) fn freq_step(&self) -> Frequency {
         (self.range.1 - self.range.0) / (self.size as f64 - 1.0)
     }
 
-    /// Returns the step size of the spectral axis in ppm.
-    pub(crate) fn step_ppm(&self) -> Ratio {
-        self.step_freq() / self.larmor
+    /// Returns the step size of the spectral axis in terms of chemical shift.
+    pub(crate) fn shift_step(&self) -> Ratio {
+        self.freq_step() / self.larmor
     }
 
     /// Returns the step size of the spectral axis in relative units.
-    pub(crate) fn step_relative(&self) -> f64 {
+    pub(crate) fn relative_step(&self) -> f64 {
         1.0 / (self.size as f64 - 1.0)
     }
 
@@ -161,7 +161,7 @@ impl SpectralLinspace {
 
     /// Calculates the fractional index of a chemical shift within the linear
     /// space.
-    pub(crate) fn ppm_to_fractional(&self, shift: Ratio) -> f64 {
+    pub(crate) fn shift_to_fractional(&self, shift: Ratio) -> f64 {
         ((shift - self.reference_offset()) * ((self.size - 1) as f64) * self.larmor
             / (self.range.1 - self.range.0))
             .get::<ratio>()
@@ -181,18 +181,18 @@ impl SpectralLinspace {
     pub(crate) fn index_to_freq(&self, index: usize) -> Result<Frequency> {
         Self::validate_index(index, self.size)?;
 
-        Ok(self.range.0 + self.step_freq() * index as f64)
+        Ok(self.range.0 + self.freq_step() * index as f64)
     }
 
-    /// Converts an index within the linear space to a chemical shift in ppm.
+    /// Converts an index within the linear space to a chemical shift.
     ///
     /// # Errors
     ///
     /// Returns an error if the index is out of bounds for the current size
     /// of the spectral axis.
-    pub(crate) fn index_to_ppm(&self, index: usize) -> Result<Ratio> {
+    pub(crate) fn index_to_shift(&self, index: usize) -> Result<Ratio> {
         Self::validate_index(index, self.size)?;
-        let step = self.step_ppm();
+        let step = self.shift_step();
         let offset = self.reference_offset();
 
         Ok(offset + step * index as f64)
@@ -207,7 +207,7 @@ impl SpectralLinspace {
     pub(crate) fn index_to_relative(&self, index: usize) -> Result<f64> {
         Self::validate_index(index, self.size)?;
 
-        Ok(self.step_relative() * index as f64)
+        Ok(self.relative_step() * index as f64)
     }
 
     /// Checks if the given frequency is within the linear space.
@@ -221,8 +221,8 @@ impl SpectralLinspace {
     }
 
     /// Checks if the given chemical shift in ppm is within the linear space.
-    pub(crate) fn contains_ppm(&self, shift: Ratio) -> bool {
-        let range = self.range_ppm();
+    pub(crate) fn contains_shift(&self, shift: Ratio) -> bool {
+        let range = self.shift_range();
         let range = (range.0.min(range.1), range.0.max(range.1));
 
         shift.is_finite() && (range.0..=range.1).contains(&shift)
@@ -233,7 +233,7 @@ impl SpectralLinspace {
     /// Computing each frequency value only requires one addition and one
     /// multiplication, so we opt not to cache the frequencies in memory.
     pub(crate) fn frequencies(&self) -> impl Iterator<Item = Frequency> + use<> {
-        let step = self.step_freq();
+        let step = self.freq_step();
         let start = self.range.0;
 
         (0..self.size).map(move |i| start + step * i as f64)
@@ -244,7 +244,7 @@ impl SpectralLinspace {
     /// Computing each chemical shift value only requires one addition and one
     /// multiplication, so we opt not to cache the chemical shifts in memory.
     pub(crate) fn shifts(&self) -> impl Iterator<Item = Ratio> + use<> {
-        let step = self.step_ppm();
+        let step = self.shift_step();
         let offset = self.reference_offset();
 
         (0..self.size).map(move |i| offset + step * i as f64)
@@ -549,7 +549,7 @@ mod tests {
                 .index_to_freq(2_usize.pow(18))
                 .unwrap_err(),
             linspace
-                .index_to_ppm(2_usize.pow(18))
+                .index_to_shift(2_usize.pow(18))
                 .unwrap_err(),
             linspace
                 .index_to_relative(2_usize.pow(18))
@@ -591,8 +591,8 @@ mod tests {
                 .set_range((Frequency::new::<hertz>(24000.0), Frequency::zero()))
                 .is_ok()
         );
-        assert_approx_eq!(f64, linspace.range_freq().0.get::<hertz>(), 24000.0);
-        assert_approx_eq!(f64, linspace.range_freq().1.get::<hertz>(), 0.0);
+        assert_approx_eq!(f64, linspace.freq_range().0.get::<hertz>(), 24000.0);
+        assert_approx_eq!(f64, linspace.freq_range().1.get::<hertz>(), 0.0);
         assert!(
             linspace
                 .set_larmor(Frequency::new::<megahertz>(800.0))

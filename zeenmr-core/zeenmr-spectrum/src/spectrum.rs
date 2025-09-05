@@ -397,16 +397,16 @@ impl Spectrum {
     ///     Frequency::new::<megahertz>(600.0),
     ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
     /// )?;
-    /// assert_approx_eq!(f64, spectrum.range_freq().0.get::<hertz>(), 0.0);
-    /// assert_approx_eq!(f64, spectrum.range_freq().1.get::<hertz>(), 12000.0);
+    /// assert_approx_eq!(f64, spectrum.freq_range().0.get::<hertz>(), 0.0);
+    /// assert_approx_eq!(f64, spectrum.freq_range().1.get::<hertz>(), 12000.0);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn range_freq(&self) -> (Frequency, Frequency) {
-        self.spectral_linspace.range_freq()
+    pub fn freq_range(&self) -> (Frequency, Frequency) {
+        self.spectral_linspace.freq_range()
     }
 
-    /// Returns the chemical shift range of the spectral axis in ppm.
+    /// Returns the chemical shift range of the spectral axis.
     ///
     /// # Example
     ///
@@ -424,16 +424,18 @@ impl Spectrum {
     ///     Frequency::new::<megahertz>(600.0),
     ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
     /// )?;
-    /// assert_approx_eq!(f64, spectrum.range_ppm().0.get::<ppm>(), 0.0);
-    /// assert_approx_eq!(f64, spectrum.range_ppm().1.get::<ppm>(), 20.0);
+    /// assert_approx_eq!(f64, spectrum.shift_range().0.get::<ppm>(), 0.0);
+    /// assert_approx_eq!(f64, spectrum.shift_range().1.get::<ppm>(), 20.0);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn range_ppm(&self) -> (Ratio, Ratio) {
-        self.spectral_linspace.range_ppm()
+    pub fn shift_range(&self) -> (Ratio, Ratio) {
+        self.spectral_linspace.shift_range()
     }
 
-    /// Returns the width of the spectral axis.
+    /// Returns the width of the spectral axis in terms of frequency.
+    ///
+    /// Always a positive value, even if the axis is in descending order.
     ///
     /// # Example
     ///
@@ -450,15 +452,17 @@ impl Spectrum {
     ///     Frequency::new::<megahertz>(600.0),
     ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
     /// )?;
-    /// assert_approx_eq!(f64, spectrum.width_freq().get::<hertz>(), 12000.0);
+    /// assert_approx_eq!(f64, spectrum.freq_width().get::<hertz>(), 12000.0);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn width_freq(&self) -> Frequency {
-        self.spectral_linspace.width_freq()
+    pub fn freq_width(&self) -> Frequency {
+        self.spectral_linspace.freq_width()
     }
 
-    /// Returns the width of the spectral axis in ppm.
+    /// Returns the width of the spectral axis in terms of chemical shift.
+    ///
+    /// Always a positive value, even if the axis is in descending order.
     ///
     /// # Example
     ///
@@ -476,15 +480,18 @@ impl Spectrum {
     ///     Frequency::new::<megahertz>(600.0),
     ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
     /// )?;
-    /// assert_approx_eq!(f64, spectrum.width_ppm().get::<ppm>(), 20.0);
+    /// assert_approx_eq!(f64, spectrum.shift_width().get::<ppm>(), 20.0);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn width_ppm(&self) -> Ratio {
+    pub fn shift_width(&self) -> Ratio {
         self.spectral_linspace.width_ppm()
     }
 
-    /// Returns the center frequency of the spectral axis.
+    /// Returns the central frequency of the spectral axis.
+    ///
+    /// Not be one of the discrete data points if the [`Spectrum`]'s length is
+    /// even.
     ///
     /// # Example
     ///
@@ -501,15 +508,18 @@ impl Spectrum {
     ///     Frequency::new::<megahertz>(600.0),
     ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
     /// )?;
-    /// assert_approx_eq!(f64, spectrum.center_freq().get::<hertz>(), 6000.0);
+    /// assert_approx_eq!(f64, spectrum.freq_center().get::<hertz>(), 6000.0);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn center_freq(&self) -> Frequency {
-        self.spectral_linspace.center_freq()
+    pub fn freq_center(&self) -> Frequency {
+        self.spectral_linspace.freq_center()
     }
 
-    /// Returns the center chemical shift of the spectral axis in ppm.
+    /// Returns the central chemical shift of the spectral axis.
+    ///
+    /// Not be one of the discrete data points if the [`Spectrum`]'s length is
+    /// even.
     ///
     /// # Example
     ///
@@ -527,15 +537,15 @@ impl Spectrum {
     ///     Frequency::new::<megahertz>(600.0),
     ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
     /// )?;
-    /// assert_approx_eq!(f64, spectrum.center_ppm().get::<ppm>(), 10.0);
+    /// assert_approx_eq!(f64, spectrum.shift_center().get::<ppm>(), 10.0);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn center_ppm(&self) -> Ratio {
-        self.spectral_linspace.center_ppm()
+    pub fn shift_center(&self) -> Ratio {
+        self.spectral_linspace.shift_center()
     }
 
-    /// Returns the step size of the spectral axis.
+    /// Returns the step size of the spectral axis in terms of frequency.
     ///
     /// # Example
     ///
@@ -552,12 +562,12 @@ impl Spectrum {
     ///     Frequency::new::<megahertz>(600.0),
     ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
     /// )?;
-    /// assert_approx_eq!(f64, spectrum.step_freq().get::<hertz>(), 6000.0);
+    /// assert_approx_eq!(f64, spectrum.freq_step().get::<hertz>(), 6000.0);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn step_freq(&self) -> Frequency {
-        self.spectral_linspace.step_freq()
+    pub fn freq_step(&self) -> Frequency {
+        self.spectral_linspace.freq_step()
     }
 
     /// Returns the step size of the spectral axis in ppm.
@@ -578,12 +588,12 @@ impl Spectrum {
     ///     Frequency::new::<megahertz>(600.0),
     ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
     /// )?;
-    /// assert_approx_eq!(f64, spectrum.step_ppm().get::<ppm>(), 10.0);
+    /// assert_approx_eq!(f64, spectrum.shift_step().get::<ppm>(), 10.0);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn step_ppm(&self) -> Ratio {
-        self.spectral_linspace.step_ppm()
+    pub fn shift_step(&self) -> Ratio {
+        self.spectral_linspace.shift_step()
     }
 
     /// Returns an iterator over the spectral frequencies.
@@ -812,11 +822,11 @@ impl Spectrum {
         // unwrapping is safe because signal_boundaries is validated during construction
         SignalBoundaries::ChemicalShifts(
             self.spectral_linspace
-                .index_to_ppm(self.signal_boundaries.0)
+                .index_to_shift(self.signal_boundaries.0)
                 .unwrap()
                 .get::<ppm>(),
             self.spectral_linspace
-                .index_to_ppm(self.signal_boundaries.1)
+                .index_to_shift(self.signal_boundaries.1)
                 .unwrap()
                 .get::<ppm>(),
         )
@@ -1485,18 +1495,18 @@ impl Spectrum {
                 match (
                     start.is_finite() && end.is_finite(),
                     self.spectral_linspace
-                        .contains_ppm(Ratio::new::<ppm>(start))
+                        .contains_shift(Ratio::new::<ppm>(start))
                         && self
                             .spectral_linspace
-                            .contains_ppm(Ratio::new::<ppm>(end)),
+                            .contains_shift(Ratio::new::<ppm>(end)),
                 ) {
                     (true, true) => {
                         let start = self
                             .spectral_linspace
-                            .ppm_to_fractional(Ratio::new::<ppm>(start));
+                            .shift_to_fractional(Ratio::new::<ppm>(start));
                         let end = self
                             .spectral_linspace
-                            .ppm_to_fractional(Ratio::new::<ppm>(end));
+                            .shift_to_fractional(Ratio::new::<ppm>(end));
 
                         match start < end {
                             true => Ok((start.ceil() as usize, end.floor() as usize)),
