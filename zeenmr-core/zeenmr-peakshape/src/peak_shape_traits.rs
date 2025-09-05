@@ -199,7 +199,7 @@ mod tests {
             .collect::<Vec<f64>>();
         evaluate_map
             .into_iter()
-            .zip(expected.into_iter())
+            .zip(expected)
             .for_each(|(a, b)| {
                 assert_approx_eq!(f64, a, b);
             })
@@ -234,7 +234,7 @@ mod tests {
             .collect::<Vec<f64>>();
         superposition_map
             .into_iter()
-            .zip(expected.into_iter())
+            .zip(expected)
             .for_each(|(a, b)| assert_approx_eq!(f64, a, b));
     }
 }

@@ -181,7 +181,7 @@ impl Error {
     pub(crate) fn invalid_larmor(source: Option<Self>) -> Self {
         Self {
             kind: Kind::InvalidLarmor,
-            source: source.map(|error| Arc::new(error)),
+            source: source.map(Arc::new),
         }
     }
 

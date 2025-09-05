@@ -228,7 +228,7 @@ mod serialize_shift {
     where
         D: Deserializer<'de>,
     {
-        f64::deserialize(deserializer).map(|value| Ratio::new::<ppm>(value))
+        f64::deserialize(deserializer).map(Ratio::new::<ppm>)
     }
 }
 

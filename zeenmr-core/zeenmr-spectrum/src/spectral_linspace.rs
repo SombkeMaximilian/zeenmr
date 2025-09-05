@@ -488,7 +488,7 @@ mod tests {
             .zip(expected_sources.clone())
             .for_each(|(error, source)| match error.kind() {
                 Kind::InvalidRange => assert_eq!(error.source(), source.as_ref()),
-                _ => panic!("unexpected error: {:?}", error),
+                _ => panic!("unexpected error: {error}"),
             });
 
         let mut linspace = valid_linspace();
@@ -526,7 +526,7 @@ mod tests {
             .zip(expected_sources.clone())
             .for_each(|(error, source)| match error.kind() {
                 Kind::InvalidLarmor => assert_eq!(error.source(), source.as_ref()),
-                _ => panic!("unexpected error: {:?}", error),
+                _ => panic!("unexpected error: {error}"),
             });
 
         let mut linspace = valid_linspace();
@@ -579,7 +579,7 @@ mod tests {
             .zip(expected_sources)
             .for_each(|(error, source)| match error.kind() {
                 Kind::InvalidShiftReference => assert_eq!(error.source(), source.as_ref()),
-                _ => panic!("unexpected error: {:?}", error),
+                _ => panic!("unexpected error: {error}"),
             })
     }
 
