@@ -191,10 +191,10 @@ impl Spectrum {
         let spectral_linspace = SpectralLinspace::new(larmor, range, intensities.len(), reference)?;
         let signal_boundaries = (
             spectral_linspace
-                .relative_to_fractional(0.1)
+                .relative_to_fractional(0.1)? // guaranteed to be `Ok`
                 .ceil() as usize,
             spectral_linspace
-                .relative_to_fractional(0.9)
+                .relative_to_fractional(0.9)? // guaranteed to be `Ok`
                 .floor() as usize,
         );
 
@@ -1449,72 +1449,49 @@ impl Spectrum {
     fn validate_boundaries(&self, signal_boundaries: SignalBoundaries) -> Result<(usize, usize)> {
         match signal_boundaries {
             SignalBoundaries::Relative(start, end) => {
-                match (
-                    start.is_finite() && end.is_finite(),
-                    (0.0..=1.0).contains(&start) && (0.0..=1.0).contains(&end),
-                ) {
-                    (true, true) => Ok((
-                        self.spectral_linspace
-                            .relative_to_fractional(start)
-                            .ceil() as usize,
-                        self.spectral_linspace
-                            .relative_to_fractional(end)
-                            .floor() as usize,
+                let start = self
+                    .spectral_linspace
+                    .relative_to_fractional(start);
+                let end = self.spectral_linspace.relative_to_fractional(end);
+
+                match (start, end) {
+                    (Ok(start), Ok(end)) => Ok((
+                        start.min(end).ceil() as usize,
+                        start.max(end).floor() as usize,
                     )),
-                    (false, _) => Err(Error::invalid_signal_boundaries(Error::non_finite_float())),
-                    (_, false) => Err(Error::invalid_signal_boundaries(Error::out_of_bounds())),
+                    (Err(e), _) | (_, Err(e)) => Err(Error::invalid_signal_boundaries(e)),
                 }
             }
             SignalBoundaries::Frequencies(start, end) => {
-                match (
-                    start.is_finite() && end.is_finite(),
-                    self.spectral_linspace
-                        .contains_freq(Frequency::new::<hertz>(start))
-                        && self
-                            .spectral_linspace
-                            .contains_freq(Frequency::new::<hertz>(end)),
-                ) {
-                    (true, true) => {
-                        let start = self
-                            .spectral_linspace
-                            .freq_to_fractional(Frequency::new::<hertz>(start));
-                        let end = self
-                            .spectral_linspace
-                            .freq_to_fractional(Frequency::new::<hertz>(end));
+                let start = self
+                    .spectral_linspace
+                    .freq_to_fractional(Frequency::new::<hertz>(start));
+                let end = self
+                    .spectral_linspace
+                    .freq_to_fractional(Frequency::new::<hertz>(end));
 
-                        match start < end {
-                            true => Ok((start.ceil() as usize, end.floor() as usize)),
-                            false => Ok((end.ceil() as usize, start.floor() as usize)),
-                        }
-                    }
-                    (false, _) => Err(Error::invalid_signal_boundaries(Error::non_finite_float())),
-                    (_, false) => Err(Error::invalid_signal_boundaries(Error::out_of_bounds())),
+                match (start, end) {
+                    (Ok(start), Ok(end)) => Ok((
+                        start.min(end).ceil() as usize,
+                        start.max(end).floor() as usize,
+                    )),
+                    (Err(e), _) | (_, Err(e)) => Err(Error::invalid_signal_boundaries(e)),
                 }
             }
             SignalBoundaries::ChemicalShifts(start, end) => {
-                match (
-                    start.is_finite() && end.is_finite(),
-                    self.spectral_linspace
-                        .contains_shift(Ratio::new::<ppm>(start))
-                        && self
-                            .spectral_linspace
-                            .contains_shift(Ratio::new::<ppm>(end)),
-                ) {
-                    (true, true) => {
-                        let start = self
-                            .spectral_linspace
-                            .shift_to_fractional(Ratio::new::<ppm>(start));
-                        let end = self
-                            .spectral_linspace
-                            .shift_to_fractional(Ratio::new::<ppm>(end));
+                let start = self
+                    .spectral_linspace
+                    .shift_to_fractional(Ratio::new::<ppm>(start));
+                let end = self
+                    .spectral_linspace
+                    .shift_to_fractional(Ratio::new::<ppm>(end));
 
-                        match start < end {
-                            true => Ok((start.ceil() as usize, end.floor() as usize)),
-                            false => Ok((end.ceil() as usize, start.floor() as usize)),
-                        }
-                    }
-                    (false, _) => Err(Error::invalid_signal_boundaries(Error::non_finite_float())),
-                    (_, false) => Err(Error::invalid_signal_boundaries(Error::out_of_bounds())),
+                match (start, end) {
+                    (Ok(start), Ok(end)) => Ok((
+                        start.min(end).ceil() as usize,
+                        start.max(end).floor() as usize,
+                    )),
+                    (Err(e), _) | (_, Err(e)) => Err(Error::invalid_signal_boundaries(e)),
                 }
             }
         }

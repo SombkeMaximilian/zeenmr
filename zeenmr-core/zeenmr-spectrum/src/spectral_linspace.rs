@@ -154,22 +154,52 @@ impl SpectralLinspace {
     }
 
     /// Calculates the fractional index of a frequency within the linear space.
-    pub(crate) fn freq_to_fractional(&self, frequency: Frequency) -> f64 {
-        ((frequency - self.range.0) * ((self.size - 1) as f64) / (self.range.1 - self.range.0))
-            .get::<ratio>()
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the frequency is out of bounds of the spectral axis
+    /// or non-finite.
+    pub(crate) fn freq_to_fractional(&self, frequency: Frequency) -> Result<f64> {
+        match (frequency.is_finite(), self.contains_freq(frequency)) {
+            (true, true) => Ok(((frequency - self.range.0) * ((self.size - 1) as f64)
+                / (self.range.1 - self.range.0))
+                .get::<ratio>()),
+            (false, _) => Err(Error::non_finite_float()),
+            (_, false) => Err(Error::out_of_bounds()),
+        }
     }
 
     /// Calculates the fractional index of a chemical shift within the linear
     /// space.
-    pub(crate) fn shift_to_fractional(&self, shift: Ratio) -> f64 {
-        ((shift - self.reference_offset()) * ((self.size - 1) as f64) * self.larmor
-            / (self.range.1 - self.range.0))
-            .get::<ratio>()
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the chemical shift is out of bounds of the spectral
+    /// axis or non-finite.
+    pub(crate) fn shift_to_fractional(&self, shift: Ratio) -> Result<f64> {
+        match (shift.is_finite(), self.contains_shift(shift)) {
+            (true, true) => Ok(((shift - self.reference_offset())
+                * ((self.size - 1) as f64)
+                * self.larmor
+                / (self.range.1 - self.range.0))
+                .get::<ratio>()),
+            (false, _) => Err(Error::non_finite_float()),
+            (_, false) => Err(Error::out_of_bounds()),
+        }
     }
 
     /// Calculates the fractional index of a fraction of the linear space.
-    pub(crate) fn relative_to_fractional(&self, relative: f64) -> f64 {
-        relative * ((self.size - 1) as f64)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the relative value is not between 0 and 1,
+    /// inclusive, or non-finite.
+    pub(crate) fn relative_to_fractional(&self, relative: f64) -> Result<f64> {
+        match (relative.is_finite(), (0.0..=1.0).contains(&relative)) {
+            (true, true) => Ok(relative * ((self.size - 1) as f64)),
+            (false, _) => Err(Error::non_finite_float()),
+            (_, false) => Err(Error::out_of_bounds()),
+        }
     }
 
     /// Converts an index within the linear space to a frequency.
