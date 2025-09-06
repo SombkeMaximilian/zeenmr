@@ -1,9 +1,10 @@
 use crate::error::{Error, Result};
-use crate::{Nucleus, ReferencingMethod, ShiftReference, SignalBoundaries, SpectralLinspace};
+use crate::{
+    ChemicalShiftRange, FrequencyRange, IndexRange, Nucleus, ReferencingMethod, ShiftReference,
+    SpectralLinspace, SpectralRange, TryFromIndexRange, TryIntoIndexRange,
+};
 use std::sync::Arc;
 use uom::si::f64::{Frequency, Ratio};
-use uom::si::frequency::hertz;
-use uom::si::ratio::part_per_million as ppm;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -55,7 +56,7 @@ use serde::{Deserialize, Serialize};
 /// use uom::si::f64::{Frequency, Ratio};
 /// use uom::si::frequency::{hertz, megahertz};
 /// use uom::si::ratio::part_per_million as ppm;
-/// use zeenmr_spectrum::{ShiftReference, SignalBoundaries, Spectrum};
+/// use zeenmr_spectrum::{ShiftReference, Spectrum};
 ///
 /// # fn main() -> zeenmr_spectrum::error::Result<()> {
 /// // Define larmor frequency and frequency range.
@@ -85,7 +86,7 @@ use serde::{Deserialize, Serialize};
 /// // Add metadata.
 /// spectrum.set_id("example_spectrum");
 /// spectrum.set_nucleus("Deuterium");
-/// spectrum.set_signal_boundaries(SignalBoundaries::Relative(0.15, 0.85))?;
+/// spectrum.set_signal_boundaries((0.15, 0.85))?;
 /// # Ok(())
 /// # }
 /// ```
@@ -110,9 +111,9 @@ pub struct Spectrum {
     nucleus: Option<Nucleus>,
     /// Linear space of the spectral axis.
     #[cfg_attr(feature = "serde", serde(flatten))]
-    spectral_linspace: SpectralLinspace,
+    pub(crate) spectral_linspace: SpectralLinspace,
     /// Boundaries of the signal region in the spectrum.
-    signal_boundaries: (usize, usize),
+    signal_boundaries: IndexRange,
     /// Intensity values in arbitrary units.
     #[cfg_attr(feature = "serde", serde(with = "serialize_intensities"))]
     intensities: Arc<[f64]>,
@@ -162,7 +163,7 @@ impl Spectrum {
     /// use uom::si::f64::Frequency;
     /// use uom::si::frequency::{hertz, megahertz};
     /// use uom::si::ratio::part_per_million as ppm;
-    /// use zeenmr_spectrum::{ShiftReference, SignalBoundaries, Spectrum};
+    /// use zeenmr_spectrum::{ShiftReference, Spectrum};
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
     /// let larmor = Frequency::new::<megahertz>(600.0);
@@ -182,21 +183,20 @@ impl Spectrum {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn new<I>(intensities: I, larmor: Frequency, range: (Frequency, Frequency)) -> Result<Self>
+    pub fn new<I, R>(intensities: I, larmor: Frequency, range: R) -> Result<Self>
     where
+        R: Into<FrequencyRange>,
         I: IntoIterator<Item = f64>,
     {
         let intensities = Self::validate_intensities(intensities)?;
-        let reference = range.0 / larmor;
+        let range = range.into();
+        let reference = range.start / larmor;
         let spectral_linspace = SpectralLinspace::new(larmor, range, intensities.len(), reference)?;
         let signal_boundaries = (
-            spectral_linspace
-                .relative_to_fractional(0.1)? // guaranteed to be `Ok`
-                .ceil() as usize,
-            spectral_linspace
-                .relative_to_fractional(0.9)? // guaranteed to be `Ok`
-                .floor() as usize,
-        );
+            ((intensities.len() - 1) as f64 * 0.1).ceil() as usize,
+            ((intensities.len() - 1) as f64 * 0.9).floor() as usize + 1,
+        )
+            .into();
 
         Ok(Self {
             id: None,
@@ -397,12 +397,12 @@ impl Spectrum {
     ///     Frequency::new::<megahertz>(600.0),
     ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
     /// )?;
-    /// assert_approx_eq!(f64, spectrum.freq_range().0.get::<hertz>(), 0.0);
-    /// assert_approx_eq!(f64, spectrum.freq_range().1.get::<hertz>(), 12000.0);
+    /// assert_approx_eq!(f64, spectrum.freq_range().start.get::<hertz>(), 0.0);
+    /// assert_approx_eq!(f64, spectrum.freq_range().end.get::<hertz>(), 12000.0);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn freq_range(&self) -> (Frequency, Frequency) {
+    pub fn freq_range(&self) -> FrequencyRange {
         self.spectral_linspace.freq_range()
     }
 
@@ -424,12 +424,12 @@ impl Spectrum {
     ///     Frequency::new::<megahertz>(600.0),
     ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
     /// )?;
-    /// assert_approx_eq!(f64, spectrum.shift_range().0.get::<ppm>(), 0.0);
-    /// assert_approx_eq!(f64, spectrum.shift_range().1.get::<ppm>(), 20.0);
+    /// assert_approx_eq!(f64, spectrum.shift_range().start.get::<ppm>(), 0.0);
+    /// assert_approx_eq!(f64, spectrum.shift_range().end.get::<ppm>(), 20.0);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn shift_range(&self) -> (Ratio, Ratio) {
+    pub fn shift_range(&self) -> ChemicalShiftRange {
         self.spectral_linspace.shift_range()
     }
 
@@ -689,51 +689,36 @@ impl Spectrum {
         &self.intensities
     }
 
-    /// Returns the indices of the signal boundaries of the `Spectrum`.
+    /// Returns of the signal boundaries of the `Spectrum` as a range of type
+    /// `R`.
     ///
-    /// The boundaries represent the minimal inclusive range of indices `[i, j]`
-    /// that fully contains the signal region of the `Spectrum`. At
-    /// construction, signal boundaries are initialized to the central 80%
-    /// of the spectral axis, i.e., from the 10% to the 90% relative
-    /// positions along the axis. See [`set_signal_boundaries`] to set
-    /// custom boundaries.
-    ///
-    /// [`set_signal_boundaries`]: Spectrum::set_signal_boundaries
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use num_traits::Zero;
-    /// use uom::si::f64::Frequency;
-    /// use uom::si::frequency::{hertz, megahertz};
-    /// use zeenmr_spectrum::Spectrum;
-    ///
-    /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let spectrum = Spectrum::new(
-    ///     vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0],
-    ///     Frequency::new::<megahertz>(600.0),
-    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
-    /// )?;
-    /// assert_eq!(spectrum.signal_boundaries(), (1, 9));
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn signal_boundaries(&self) -> (usize, usize) {
-        self.signal_boundaries
-    }
-
-    /// Returns the signal boundaries of the `Spectrum` as frequencies in Hz.
-    ///
-    /// The boundaries represent the minimal inclusive range of frequencies `[a,
-    /// b]` that fully contains the signal region of the `Spectrum`. At
-    /// construction, signal boundaries are initialized to the central 80%
-    /// of the spectral axis, i.e., from the 10% to the 90% relative
-    /// positions along the axis range. See [`set_signal_boundaries`] to set
-    /// custom boundaries. Note that provided signal boundaries are
-    /// converted to the minimal inclusive range, so the values returned
-    /// here may differ from the input.
+    /// The boundaries represent the minimal range of indices `[i, j)` that
+    /// fully contains the signal region of the `Spectrum`. At construction,
+    /// signal boundaries are initialized to the central 80% of the spectral
+    /// axis, i.e., from the 10% to the 90% relative positions along the axis.
+    /// Use [`set_signal_boundaries`] to set custom boundaries.
     ///
     /// [`set_signal_boundaries`]: Spectrum::set_signal_boundaries
+    ///
+    /// # Possible Range Types
+    ///
+    /// The following types implement [`TryFromIndexRange`]:
+    /// - [`IndexRange`]: A range of `usize` indices into the intensities,
+    ///   expressed as `[i, j)`, where `i` is inclusive and `j` is exclusive.
+    /// - [`FrequencyRange`]: A range of [`Frequency`] values, expressed as
+    ///   `[f1, f2]`. Both bounds are inclusive and may appear in any order.
+    /// - [`ChemicalShiftRange`]: A range of chemical shifts as [`Ratio`]
+    ///   values, expressed as `[s1, s2]`. Both bounds are inclusive and may
+    ///   appear in any order.
+    /// - [`RelativeRange`]: A range of relative positions along the spectral
+    ///   axis, expressed as `[r1, r2]`. Both bounds are inclusive, with values
+    ///   in the normalized range `[0_f64, 1_f64]`.
+    ///
+    /// # Errors
+    ///
+    /// Infallible under normal circumstances, but it is possible to create
+    /// invalid [`Spectrum`] instances through deserialization, in which case
+    /// it returns an error if the deserialized boundaries are out of range.
     ///
     /// # Example
     ///
@@ -742,7 +727,10 @@ impl Spectrum {
     /// use num_traits::Zero;
     /// use uom::si::f64::Frequency;
     /// use uom::si::frequency::{hertz, megahertz};
-    /// use zeenmr_spectrum::{SignalBoundaries, Spectrum};
+    /// use uom::si::ratio::part_per_million as ppm;
+    /// use zeenmr_spectrum::{
+    ///     ChemicalShiftRange, FrequencyRange, IndexRange, RelativeRange, Spectrum,
+    /// };
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
     /// let spectrum = Spectrum::new(
@@ -750,139 +738,33 @@ impl Spectrum {
     ///     Frequency::new::<megahertz>(600.0),
     ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
     /// )?;
-    /// match spectrum.signal_boundaries_hz() {
-    ///     SignalBoundaries::Frequencies(start, end) => {
-    ///         assert_approx_eq!(f64, start, 1200.0);
-    ///         assert_approx_eq!(f64, end, 10800.0);
-    ///     }
-    ///     _ => panic!("expected frequencies boundaries"),
-    /// }
+    ///
+    /// let freq_boundaries = spectrum.signal_boundaries::<FrequencyRange>()?;
+    /// assert_approx_eq!(f64, freq_boundaries.start.get::<hertz>(), 1200.0);
+    /// assert_approx_eq!(f64, freq_boundaries.end.get::<hertz>(), 10800.0);
+    ///
+    /// let shift_boundaries = spectrum.signal_boundaries::<ChemicalShiftRange>()?;
+    /// assert_approx_eq!(f64, shift_boundaries.start.get::<ppm>(), 2.0);
+    /// assert_approx_eq!(f64, shift_boundaries.end.get::<ppm>(), 18.0);
+    ///
+    /// let rel_boundaries = spectrum.signal_boundaries::<RelativeRange>()?;
+    /// assert_approx_eq!(f64, rel_boundaries.start, 0.1);
+    /// assert_approx_eq!(f64, rel_boundaries.end, 0.9);
+    ///
+    /// let index_boundaries = spectrum.signal_boundaries::<IndexRange>()?;
+    /// assert_eq!(index_boundaries.start, 1);
+    /// assert_eq!(index_boundaries.end, 10);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn signal_boundaries_hz(&self) -> SignalBoundaries {
-        debug_assert!(self.signal_boundaries.0 < self.len());
-        debug_assert!(self.signal_boundaries.1 < self.len());
+    pub fn signal_boundaries<R>(&self) -> Result<R>
+    where
+        R: TryFromIndexRange,
+    {
+        debug_assert!(self.signal_boundaries.start < self.len());
+        debug_assert!(self.signal_boundaries.end < self.len());
 
-        // unwrapping is safe because signal_boundaries is validated during construction
-        SignalBoundaries::Frequencies(
-            self.spectral_linspace
-                .index_to_freq(self.signal_boundaries.0)
-                .unwrap()
-                .get::<hertz>(),
-            self.spectral_linspace
-                .index_to_freq(self.signal_boundaries.1)
-                .unwrap()
-                .get::<hertz>(),
-        )
-    }
-
-    /// Returns the signal boundaries of the spectrum as chemical shifts in ppm.
-    ///
-    /// The boundaries represent the minimal inclusive range of chemical shifts
-    /// `[a, b]` that fully contains the signal region of the `Spectrum`. At
-    /// construction, signal boundaries are initialized to the central 90%
-    /// of the spectral axis, i.e., from the 10% to the 90% relative
-    /// positions along the axis range. See [`set_signal_boundaries`] to set
-    /// custom boundaries. Note that provided signal boundaries are
-    /// converted to the minimal inclusive range, so the values returned
-    /// here may differ from the input.
-    ///
-    /// [`set_signal_boundaries`]: Spectrum::set_signal_boundaries
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use float_cmp::assert_approx_eq;
-    /// use num_traits::Zero;
-    /// use uom::si::f64::Frequency;
-    /// use uom::si::frequency::{hertz, megahertz};
-    /// use zeenmr_spectrum::{SignalBoundaries, Spectrum};
-    ///
-    /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let spectrum = Spectrum::new(
-    ///     vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0],
-    ///     Frequency::new::<megahertz>(600.0),
-    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
-    /// )?;
-    /// match spectrum.signal_boundaries_ppm() {
-    ///     SignalBoundaries::ChemicalShifts(start, end) => {
-    ///         assert_approx_eq!(f64, start, 1200.0 / 600.0);
-    ///         assert_approx_eq!(f64, end, 10800.0 / 600.0);
-    ///     }
-    ///     _ => panic!("expected chemical shift boundaries"),
-    /// }
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn signal_boundaries_ppm(&self) -> SignalBoundaries {
-        debug_assert!(self.signal_boundaries.0 < self.len());
-        debug_assert!(self.signal_boundaries.1 < self.len());
-
-        // unwrapping is safe because signal_boundaries is validated during construction
-        SignalBoundaries::ChemicalShifts(
-            self.spectral_linspace
-                .index_to_shift(self.signal_boundaries.0)
-                .unwrap()
-                .get::<ppm>(),
-            self.spectral_linspace
-                .index_to_shift(self.signal_boundaries.1)
-                .unwrap()
-                .get::<ppm>(),
-        )
-    }
-
-    /// Returns the signal boundaries of the spectrum in relative units.
-    ///
-    /// The boundaries represent the minimal inclusive range of relative
-    /// positions `[a, b]` that fully contains the signal region of the
-    /// `Spectrum`. At construction, signal boundaries are initialized to the
-    /// central 80% of the spectral axis, i.e., from the 10% to the 90%
-    /// relative positions along the axis range. See
-    /// [`set_signal_boundaries`] to set custom boundaries. Note that
-    /// provided signal boundaries are converted to the minimal inclusive
-    /// range, so the values returned here may differ from the input.
-    ///
-    /// [`set_signal_boundaries`]: Spectrum::set_signal_boundaries
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use float_cmp::assert_approx_eq;
-    /// use num_traits::Zero;
-    /// use uom::si::f64::Frequency;
-    /// use uom::si::frequency::{hertz, megahertz};
-    /// use zeenmr_spectrum::{SignalBoundaries, Spectrum};
-    ///
-    /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let spectrum = Spectrum::new(
-    ///     vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0],
-    ///     Frequency::new::<megahertz>(600.0),
-    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
-    /// )?;
-    /// match spectrum.signal_boundaries_relative() {
-    ///     SignalBoundaries::Relative(start, end) => {
-    ///         assert_approx_eq!(f64, start, 0.1);
-    ///         assert_approx_eq!(f64, end, 0.9);
-    ///     }
-    ///     _ => panic!("expected relative boundaries"),
-    /// }
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn signal_boundaries_relative(&self) -> SignalBoundaries {
-        debug_assert!(self.signal_boundaries.0 < self.len());
-        debug_assert!(self.signal_boundaries.1 < self.len());
-
-        // unwrapping is safe because signal_boundaries is validated during construction
-        SignalBoundaries::Relative(
-            self.spectral_linspace
-                .index_to_relative(self.signal_boundaries.0)
-                .unwrap(),
-            self.spectral_linspace
-                .index_to_relative(self.signal_boundaries.1)
-                .unwrap(),
-        )
+        R::try_from_index_range(self.signal_boundaries, self)
     }
 
     /// Sets the ID of the `Spectrum`.
@@ -1345,8 +1227,8 @@ impl Spectrum {
 
     /// Sets the signal boundaries of the `Spectrum`.
     ///
-    /// Boundaries are internally converted to the minimal inclusive range
-    /// `[i, j]` that fully contains all discrete points within the provided
+    /// Boundaries are internally converted to the minimal range of indices
+    /// `[i, j)` that fully contains all discrete points within the provided
     /// signal region. As such, the input of this method cannot be recovered.
     /// Consider the following coordinate pairs:
     ///
@@ -1366,10 +1248,29 @@ impl Spectrum {
     ///
     /// If the signal boundaries are the frequency values `2000 Hz` and
     /// `10000 Hz`, the values with indices `2` to `8` are fully contained
-    /// within this range. The minimal inclusive range is therefore `[2, 8]`.
-    /// When converted back to frequencies, the boundaries are `2400 Hz` and
+    /// within this range. The minimal range is therefore `[2, 9)`. When
+    /// converted back to frequencies, the boundaries are `2400 Hz` and
     /// `9600 Hz`, i.e., the discrete data points closest to the provided
     /// boundaries from within.
+    ///
+    /// # Possible Range Types
+    ///
+    /// The following types implement [`TryIntoIndexRange`]:
+    /// - [`IndexRange`]: A range of `usize` indices into the intensities,
+    ///   expressed as `[i, j)`, where `i` is inclusive and `j` is exclusive.
+    /// - [`FrequencyRange`]: A range of [`Frequency`] values, expressed as
+    ///   `[f1, f2]`. Both bounds are inclusive and may appear in any order.
+    /// - [`ChemicalShiftRange`]: A range of chemical shifts as [`Ratio`]
+    ///   values, expressed as `[s1, s2]`. Both bounds are inclusive and may
+    ///   appear in any order.
+    /// - [`RelativeRange`]: A range of relative positions along the spectral
+    ///   axis, expressed as `[r1, r2]`. Both bounds are inclusive, with values
+    ///   in the normalized range `[0_f64, 1_f64]`.
+    ///
+    /// These types each implement [`From<Range<T>>`] or
+    /// [`From<RangeInclusive<T>>`] respectively, and [`From<(T, T)>`].
+    ///
+    /// [`From<(T, T)>`]: From
     ///
     /// # Errors
     ///
@@ -1383,7 +1284,7 @@ impl Spectrum {
     /// use num_traits::Zero;
     /// use uom::si::f64::Frequency;
     /// use uom::si::frequency::{hertz, megahertz};
-    /// use zeenmr_spectrum::{SignalBoundaries, Spectrum};
+    /// use zeenmr_spectrum::{IndexRange, Spectrum};
     ///
     /// # fn main() -> zeenmr_spectrum::error::Result<()> {
     /// let mut spectrum = Spectrum::new(
@@ -1391,12 +1292,21 @@ impl Spectrum {
     ///     Frequency::new::<megahertz>(600.0),
     ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
     /// )?;
-    /// spectrum.set_signal_boundaries(SignalBoundaries::Frequencies(2000.0, 10000.0))?;
-    /// assert_eq!(spectrum.signal_boundaries(), (2, 8));
+    /// spectrum.set_signal_boundaries((
+    ///     Frequency::new::<hertz>(2000.0),
+    ///     Frequency::new::<hertz>(10000.0),
+    /// ))?;
+    /// assert_eq!(spectrum.signal_boundaries::<IndexRange>()?.start, 2);
+    /// assert_eq!(spectrum.signal_boundaries::<IndexRange>()?.end, 9);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn set_signal_boundaries(&mut self, signal_boundaries: SignalBoundaries) -> Result<()> {
+    pub fn set_signal_boundaries<T, R>(&mut self, signal_boundaries: R) -> Result<()>
+    where
+        R: Into<SpectralRange<T>>,
+        SpectralRange<T>: TryIntoIndexRange,
+    {
+        let signal_boundaries = signal_boundaries.into();
         self.signal_boundaries = self.validate_boundaries(signal_boundaries)?;
 
         Ok(())
@@ -1446,54 +1356,13 @@ impl Spectrum {
     ///
     /// The following errors can occur:
     /// - [`InvalidSignalBoundaries`](crate::error::Kind::InvalidSignalBoundaries)
-    fn validate_boundaries(&self, signal_boundaries: SignalBoundaries) -> Result<(usize, usize)> {
-        match signal_boundaries {
-            SignalBoundaries::Relative(start, end) => {
-                let start = self
-                    .spectral_linspace
-                    .relative_to_fractional(start);
-                let end = self.spectral_linspace.relative_to_fractional(end);
-
-                match (start, end) {
-                    (Ok(start), Ok(end)) => Ok((
-                        start.min(end).ceil() as usize,
-                        start.max(end).floor() as usize,
-                    )),
-                    (Err(e), _) | (_, Err(e)) => Err(Error::invalid_signal_boundaries(e)),
-                }
-            }
-            SignalBoundaries::Frequencies(start, end) => {
-                let start = self
-                    .spectral_linspace
-                    .freq_to_fractional(Frequency::new::<hertz>(start));
-                let end = self
-                    .spectral_linspace
-                    .freq_to_fractional(Frequency::new::<hertz>(end));
-
-                match (start, end) {
-                    (Ok(start), Ok(end)) => Ok((
-                        start.min(end).ceil() as usize,
-                        start.max(end).floor() as usize,
-                    )),
-                    (Err(e), _) | (_, Err(e)) => Err(Error::invalid_signal_boundaries(e)),
-                }
-            }
-            SignalBoundaries::ChemicalShifts(start, end) => {
-                let start = self
-                    .spectral_linspace
-                    .shift_to_fractional(Ratio::new::<ppm>(start));
-                let end = self
-                    .spectral_linspace
-                    .shift_to_fractional(Ratio::new::<ppm>(end));
-
-                match (start, end) {
-                    (Ok(start), Ok(end)) => Ok((
-                        start.min(end).ceil() as usize,
-                        start.max(end).floor() as usize,
-                    )),
-                    (Err(e), _) | (_, Err(e)) => Err(Error::invalid_signal_boundaries(e)),
-                }
-            }
+    fn validate_boundaries<R>(&self, signal_boundaries: R) -> Result<IndexRange>
+    where
+        R: TryIntoIndexRange,
+    {
+        match signal_boundaries.try_into_index_range(self) {
+            Ok(index_range) => Ok(index_range),
+            Err(e) => Err(Error::invalid_signal_boundaries(e)),
         }
     }
 }

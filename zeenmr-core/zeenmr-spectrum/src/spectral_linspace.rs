@@ -1,5 +1,6 @@
 use crate::error::{Error, Result};
-use crate::{ReferencingMethod, ShiftReference};
+use crate::{ChemicalShiftRange, FrequencyRange, ReferencingMethod, ShiftReference};
+use std::ops::RangeBounds;
 use uom::si::f64::{Frequency, Ratio};
 use uom::si::frequency::hertz;
 use uom::si::ratio::ratio;
@@ -45,7 +46,7 @@ pub(crate) struct SpectralLinspace {
     /// See also: [NMRCentral](https://web.archive.org/web/20110926141002/http://nmrcentral.com/2011/08/chemical-shift/)
     larmor: Frequency,
     /// Frequency range of the spectrum.
-    range: (Frequency, Frequency),
+    range: FrequencyRange,
     /// Number of points in the spectral axis.
     size: usize,
     /// Chemical shift reference.
@@ -61,15 +62,12 @@ impl SpectralLinspace {
     /// is out of bounds for the given size, or if the frequency range or
     /// larmor frequency contains non-finite values, or if the larmor frequency
     /// is zero (<= [`f64::EPSILON`]).
-    pub(crate) fn new<T>(
-        larmor: Frequency,
-        range: (Frequency, Frequency),
-        size: usize,
-        reference: T,
-    ) -> Result<Self>
+    pub(crate) fn new<R, T>(larmor: Frequency, range: R, size: usize, reference: T) -> Result<Self>
     where
+        R: Into<FrequencyRange>,
         T: Into<ShiftReference>,
     {
+        let range = range.into();
         let reference = reference.into();
 
         Self::validate_range(range)?;
@@ -105,20 +103,20 @@ impl SpectralLinspace {
     }
 
     /// Returns the frequency range of the spectral axis.
-    pub(crate) fn freq_range(&self) -> (Frequency, Frequency) {
+    pub(crate) fn freq_range(&self) -> FrequencyRange {
         self.range
     }
 
     /// Returns the chemical shift range of the spectral axis.
-    pub(crate) fn shift_range(&self) -> (Ratio, Ratio) {
+    pub(crate) fn shift_range(&self) -> ChemicalShiftRange {
         let start = self.reference_offset();
 
-        (start, start + self.width_ppm())
+        (start, start + self.width_ppm()).into()
     }
 
     /// Returns the width of the spectral axis in terms of frequency.
     pub(crate) fn freq_width(&self) -> Frequency {
-        (self.range.1 - self.range.0).abs()
+        (self.range.end - self.range.start).abs()
     }
 
     /// Returns the width of the spectral axis in terms of chemical shift.
@@ -128,19 +126,19 @@ impl SpectralLinspace {
 
     /// Returns the central frequency of the spectral axis.
     pub(crate) fn freq_center(&self) -> Frequency {
-        (self.range.0 + self.range.1) / 2.0
+        (self.range.start + self.range.end) / 2.0
     }
 
     /// Returns the central chemical shift of the spectral axis.
     pub(crate) fn shift_center(&self) -> Ratio {
         let range = self.shift_range();
 
-        (range.1 + range.0) / 2.0
+        (range.start + range.end) / 2.0
     }
 
     /// Returns the step size of the spectral axis in terms of frequency.
     pub(crate) fn freq_step(&self) -> Frequency {
-        (self.range.1 - self.range.0) / (self.size as f64 - 1.0)
+        (self.range.end - self.range.start) / (self.size as f64 - 1.0)
     }
 
     /// Returns the step size of the spectral axis in terms of chemical shift.
@@ -161,8 +159,8 @@ impl SpectralLinspace {
     /// or non-finite.
     pub(crate) fn freq_to_fractional(&self, frequency: Frequency) -> Result<f64> {
         match (frequency.is_finite(), self.contains_freq(frequency)) {
-            (true, true) => Ok(((frequency - self.range.0) * ((self.size - 1) as f64)
-                / (self.range.1 - self.range.0))
+            (true, true) => Ok(((frequency - self.range.start) * ((self.size - 1) as f64)
+                / (self.range.end - self.range.start))
                 .get::<ratio>()),
             (false, _) => Err(Error::non_finite_float()),
             (_, false) => Err(Error::out_of_bounds()),
@@ -181,7 +179,7 @@ impl SpectralLinspace {
             (true, true) => Ok(((shift - self.reference_offset())
                 * ((self.size - 1) as f64)
                 * self.larmor
-                / (self.range.1 - self.range.0))
+                / (self.range.end - self.range.start))
                 .get::<ratio>()),
             (false, _) => Err(Error::non_finite_float()),
             (_, false) => Err(Error::out_of_bounds()),
@@ -211,7 +209,7 @@ impl SpectralLinspace {
     pub(crate) fn index_to_freq(&self, index: usize) -> Result<Frequency> {
         Self::validate_index(index, self.size)?;
 
-        Ok(self.range.0 + self.freq_step() * index as f64)
+        Ok(self.range.start + self.freq_step() * index as f64)
     }
 
     /// Converts an index within the linear space to a chemical shift.
@@ -242,20 +240,12 @@ impl SpectralLinspace {
 
     /// Checks if the given frequency is within the linear space.
     pub(crate) fn contains_freq(&self, frequency: Frequency) -> bool {
-        let range = (
-            self.range.0.min(self.range.1),
-            self.range.0.max(self.range.1),
-        );
-
-        frequency.is_finite() && (range.0..=range.1).contains(&frequency)
+        frequency.is_finite() && self.range.ordered().contains(&frequency)
     }
 
     /// Checks if the given chemical shift in ppm is within the linear space.
     pub(crate) fn contains_shift(&self, shift: Ratio) -> bool {
-        let range = self.shift_range();
-        let range = (range.0.min(range.1), range.0.max(range.1));
-
-        shift.is_finite() && (range.0..=range.1).contains(&shift)
+        shift.is_finite() && self.shift_range().ordered().contains(&shift)
     }
 
     /// Returns an iterator over the frequencies.
@@ -264,7 +254,7 @@ impl SpectralLinspace {
     /// multiplication, so we opt not to cache the frequencies in memory.
     pub(crate) fn frequencies(&self) -> impl Iterator<Item = Frequency> + use<> {
         let step = self.freq_step();
-        let start = self.range.0;
+        let start = self.range.start;
 
         (0..self.size).map(move |i| start + step * i as f64)
     }
@@ -289,7 +279,11 @@ impl SpectralLinspace {
     /// # Errors
     ///
     /// Returns an error if either frequency in the range is not a finite float.
-    pub(crate) fn set_range(&mut self, range: (Frequency, Frequency)) -> Result<()> {
+    pub(crate) fn set_range<R>(&mut self, range: R) -> Result<()>
+    where
+        R: Into<FrequencyRange>,
+    {
+        let range = range.into();
         Self::validate_range(range)?;
         self.range = range;
 
@@ -389,8 +383,8 @@ impl SpectralLinspace {
     ///
     /// The following errors can occur:
     /// - [`InvalidRange`](crate::error::Kind::InvalidRange)
-    fn validate_range(range: (Frequency, Frequency)) -> Result<()> {
-        match range.0.is_finite() && range.1.is_finite() {
+    fn validate_range(range: FrequencyRange) -> Result<()> {
+        match range.start.is_finite() && range.end.is_finite() {
             true => Ok(()),
             false => Err(Error::invalid_range()),
         }
@@ -621,8 +615,8 @@ mod tests {
                 .set_range((Frequency::new::<hertz>(24000.0), Frequency::zero()))
                 .is_ok()
         );
-        assert_approx_eq!(f64, linspace.freq_range().0.get::<hertz>(), 24000.0);
-        assert_approx_eq!(f64, linspace.freq_range().1.get::<hertz>(), 0.0);
+        assert_approx_eq!(f64, linspace.freq_range().start.get::<hertz>(), 24000.0);
+        assert_approx_eq!(f64, linspace.freq_range().end.get::<hertz>(), 0.0);
         assert!(
             linspace
                 .set_larmor(Frequency::new::<megahertz>(800.0))
@@ -656,13 +650,13 @@ mod tests {
         let deserialized = serde_json::from_str::<SpectralLinspace>(&serialized).unwrap();
         assert_approx_eq!(
             f64,
-            linspace.range.0.get::<hertz>(),
-            deserialized.range.0.get::<hertz>()
+            linspace.range.start.get::<hertz>(),
+            deserialized.range.start.get::<hertz>()
         );
         assert_approx_eq!(
             f64,
-            linspace.range.1.get::<hertz>(),
-            deserialized.range.1.get::<hertz>()
+            linspace.range.end.get::<hertz>(),
+            deserialized.range.end.get::<hertz>()
         );
         assert_approx_eq!(
             f64,
