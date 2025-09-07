@@ -136,7 +136,7 @@ impl From<ReferencingMethod> for String {
 ///
 /// - [`From<Ratio>`]: first point in the [`Spectrum`], shift set to the
 ///   provided value.
-/// - [`From<usize>`]: provided point in the [`Spectrum`], shift set to 0 ppm.
+/// - [`From<usize>`]: provided point in the [`Spectrum`], shift set to 0.
 /// - [`From<(Ratio, usize)>`] and [`From<(usize, Ratio)>`]: provided shift and
 ///   index.
 ///
@@ -179,8 +179,7 @@ impl From<ReferencingMethod> for String {
 /// [Serde]: https://serde.rs/
 ///
 /// If the `serde` feature is enabled, `ShiftReference` implements
-/// [`Serialize`] and [`Deserialize`]. The chemical shift is serialized to and
-/// deserialized from values in parts per million (ppm).
+/// [`Serialize`] and [`Deserialize`].
 ///
 /// [`Serialize`]: serde::Serialize
 /// [`Deserialize`]: serde::Deserialize
@@ -191,7 +190,7 @@ impl From<ReferencingMethod> for String {
     serde(rename_all = "camelCase")
 )]
 pub struct ShiftReference {
-    /// Chemical shift of the reference in parts per million (ppm).
+    /// Chemical shift of the reference.
     #[cfg_attr(feature = "serde", serde(with = "serialize_shift"))]
     shift: Ratio,
     /// Index within the Spectrum that corresponds to the reference position.

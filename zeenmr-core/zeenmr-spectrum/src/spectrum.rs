@@ -628,7 +628,7 @@ impl Spectrum {
         self.spectral_linspace.frequencies()
     }
 
-    /// Returns an iterator over the chemical shifts in ppm.
+    /// Returns an iterator over the chemical shifts.
     ///
     /// A new iterator is created each time this method is called, only
     /// computing the chemical shift values on demand.
@@ -981,13 +981,16 @@ impl Spectrum {
 
     /// Sets the chemical shift reference.
     ///
-    /// At construction, a `ShiftReference` anchored at index 0 of the spectral
-    /// axis is created, which corresponds to no shift. `ShiftReference` can be
-    /// created from a tuple of a chemical shift value in ppm and an index
-    /// in the spectral axis, or from just a chemical shift value (the index is
-    /// 0 in this case). When using [`ShiftReference::new_with_meta`], a name
-    /// and a method can also be provided to describe the reference
-    /// compound.
+    /// At construction, a [`ShiftReference`] anchored at index 0 of the
+    /// spectral axis is created, which corresponds to no shift. When using
+    /// [`ShiftReference::new_with_meta`], a name and a method can also be
+    /// provided to describe the reference compound. [`ShiftReference`] also
+    /// implements the following traits for convenient construction:
+    /// - [`From<Ratio>`]: first point in the [`Spectrum`], shift set to the
+    ///   provided value.
+    /// - [`From<usize>`]: provided point in the [`Spectrum`], shift set to 0.
+    /// - [`From<(Ratio, usize)>`] and [`From<(usize, Ratio)>`]: provided shift
+    ///   and index.
     ///
     /// # Errors
     ///

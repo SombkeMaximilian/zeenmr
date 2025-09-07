@@ -97,7 +97,7 @@ impl SpectralLinspace {
         &self.reference
     }
 
-    /// Calculates the offset from the chemical shift reference in ppm.
+    /// Calculates the offset from the chemical shift reference.
     pub(crate) fn reference_offset(&self) -> Ratio {
         self.reference.shift() - self.reference.index() as f64 * self.shift_step()
     }
@@ -243,7 +243,7 @@ impl SpectralLinspace {
         frequency.is_finite() && self.range.ordered().contains(&frequency)
     }
 
-    /// Checks if the given chemical shift in ppm is within the linear space.
+    /// Checks if the given chemical shift is within the linear space.
     pub(crate) fn contains_shift(&self, shift: Ratio) -> bool {
         shift.is_finite() && self.shift_range().ordered().contains(&shift)
     }
@@ -259,7 +259,7 @@ impl SpectralLinspace {
         (0..self.size).map(move |i| start + step * i as f64)
     }
 
-    /// Returns an iterator over the chemical shifts in ppm.
+    /// Returns an iterator over the chemical shifts.
     ///
     /// Computing each chemical shift value only requires one addition and one
     /// multiplication, so we opt not to cache the chemical shifts in memory.
@@ -325,7 +325,7 @@ impl SpectralLinspace {
         Ok(())
     }
 
-    /// Sets the chemical shift reference value in ppm.
+    /// Sets the chemical shift reference value.
     ///
     /// # Errors
     ///
