@@ -3,9 +3,9 @@ use crate::{
     ChemicalShiftRange, FrequencyRange, IndexRange, Nucleus, ReferencingMethod, ShiftReference,
     SpectralLinspace, SpectralRange, TryFromIndexRange, TryIntoIndexRange,
 };
-use std::marker::PhantomData;
 use std::sync::Arc;
-use uom::si::f64::{Frequency, Ratio};
+use uom::si::f64::{Frequency, MagneticFluxDensity, Ratio};
+use uom::typenum::P2;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -287,6 +287,56 @@ impl Spectrum {
     /// ```
     pub fn larmor(&self) -> Frequency {
         self.linspace.larmor()
+    }
+
+    /// Calculates the B_0 field strength from the larmor frequency and the
+    /// observed nucleus, if available.
+    ///
+    /// The first value is the calculated B_0 field strength, the second value
+    /// is the uncertainty based on the uncertainty of the gyromagnetic ratio.
+    ///
+    /// Uses the larmor equation:
+    ///
+    /// ```text
+    /// ω₀ = -γ * B₀
+    /// ```
+    ///
+    /// See also: [NMRCentral](https://web.archive.org/web/20110926141002/http://nmrcentral.com/2011/08/chemical-shift/)
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use float_cmp::assert_approx_eq;
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
+    /// use uom::si::magnetic_flux_density::tesla;
+    /// use zeenmr_spectrum::Spectrum;
+    ///
+    /// # fn main() -> zeenmr_spectrum::error::Result<()> {
+    /// let mut spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
+    /// spectrum.set_nucleus("1H");
+    /// let (b_field, uncertainty) = spectrum.b_field().expect("B0 missing");
+    /// assert_approx_eq!(f64, b_field.get::<tesla>(), 14.091, epsilon = 1e-3);
+    /// assert_approx_eq!(f64, uncertainty.get::<tesla>(), 5.957e-9, epsilon = 1e-12);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn b_field(&self) -> Option<(MagneticFluxDensity, MagneticFluxDensity)> {
+        self.nucleus().and_then(|nucleus| {
+            nucleus
+                .gyromagnetic_ratio()
+                .and_then(|(gyro, uncertainty)| {
+                    Some((
+                        self.larmor() / gyro,
+                        self.larmor().abs() / gyro.powi(P2::new()) * uncertainty,
+                    ))
+                })
+        })
     }
 
     /// Returns the number of data points in the `Spectrum`, sometimes
@@ -978,6 +1028,58 @@ impl Spectrum {
     /// ```
     pub fn set_larmor(&mut self, larmor: Frequency) -> Result<()> {
         self.linspace.set_larmor(larmor)
+    }
+
+    /// Sets the larmor frequency based on the provided magnetic field
+    /// strength and the currently set nucleus.
+    ///
+    /// Uses the larmor equation:
+    ///
+    /// ```text
+    /// ω₀ = -γ * B₀
+    /// ```
+    ///
+    /// See also: [NMRCentral](https://web.archive.org/web/20110926141002/http://nmrcentral.com/2011/08/chemical-shift/)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if nucleus is not set, or if it is [`Nucleus::Other`],
+    /// or if `b_field` is not a finite value.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use float_cmp::assert_approx_eq;
+    /// use num_traits::Zero;
+    /// use uom::si::f64::{Frequency, MagneticFluxDensity};
+    /// use uom::si::frequency::{hertz, megahertz};
+    /// use uom::si::magnetic_flux_density::tesla;
+    /// use zeenmr_spectrum::Spectrum;
+    ///
+    /// # fn main() -> zeenmr_spectrum::error::Result<()> {
+    /// let mut spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
+    /// spectrum.set_nucleus("1H");
+    /// spectrum.set_larmor_by_b_field(MagneticFluxDensity::new::<tesla>(14.098))?;
+    /// let larmor = spectrum.larmor().get::<megahertz>();
+    /// assert_approx_eq!(f64, larmor, 600.257, epsilon = 1e-3);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn set_larmor_by_b_field(&mut self, b_field: MagneticFluxDensity) -> Result<()> {
+        let larmor = self.nucleus().and_then(|nucleus| {
+            nucleus
+                .gyromagnetic_ratio()
+                .and_then(|(gyro, _)| Some(gyro * b_field))
+        });
+
+        match larmor {
+            Some(freq) => self.set_larmor(freq),
+            None => Err(Error::invalid_larmor(None)),
+        }
     }
 
     /// Sets the chemical shift reference.
