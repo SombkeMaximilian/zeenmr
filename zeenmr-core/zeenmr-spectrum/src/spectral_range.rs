@@ -20,7 +20,33 @@ pub type ChemicalShiftRange = SpectralRange<Ratio>;
 /// [`SpectralRange`] type alias for relative ranges.
 pub type RelativeRange = SpectralRange<f64>;
 
-#[allow(missing_docs)]
+/// A generic spectral range with a start and end value.
+///
+/// # Range Types
+///
+/// Using the following type aliases is recommended for clarity and convenience:
+/// - [`IndexRange`]: A range of `usize` indices into the intensities,
+///   expressed as `[i, j)`, where `i` is inclusive and `j` is exclusive.
+/// - [`FrequencyRange`]: A range of [`Frequency`] values, expressed as
+///   `[f1, f2]`. Both bounds are inclusive and may appear in any order.
+/// - [`ChemicalShiftRange`]: A range of chemical shifts as [`Ratio`]s,
+///   expressed as `[s1, s2]`. Both bounds are inclusive and may appear in any
+///   order.
+/// - [`RelativeRange`]: A range of relative positions along the spectral
+///   axis, expressed as `[r1, r2]`. Both bounds are inclusive, with values
+///   in the normalized range `[0_f64, 1_f64]` and `r1 < r2`.
+///
+/// These types each implement [`From<Range<T>>`] or
+/// [`From<RangeInclusive<T>>`] respectively, and [`From<(T, T)>`].
+///
+/// # Serialization with [Serde]
+///
+/// [Serde]: https://serde.rs
+///
+/// When the `serde` feature is enabled, `SpectralRange` implements the
+/// [`Serialize`] and [`Deserialize`] traits provided the type `T` also
+/// implements them. For the type aliases mentioned above, this is the
+/// case.
 #[derive(Copy, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SpectralRange<T> {

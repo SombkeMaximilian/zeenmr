@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// # Serialization with [Serde]
 ///
-/// [Serde]: (https://serde.rs/)
+/// [Serde]: https://serde.rs/
 ///
 /// When the `serde` feature is enabled, `SpectralLinspace` implements the
 /// [`Serialize`] and [`Deserialize`] traits. This struct is flattened into
