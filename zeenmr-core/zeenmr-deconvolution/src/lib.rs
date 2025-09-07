@@ -3,3 +3,5 @@
 
 //! Data structures and algorithms for deconstructing NMR spectra into their
 //! constituent component signals.
+
+mod smoothing;
