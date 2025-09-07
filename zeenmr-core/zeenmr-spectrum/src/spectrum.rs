@@ -3,6 +3,7 @@ use crate::{
     ChemicalShiftRange, FrequencyRange, IndexRange, Nucleus, ReferencingMethod, ShiftReference,
     SpectralLinspace, SpectralRange, TryFromIndexRange, TryIntoIndexRange,
 };
+use std::marker::PhantomData;
 use std::sync::Arc;
 use uom::si::f64::{Frequency, Ratio};
 
@@ -111,7 +112,7 @@ pub struct Spectrum {
     nucleus: Option<Nucleus>,
     /// Linear space of the spectral axis.
     #[cfg_attr(feature = "serde", serde(flatten))]
-    pub(crate) spectral_linspace: SpectralLinspace,
+    pub(crate) linspace: SpectralLinspace,
     /// Boundaries of the signal region in the spectrum.
     signal_boundaries: IndexRange,
     /// Intensity values in arbitrary units.
@@ -201,7 +202,7 @@ impl Spectrum {
         Ok(Self {
             id: None,
             nucleus: None,
-            spectral_linspace,
+            linspace: spectral_linspace,
             signal_boundaries,
             intensities,
         })
@@ -285,7 +286,7 @@ impl Spectrum {
     /// # }
     /// ```
     pub fn larmor(&self) -> Frequency {
-        self.spectral_linspace.larmor()
+        self.linspace.larmor()
     }
 
     /// Returns the number of data points in the `Spectrum`, sometimes
@@ -310,9 +311,9 @@ impl Spectrum {
     /// # }
     /// ```
     pub fn len(&self) -> usize {
-        debug_assert_eq!(self.intensities.len(), self.spectral_linspace.size());
+        debug_assert_eq!(self.intensities.len(), self.linspace.size());
 
-        self.spectral_linspace.size()
+        self.linspace.size()
     }
 
     /// Returns `true` if the [`Spectrum`] has no data points.
@@ -377,7 +378,7 @@ impl Spectrum {
     /// # }
     /// ```
     pub fn shift_reference(&self) -> &ShiftReference {
-        self.spectral_linspace.shift_reference()
+        self.linspace.shift_reference()
     }
 
     /// Returns the frequency range of the spectral axis.
@@ -403,7 +404,7 @@ impl Spectrum {
     /// # }
     /// ```
     pub fn freq_range(&self) -> FrequencyRange {
-        self.spectral_linspace.freq_range()
+        self.linspace.freq_range()
     }
 
     /// Returns the chemical shift range of the spectral axis.
@@ -430,7 +431,7 @@ impl Spectrum {
     /// # }
     /// ```
     pub fn shift_range(&self) -> ChemicalShiftRange {
-        self.spectral_linspace.shift_range()
+        self.linspace.shift_range()
     }
 
     /// Returns the width of the spectral axis in terms of frequency.
@@ -457,7 +458,7 @@ impl Spectrum {
     /// # }
     /// ```
     pub fn freq_width(&self) -> Frequency {
-        self.spectral_linspace.freq_width()
+        self.linspace.freq_width()
     }
 
     /// Returns the width of the spectral axis in terms of chemical shift.
@@ -485,7 +486,7 @@ impl Spectrum {
     /// # }
     /// ```
     pub fn shift_width(&self) -> Ratio {
-        self.spectral_linspace.width_ppm()
+        self.linspace.width_ppm()
     }
 
     /// Returns the central frequency of the spectral axis.
@@ -513,7 +514,7 @@ impl Spectrum {
     /// # }
     /// ```
     pub fn freq_center(&self) -> Frequency {
-        self.spectral_linspace.freq_center()
+        self.linspace.freq_center()
     }
 
     /// Returns the central chemical shift of the spectral axis.
@@ -542,7 +543,7 @@ impl Spectrum {
     /// # }
     /// ```
     pub fn shift_center(&self) -> Ratio {
-        self.spectral_linspace.shift_center()
+        self.linspace.shift_center()
     }
 
     /// Returns the step size of the spectral axis in terms of frequency.
@@ -567,7 +568,7 @@ impl Spectrum {
     /// # }
     /// ```
     pub fn freq_step(&self) -> Frequency {
-        self.spectral_linspace.freq_step()
+        self.linspace.freq_step()
     }
 
     /// Returns the step size of the spectral axis in ppm.
@@ -593,7 +594,7 @@ impl Spectrum {
     /// # }
     /// ```
     pub fn shift_step(&self) -> Ratio {
-        self.spectral_linspace.shift_step()
+        self.linspace.shift_step()
     }
 
     /// Returns an iterator over the spectral frequencies.
@@ -625,7 +626,7 @@ impl Spectrum {
     /// # }
     /// ```
     pub fn frequencies(&self) -> impl Iterator<Item = Frequency> + use<> {
-        self.spectral_linspace.frequencies()
+        self.linspace.frequencies()
     }
 
     /// Returns an iterator over the chemical shifts.
@@ -658,7 +659,7 @@ impl Spectrum {
     /// # }
     /// ```
     pub fn shifts(&self) -> impl Iterator<Item = Ratio> + use<> {
-        self.spectral_linspace.shifts()
+        self.linspace.shifts()
     }
 
     /// Returns the signal intensities of the spectrum as a slice.
@@ -936,7 +937,7 @@ impl Spectrum {
     /// # }
     /// ```
     pub fn set_range(&mut self, range: (Frequency, Frequency)) -> Result<()> {
-        self.spectral_linspace.set_range(range)
+        self.linspace.set_range(range)
     }
 
     /// Sets the larmor frequency.
@@ -976,7 +977,7 @@ impl Spectrum {
     /// # }
     /// ```
     pub fn set_larmor(&mut self, larmor: Frequency) -> Result<()> {
-        self.spectral_linspace.set_larmor(larmor)
+        self.linspace.set_larmor(larmor)
     }
 
     /// Sets the chemical shift reference.
@@ -1042,8 +1043,7 @@ impl Spectrum {
     where
         T: Into<ShiftReference>,
     {
-        self.spectral_linspace
-            .set_shift_reference(reference)
+        self.linspace.set_shift_reference(reference)
     }
 
     /// Sets the chemical shift reference value.
@@ -1076,8 +1076,7 @@ impl Spectrum {
     /// # }
     /// ```
     pub fn set_shift_reference_value(&mut self, shift: Ratio) -> Result<()> {
-        self.spectral_linspace
-            .set_shift_reference_value(shift)?;
+        self.linspace.set_shift_reference_value(shift)?;
 
         Ok(())
     }
@@ -1112,8 +1111,7 @@ impl Spectrum {
     /// # }
     /// ```
     pub fn set_shift_reference_index(&mut self, index: usize) -> Result<()> {
-        self.spectral_linspace
-            .set_shift_reference_index(index)?;
+        self.linspace.set_shift_reference_index(index)?;
 
         Ok(())
     }
@@ -1140,8 +1138,7 @@ impl Spectrum {
     /// # }
     /// ```
     pub fn set_shift_reference_name<T: Into<String>>(&mut self, name: T) {
-        self.spectral_linspace
-            .set_shift_reference_name(name);
+        self.linspace.set_shift_reference_name(name);
     }
 
     /// Clears the name of the chemical shift reference.
@@ -1167,8 +1164,7 @@ impl Spectrum {
     /// # }
     /// ```
     pub fn clear_shift_reference_name(&mut self) {
-        self.spectral_linspace
-            .clear_shift_reference_name();
+        self.linspace.clear_shift_reference_name();
     }
 
     /// Sets the referencing method of the chemical shift reference.
@@ -1196,8 +1192,7 @@ impl Spectrum {
     /// # }
     /// ```
     pub fn set_shift_reference_method<T: Into<ReferencingMethod>>(&mut self, method: T) {
-        self.spectral_linspace
-            .set_shift_reference_method(method);
+        self.linspace.set_shift_reference_method(method);
     }
 
     /// Clears the referencing method of the chemical shift reference of the
@@ -1224,8 +1219,7 @@ impl Spectrum {
     /// # }
     /// ```
     pub fn clear_shift_reference_method(&mut self) {
-        self.spectral_linspace
-            .clear_shift_reference_method();
+        self.linspace.clear_shift_reference_method();
     }
 
     /// Sets the signal boundaries of the `Spectrum`.

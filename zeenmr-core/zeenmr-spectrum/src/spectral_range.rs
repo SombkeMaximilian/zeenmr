@@ -25,16 +25,16 @@ pub type RelativeRange = SpectralRange<f64>;
 /// # Range Types
 ///
 /// Using the following type aliases is recommended for clarity and convenience:
-/// - [`IndexRange`]: A range of `usize` indices into the intensities,
-///   expressed as `[i, j)`, where `i` is inclusive and `j` is exclusive.
-/// - [`FrequencyRange`]: A range of [`Frequency`] values, expressed as
-///   `[f1, f2]`. Both bounds are inclusive and may appear in any order.
+/// - [`IndexRange`]: A range of `usize` indices into the intensities, expressed
+///   as `[i, j)`, where `i` is inclusive and `j` is exclusive.
+/// - [`FrequencyRange`]: A range of [`Frequency`] values, expressed as `[f1,
+///   f2]`. Both bounds are inclusive and may appear in any order.
 /// - [`ChemicalShiftRange`]: A range of chemical shifts as [`Ratio`]s,
 ///   expressed as `[s1, s2]`. Both bounds are inclusive and may appear in any
 ///   order.
-/// - [`RelativeRange`]: A range of relative positions along the spectral
-///   axis, expressed as `[r1, r2]`. Both bounds are inclusive, with values
-///   in the normalized range `[0_f64, 1_f64]` and `r1 < r2`.
+/// - [`RelativeRange`]: A range of relative positions along the spectral axis,
+///   expressed as `[r1, r2]`. Both bounds are inclusive, with values in the
+///   normalized range `[0_f64, 1_f64]` and `r1 < r2`.
 ///
 /// These types each implement [`From<Range<T>>`] or
 /// [`From<RangeInclusive<T>>`] respectively, and [`From<(T, T)>`].
@@ -165,7 +165,7 @@ macro_rules! try_index_range_impls {
     ($T:ty, $to_fractional:ident, $from_index:ident) => {
         impl TryIntoIndexRange for $T {
             fn try_into_index_range(self, spectrum: &Spectrum) -> Result<IndexRange> {
-                let linspace = &spectrum.spectral_linspace;
+                let linspace = &spectrum.linspace;
                 let start = linspace.$to_fractional(self.start)?;
                 let end = linspace.$to_fractional(self.end)?;
 
@@ -179,7 +179,7 @@ macro_rules! try_index_range_impls {
 
         impl TryFromIndexRange for $T {
             fn try_from_index_range(range: IndexRange, spectrum: &Spectrum) -> Result<Self> {
-                let linspace = &spectrum.spectral_linspace;
+                let linspace = &spectrum.linspace;
                 let start = linspace.$from_index(range.start)?;
                 let end = linspace.$from_index(range.end - 1)?;
 
