@@ -7,6 +7,12 @@ mod lorentzian;
 pub use lorentzian::Lorentzian;
 
 mod peak_shape_traits;
-pub use peak_shape_traits::{Evaluate, EvaluateMap, PeakShape, Superposition, SuperpositionMap};
-#[cfg(feature = "rayon")]
-pub use peak_shape_traits::{ParEvaluateMap, ParSuperposition, ParSuperpositionMap};
+pub use peak_shape_traits::{Evaluate, PeakShape};
+
+pub mod iter {
+    //! Iterator adapter traits for peak shapes.
+
+    pub use crate::peak_shape_traits::{EvaluateMap, Superposition, SuperpositionMap};
+    #[cfg(feature = "rayon")]
+    pub use crate::peak_shape_traits::{ParEvaluateMap, ParSuperposition, ParSuperpositionMap};
+}
