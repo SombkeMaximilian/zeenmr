@@ -550,8 +550,8 @@ mod tests {
     #[test]
     fn deserialization_missing_fields() {
         let serialized = [
-            "{\"shift\": 14.0, \"index\": 0}",
-            "{\"shift\": 4.8, \"index\": 16384, \"name\": \"H2O\"}",
+            "{\"shift\": 0.000014, \"index\": 0}",
+            "{\"shift\": 0.0000048, \"index\": 16384, \"name\": \"H2O\"}",
             "{\"shift\": 0.0, \"index\": 12000, \"method\": \"internal\"}",
         ];
         let expected = [
