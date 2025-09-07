@@ -191,7 +191,6 @@ impl From<ReferencingMethod> for String {
 )]
 pub struct ShiftReference {
     /// Chemical shift of the reference.
-    #[cfg_attr(feature = "serde", serde(with = "serialize_shift"))]
     shift: Ratio,
     /// Index within the Spectrum that corresponds to the reference position.
     index: usize,
@@ -207,28 +206,6 @@ pub struct ShiftReference {
         serde(default, skip_serializing_if = "Option::is_none")
     )]
     method: Option<ReferencingMethod>,
-}
-
-// There is probably a better way within uom, but I couldn't find it.
-#[cfg(feature = "serde")]
-mod serialize_shift {
-    use serde::{Deserialize, Deserializer, Serializer};
-    use uom::si::f64::Ratio;
-    use uom::si::ratio::part_per_million as ppm;
-
-    pub(crate) fn serialize<S>(value: &Ratio, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_f64(value.get::<ppm>())
-    }
-
-    pub(crate) fn deserialize<'de, D>(deserializer: D) -> Result<Ratio, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        f64::deserialize(deserializer).map(Ratio::new::<ppm>)
-    }
 }
 
 impl From<Ratio> for ShiftReference {
