@@ -765,6 +765,8 @@ impl Spectrum {
     ///   axis, expressed as `[r1, r2]`. Both bounds are inclusive, with values
     ///   in the normalized range `[0_f64, 1_f64]`.
     ///
+    /// [`RelativeRange`]: crate::RelativeRange
+    ///
     /// # Errors
     ///
     /// Infallible under normal circumstances, but it is possible to create
@@ -1365,6 +1367,8 @@ impl Spectrum {
     /// - [`RelativeRange`]: A range of relative positions along the spectral
     ///   axis, expressed as `[r1, r2]`. Both bounds are inclusive, with values
     ///   in the normalized range `[0_f64, 1_f64]`.
+    ///
+    /// [`RelativeRange`]: crate::RelativeRange
     ///
     /// These types each implement [`From<Range<T>>`] or
     /// [`From<RangeInclusive<T>>`] respectively, and [`From<(T, T)>`].
