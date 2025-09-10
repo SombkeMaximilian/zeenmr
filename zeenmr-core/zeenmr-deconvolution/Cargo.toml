@@ -22,7 +22,16 @@ categories = [
     "data-structures",
 ]
 
+[features]
+default = []
+rayon = ["dep:rayon"]
+
 [dependencies]
+zeenmr-spectrum = { workspace = true }
+zeenmr-peakshape = { workspace = true }
+
+num-traits = { workspace = true }
+rayon = { workspace = true, optional = true }
 
 [lints]
 workspace = true
