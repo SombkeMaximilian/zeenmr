@@ -5,6 +5,26 @@ use std::borrow::Borrow;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+/// Moving average filter that smooths a sequence of values by averaging them
+/// over a sliding window.
+///
+/// # Edge Handling
+///
+/// The window is centered around the current value. To handle the edges of the
+/// input sequence, the window starts at half its size (rounded up) at the left
+/// edge and grows to its full size when there are enough values to the left of
+/// the current value. For example, with a window size of 5 (window center
+/// marked by `x`, extent marked by `-`):
+///
+/// | Index  | 0   | 1   | 2   | 3   | 4   | 5   | 6   |
+/// | ------ | --- | --- | --- | --- | --- | --- | --- |
+/// | Step 1 | x   | -   | -   |     |     |     |     |
+/// | Step 2 | -   | x   | -   | -   |     |     |     |
+/// | Step 3 | -   | -   | x   | -   | -   |     |     |
+/// | Step 4 |     | -   | -   | x   | -   | -   |     |
+/// | Step 5 |     |     | -   | -   | x   | -   | -   |
+/// | Step 6 |     |     |     | -   | -   | x   | -   |
+/// | Step 7 |     |     |     |     | -   | -   | x   |
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MovingAverage {
@@ -70,6 +90,8 @@ impl Default for MovingAverage {
 }
 
 impl MovingAverage {
+    /// Creates a new `MovingAverage` filter with the specified number of
+    /// iterations and window size.
     pub fn new(iterations: usize, window_size: usize) -> Self {
         Self {
             iterations,
