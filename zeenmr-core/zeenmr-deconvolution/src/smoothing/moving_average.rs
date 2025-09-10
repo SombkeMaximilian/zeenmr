@@ -2,7 +2,11 @@ use crate::smoothing::{CircularBuffer, Smooth};
 use num_traits::Float;
 use std::borrow::Borrow;
 
-#[derive(Copy, Clone, Debug)]
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MovingAverage {
     /// Number of iterations to apply the filter.
     iterations: usize,
