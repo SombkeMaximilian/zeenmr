@@ -18,7 +18,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// metadata within one of the files is missing.
 ///
 /// See the [`Kind`] enum for the different kinds of errors that can occur.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct Error {
     /// `Kind` of error that occurred.
     kind: Kind,
@@ -34,7 +34,7 @@ pub struct Error {
 ///
 /// [`Spectrum`]: crate::Spectrum
 #[non_exhaustive]
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub enum Kind {
     /// Received a non-finite float value.
     ///
