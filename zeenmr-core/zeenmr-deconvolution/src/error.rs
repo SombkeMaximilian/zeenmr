@@ -52,10 +52,7 @@ pub enum Kind {
 
 impl From<Kind> for Error {
     fn from(kind: Kind) -> Self {
-        Self {
-            kind,
-            source: None,
-        }
+        Self { kind, source: None }
     }
 }
 
