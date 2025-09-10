@@ -4,6 +4,8 @@ use std::sync::Arc;
 
 /// A specialized [`Result`] type.
 ///
+/// [`Result`]: std::result::Result
+///
 /// This type alias avoids writing out `Result<T, zeenmr_spectrum::Error>`
 /// directly, and is broadly used across the library.
 pub type Result<T> = std::result::Result<T, Error>;
