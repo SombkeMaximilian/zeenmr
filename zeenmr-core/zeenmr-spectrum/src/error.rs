@@ -105,8 +105,8 @@ impl std::error::Error for Error {
     }
 }
 
-impl core::fmt::Display for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let description = match self.kind() {
             Kind::NonFiniteFloat => "non-finite float value received".to_string(),
             Kind::EmptyData => "intensities are empty".to_string(),
