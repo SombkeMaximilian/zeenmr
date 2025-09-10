@@ -16,7 +16,7 @@ pub struct Deconvoluter<F, P, SM, PF, FT> {
 
 impl<F, P, SM, PF, FT> Deconvoluter<F, P, SM, PF, FT>
 where
-    F: Copy + Float,
+    F: Float,
     P: PeakShape,
     SM: Smooth<F> + Send + Sync,
     PF: FindPeaks<F> + Send + Sync,

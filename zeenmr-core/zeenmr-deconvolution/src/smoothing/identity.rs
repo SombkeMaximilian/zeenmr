@@ -8,7 +8,7 @@ pub struct Identity;
 
 impl<F> Smooth<F> for Identity
 where
-    F: Copy + Float,
+    F: Float,
 {
     fn smooth<I>(&self, data: I) -> Vec<F>
     where

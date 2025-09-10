@@ -4,7 +4,7 @@ use std::borrow::Borrow;
 /// Trait for smoothing algorithms that process a sequence of values.
 pub trait Smooth<F>
 where
-    F: Copy + Float,
+    F: Float,
 {
     /// Smooth the provided data and return an iterator over the smoothed
     /// values.
