@@ -15,7 +15,7 @@ where
         I: IntoIterator,
         I::Item: Borrow<F>,
     {
-        data.into_iter()
+        data.into_iter().map(|value| *value.borrow())
     }
 }
 
