@@ -9,6 +9,7 @@ use std::collections::VecDeque;
 /// case, the smoothing part of the deconvolution pipeline takes up a small
 /// fraction of the total runtime. Any further optimization would likely not
 /// yield any significant improvements.
+#[derive(Clone, Debug)]
 pub(crate) struct CircularBuffer<T> {
     /// Wrapper around a double-ended queue to store the elements.
     buffer: VecDeque<T>,
