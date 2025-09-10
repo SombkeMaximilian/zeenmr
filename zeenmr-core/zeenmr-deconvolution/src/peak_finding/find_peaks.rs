@@ -9,12 +9,10 @@ where
 {
     /// Finds peaks in the given smoothed signal within the specified bounds,
     /// optionally ignoring certain regions.
-    fn find_peaks<I>(
+    fn find_peaks(
         &self,
-        smoothed: I,
+        smoothed: Vec<F>,
         bounds: IndexRange,
         ignore: Option<&[IndexRange]>,
-    ) -> impl Iterator<Item = Peak>
-    where
-        I: IntoIterator<Item = F>;
+    ) -> impl Iterator<Item = Peak>;
 }
