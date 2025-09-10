@@ -1,6 +1,6 @@
-use std::borrow::Borrow;
 use crate::smoothing::Smooth;
 use num_traits::Float;
+use std::borrow::Borrow;
 
 /// No-op smoother that does not modify the input values.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
@@ -10,7 +10,7 @@ impl<F> Smooth<F> for Identity
 where
     F: Copy + Float,
 {
-    fn smooth<I>(&self, data: I) -> impl Iterator<Item=F>
+    fn smooth<I>(&self, data: I) -> impl Iterator<Item = F>
     where
         I: IntoIterator,
         I::Item: Borrow<F>,

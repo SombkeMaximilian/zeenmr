@@ -24,6 +24,10 @@ impl Peak {
     pub fn new(left: usize, center: usize, right: usize) -> Self {
         debug_assert!(left < center && center < right);
 
-        Self { left, center, right }
+        Self {
+            left,
+            center,
+            right,
+        }
     }
 }

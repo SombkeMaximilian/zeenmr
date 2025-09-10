@@ -15,7 +15,11 @@ where
         I: Iterator<Item = usize>;
 
     #[cfg(feature = "rayon")]
-    fn par_fit_peak_shapes<I>(&self, spectrum: &Spectrum, peaks: I) -> impl ParallelIterator<Item = P>
+    fn par_fit_peak_shapes<I>(
+        &self,
+        spectrum: &Spectrum,
+        peaks: I,
+    ) -> impl ParallelIterator<Item = P>
     where
         I: IntoParallelIterator<Item = usize>;
 }
