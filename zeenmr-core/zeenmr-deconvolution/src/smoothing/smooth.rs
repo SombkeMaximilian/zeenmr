@@ -6,7 +6,8 @@ pub trait Smooth<F>
 where
     F: Copy + Float,
 {
-    /// Smooth the provided data in place.
+    /// Smooth the provided data and return an iterator over the smoothed
+    /// values.
     fn smooth<I>(&self, data: I) -> impl Iterator<Item = F>
     where
         I: IntoIterator,
