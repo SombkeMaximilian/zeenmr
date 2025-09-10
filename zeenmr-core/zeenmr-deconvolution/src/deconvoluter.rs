@@ -2,6 +2,7 @@ use crate::fitting::FitPeakShapes;
 use crate::peak_finding::FindPeaks;
 use crate::smoothing::Smooth;
 use num_traits::Float;
+use std::iter::Sum;
 use std::marker::PhantomData;
 use zeenmr_peakshape::PeakShape;
 
@@ -16,7 +17,7 @@ pub struct Deconvoluter<F, P, SM, PF, FT> {
 
 impl<F, P, SM, PF, FT> Deconvoluter<F, P, SM, PF, FT>
 where
-    F: Float,
+    F: Float + Sum,
     P: PeakShape,
     SM: Smooth<F> + Send + Sync,
     PF: FindPeaks<F> + Send + Sync,
