@@ -38,7 +38,7 @@ impl<F> Smooth<F> for MovingAverage
 where
     F: Copy + Float,
 {
-    fn smooth<I>(&self, data: I) -> impl Iterator<Item = F>
+    fn smooth<I>(&self, data: I) -> Vec<F>
     where
         I: IntoIterator,
         I::Item: Borrow<F>,
@@ -76,7 +76,7 @@ where
             cache.clear();
         }
 
-        data.into_iter()
+        data
     }
 }
 

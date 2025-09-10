@@ -8,7 +8,7 @@ where
 {
     /// Smooth the provided data and return an iterator over the smoothed
     /// values.
-    fn smooth<I>(&self, data: I) -> impl Iterator<Item = F>
+    fn smooth<I>(&self, data: I) -> Vec<F>
     where
         I: IntoIterator,
         I::Item: Borrow<F>;

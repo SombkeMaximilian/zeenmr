@@ -10,12 +10,12 @@ impl<F> Smooth<F> for Identity
 where
     F: Copy + Float,
 {
-    fn smooth<I>(&self, data: I) -> impl Iterator<Item = F>
+    fn smooth<I>(&self, data: I) -> Vec<F>
     where
         I: IntoIterator,
         I::Item: Borrow<F>,
     {
-        data.into_iter().map(|value| *value.borrow())
+        data.into_iter().map(|value| *value.borrow()).collect()
     }
 }
 
