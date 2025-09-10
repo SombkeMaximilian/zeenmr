@@ -14,11 +14,6 @@ pub type Result<T> = std::result::Result<T, Error>;
 ///
 /// [`Spectrum`]: crate::Spectrum
 ///
-/// This type of error is generally unrecoverable and indicates a problem with
-/// the input data itself or the file format it is stored in. For example, the
-/// input data is empty, a file of the Bruker TopSpin format is missing, or
-/// metadata within one of the files is missing.
-///
 /// See the [`Kind`] enum for the different kinds of errors that can occur.
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct Error {
