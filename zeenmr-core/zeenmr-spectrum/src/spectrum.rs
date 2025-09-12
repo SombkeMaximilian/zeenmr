@@ -647,6 +647,67 @@ impl Spectrum {
         self.linspace.shift_step()
     }
 
+    /// Maps an index to its corresponding frequency value within the spectral
+    /// axis.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the index is out of bounds.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use float_cmp::assert_approx_eq;
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
+    /// use zeenmr_spectrum::Spectrum;
+    ///
+    /// # fn main() -> zeenmr_spectrum::error::Result<()> {
+    /// let spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
+    /// assert_approx_eq!(f64, spectrum.index_to_freq(1)?.get::<hertz>(), 6000.0);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn index_to_freq(&self, index: usize) -> Result<Frequency> {
+        self.linspace.index_to_freq(index)
+    }
+
+    /// Maps an index to its corresponding chemical shift value within the
+    /// spectral axis.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the index is out of bounds.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use float_cmp::assert_approx_eq;
+    /// use num_traits::Zero;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
+    /// use uom::si::ratio::part_per_million as ppm;
+    /// use zeenmr_spectrum::Spectrum;
+    ///
+    /// # fn main() -> zeenmr_spectrum::error::Result<()> {
+    /// let spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
+    /// assert_approx_eq!(f64, spectrum.index_to_shift(1)?.get::<ppm>(), 10.0);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn index_to_shift(&self, index: usize) -> Result<Ratio> {
+        self.linspace.index_to_shift(index)
+    }
+
     /// Returns an iterator over the spectral frequencies.
     ///
     /// A new iterator is created each time this method is called, only
