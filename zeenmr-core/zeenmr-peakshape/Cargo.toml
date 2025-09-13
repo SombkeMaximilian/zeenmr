@@ -26,7 +26,6 @@ rayon = ["dep:rayon"]
 serde = ["dep:serde"]
 
 [dependencies]
-num-traits = { workspace = true }
 rayon = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 
