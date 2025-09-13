@@ -3,16 +3,19 @@
 
 //! Data structures for representing and manipulating NMR peak shapes.
 
-mod lorentzian;
-pub use lorentzian::Lorentzian;
+mod peak_shape;
+pub use peak_shape::PeakShape;
 
-mod peak_shape_traits;
-pub use peak_shape_traits::{Evaluate, PeakShape};
+mod evaluate;
+pub use evaluate::Evaluate;
 
 pub mod iter {
     //! Iterator adapter traits for peak shapes.
 
-    pub use crate::peak_shape_traits::{EvaluateMap, Superposition, SuperpositionMap};
+    pub use crate::evaluate::{EvaluateMap, Superposition, SuperpositionMap};
     #[cfg(feature = "rayon")]
-    pub use crate::peak_shape_traits::{ParEvaluateMap, ParSuperposition, ParSuperpositionMap};
+    pub use crate::evaluate::{ParEvaluateMap, ParSuperposition, ParSuperpositionMap};
 }
+
+mod lorentzian;
+pub use lorentzian::Lorentzian;

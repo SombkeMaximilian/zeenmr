@@ -1,11 +1,6 @@
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
-/// Marker trait for types that can represent peak shapes in spectral data.
-pub trait PeakShape: Evaluate {}
-
-impl<E> PeakShape for E where E: Evaluate {}
-
 /// Trait for mathematical functions that can be evaluated at a given point.
 ///
 /// # Example
@@ -422,9 +417,9 @@ mod tests {
 
     #[test]
     fn traits() {
-        assert_impl_all!(Power: PeakShape, Send, Sync);
-        assert_impl_all!(&Power: PeakShape, Send, Sync);
-        assert_impl_all!(&mut Power: PeakShape, Send, Sync);
+        assert_impl_all!(Power: Evaluate, Send, Sync);
+        assert_impl_all!(&Power: Evaluate, Send, Sync);
+        assert_impl_all!(&mut Power: Evaluate, Send, Sync);
         assert_impl_all!(std::vec::IntoIter<Power>: Superposition);
         assert_impl_all!(std::vec::IntoIter<f64>: EvaluateMap, SuperpositionMap);
     }
