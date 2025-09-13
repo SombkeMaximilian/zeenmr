@@ -35,10 +35,7 @@ where
             })
             .collect();
 
-        Self {
-            peaks,
-            intensities,
-        }
+        Self { peaks, intensities }
     }
 
     /// Returns the positions of the intensities in the original [`Spectrum`].
