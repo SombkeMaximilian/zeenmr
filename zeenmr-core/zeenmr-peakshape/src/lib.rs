@@ -6,6 +6,8 @@
 mod peak_shape;
 pub use peak_shape::PeakShape;
 
+pub mod estimate;
+
 mod evaluate;
 pub use evaluate::Evaluate;
 
