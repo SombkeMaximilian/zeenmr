@@ -51,11 +51,11 @@ where
 /// Extension trait for iterators of [`Evaluate`] types that provides
 /// superposition of their function values.
 ///
-/// Given a family of functions `(f_i)_(i=1...n)`, their **superposition**
-/// `F` at a point `x` is defined as the sum of the individual evaluations:
+/// Given a family of functions `(fᵢ)`, where `i≤n`, their **superposition** `F`
+/// at a point `x` is defined as the sum of the individual evaluations:
 ///
 /// ```text
-/// F(x) = f_1(x) + f_2(x) + ... + f_n(x)
+/// F(x) = f₁(x) + f₂(x) + ... + fₙ(x)
 /// ```
 ///
 /// This is analogous to [`Iterator::sum`], but instead of summing the items
@@ -104,11 +104,11 @@ where
 /// Extension trait for parallel iterators of [`Evaluate`] types that provides
 /// superposition of their function values.
 ///
-/// Given a family of functions `(f_i)_(i=1...n)`, their **superposition**
-/// `F` at a point `x` is defined as the sum of the individual evaluations:
+/// Given a family of functions `(fᵢ)`, where `i≤n`, their **superposition** `F`
+/// at a point `x` is defined as the sum of the individual evaluations:
 ///
 /// ```text
-/// F(x) = f_1(x) + f_2(x) + ... + f_n(x)
+/// F(x) = f₁(x) + f₂(x) + ... + fₙ(x)
 /// ```
 ///
 /// This is the parallel analogue of [`Superposition`], powered by [rayon].
@@ -162,11 +162,11 @@ where
 /// through an [`Evaluate`] implementation.
 ///
 /// Given a function `f` implementing [`Evaluate`] and a sequence of input
-/// values `(x_i)_(i=1...n)`, this adaptor produces an iterator of the
+/// values `(xᵢ)`, where `i≤n`, this adaptor produces an iterator of the
 /// corresponding evaluations:
 ///
 /// ```text
-/// { f(x_1), f(x_2), ..., f(x_n) }
+/// { f(x₁), f(x₂), ..., f(xₙ) }
 /// ```
 ///
 /// This is analogous to [`Iterator::map`], but uses the provided evaluator
@@ -220,11 +220,11 @@ where
 /// them through an [`Evaluate`] implementation in parallel.
 ///
 /// Given a function `f` implementing [`Evaluate`] and a sequence of input
-/// values `(x_i)_(i=1...n)`, this adaptor produces a parallel iterator of the
+/// values `(xᵢ)`, where `i≤n`, this adaptor produces a parallel iterator of the
 /// corresponding evaluations:
 ///
 /// ```text
-/// { f(x_1), f(x_2), ..., f(x_n) }
+/// { f(x₁), f(x₂), ..., f(xₙ) }
 /// ```
 ///
 /// This is the parallel analogue of [`EvaluateMap`], powered by [rayon].
@@ -281,13 +281,13 @@ where
 /// Extension trait for iterators of `f64` values that allows mapping them
 /// through the **superposition** of evaluators.
 ///
-/// Given a family of functions `(f_j)_(j=1...m)` and a sequence of input
-/// values `(x_i)_(i=1...n)`, this adaptor produces an iterator of their
+/// Given a family of functions `(fⱼ)`, where `j≤m`, and a sequence of input
+/// values `(xᵢ)`, where `i≤n`, this adaptor produces an iterator of their
 /// superpositions:
 ///
 /// ```text
-/// { F(x_1), F(x_2), ..., F(x_n) }
-/// with   F(x_i) = f_1(x_i) + f_2(x_i) + ... + f_m(x_i)
+/// { F(x₁), F(x₂), ..., F(xₙ) }
+/// with   F(xᵢ) = f₁(xᵢ) + f₂(xᵢ) + ... + fₘ(xᵢ)
 /// ```
 ///
 /// This combines the behaviors of [`EvaluateMap`] and [`Superposition`]:
@@ -342,13 +342,13 @@ where
 /// Extension trait for parallel iterators of `f64` values that allows mapping
 /// them through the **superposition** of multiple evaluators in parallel.
 ///
-/// Given a family of functions `(f_j)_(j=1...m)` and a sequence of input
-/// values `(x_i)_(i=1...n)`, this adaptor produces a parallel iterator of
+/// Given a family of functions `(fⱼ)`, where `j≤m`, and a sequence of input
+/// values `(xᵢ)`, where `i≤n`, this adaptor produces a parallel iterator of
 /// their superpositions:
 ///
 /// ```text
-/// { F(x_1), F(x_2), ..., F(x_n) }
-/// with   F(x_i) = f_1(x_i) + f_2(x_i) + ... + f_m(x_i)
+/// { F(x₁), F(x₂), ..., F(xₙ) }
+/// with   F(xᵢ) = f₁(xᵢ) + f₂(xᵢ) + ... + fₘ(xᵢ)
 /// ```
 ///
 /// This is the parallel analogue of [`SuperpositionMap`], powered by [`rayon`].
