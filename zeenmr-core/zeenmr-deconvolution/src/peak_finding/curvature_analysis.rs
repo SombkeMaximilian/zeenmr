@@ -1,7 +1,5 @@
 use crate::error::{Error, Result};
 use crate::peak_finding::{FindPeaks, Peak};
-use num_traits::Float;
-use std::iter::Sum;
 use std::ops::RangeBounds;
 use zeenmr_spectrum::IndexRange;
 
@@ -77,12 +75,9 @@ use serde::{Deserialize, Serialize};
 /// | Step 4                   |    | -  | x  | -  |    |    |   |
 /// | Step 5                   | -  | x  | -  |    |    |    |   |
 #[derive(Debug)]
-struct CurvatureDetector<'a, F>(&'a [F]);
+struct CurvatureDetector<'a>(&'a [f64]);
 
-impl<F> CurvatureDetector<'_, F>
-where
-    F: Float,
-{
+impl CurvatureDetector<'_> {
     /// Detects peaks in the signal based on the second derivative.
     ///
     /// # Errors
@@ -95,7 +90,7 @@ where
             .windows(3)
             .enumerate()
             .filter_map(|(i, w)| {
-                if w[1] < F::zero() && w[1] < w[0] && w[1] < w[2] {
+                if w[1] < 0.0 && w[1] < w[0] && w[1] < w[2] {
                     let center = i + 2;
                     let left = center - self.find_left_offset(&self.0[..center]);
                     let right = center + self.find_right_offset(&self.0[center - 1..]);
@@ -124,21 +119,21 @@ where
     /// Finds the left bound's offset from the peak center.
     ///
     /// See also: [Left Bound](CurvatureDetector#left)
-    fn find_left_offset(&self, second_derivative_left: &[F]) -> usize {
+    fn find_left_offset(&self, second_derivative_left: &[f64]) -> usize {
         second_derivative_left
             .windows(3)
             .rev()
-            .position(|w| w[1] > w[2] && (w[1] >= w[0] || (w[1] < F::zero() && w[0] >= F::zero())))
+            .position(|w| w[1] > w[2] && (w[1] >= w[0] || (w[1] < 0.0 && w[0] >= 0.0)))
             .map_or(second_derivative_left.len(), |left| left + 1)
     }
 
     /// Finds the right bound's offset from the peak center.
     ///
     /// See also: [Right Bound](CurvatureDetector#right)
-    fn find_right_offset(&self, second_derivative_right: &[F]) -> usize {
+    fn find_right_offset(&self, second_derivative_right: &[f64]) -> usize {
         second_derivative_right
             .windows(3)
-            .position(|w| w[1] > w[0] && (w[1] >= w[2] || (w[1] < F::zero() && w[2] >= F::zero())))
+            .position(|w| w[1] > w[0] && (w[1] >= w[2] || (w[1] < 0.0 && w[2] >= 0.0)))
             .map_or(second_derivative_right.len(), |right| right + 1)
     }
 }
@@ -151,22 +146,19 @@ where
 /// The score is computed as the minimum of the sums of the absolute second
 /// derivative values within bounds on both sides of the peak center.
 #[derive(Debug)]
-struct CurvatureScore<'a, F>(&'a [F]);
+struct CurvatureScore<'a>(&'a [f64]);
 
-impl<F> CurvatureScore<'_, F>
-where
-    F: Float + Sum,
-{
+impl CurvatureScore<'_> {
     /// Scores the given peak.
-    fn score_peak(&self, peak: &Peak) -> F {
-        let left_sum: F = self.0[peak.left - 1..peak.center]
+    fn score_peak(&self, peak: &Peak) -> f64 {
+        let left_sum = self.0[peak.left - 1..peak.center]
             .iter()
             .copied()
-            .sum();
-        let right_sum: F = self.0[peak.center - 1..peak.right]
+            .sum::<f64>();
+        let right_sum = self.0[peak.center - 1..peak.right]
             .iter()
             .copied()
-            .sum();
+            .sum::<f64>();
 
         left_sum.min(right_sum)
     }
@@ -193,25 +185,22 @@ where
 /// derivative values within bounds on both sides of the peak center.
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct CurvatureAnalysis<F> {
+pub struct CurvatureAnalysis {
     /// Score threshold for peak filtering.
-    threshold: Option<F>,
+    threshold: Option<f64>,
 }
 
-impl<F> FindPeaks<F> for CurvatureAnalysis<F>
-where
-    F: Float + Sum,
-{
+impl FindPeaks for CurvatureAnalysis {
     fn find_peaks(
         &self,
-        smoothed: Vec<F>,
+        smoothed: Vec<f64>,
         signal: IndexRange,
         ignore: Option<&[IndexRange]>,
     ) -> Result<Vec<Peak>> {
         let mut second_derivative = smoothed
             .windows(3)
-            .map(|w| w[0] - w[1] - w[1] + w[2])
-            .collect::<Vec<F>>();
+            .map(|w| w[0] - 2.0 * w[1] + w[2])
+            .collect::<Vec<f64>>();
         let mut peaks = CurvatureDetector(&second_derivative).detect_peaks()?;
         if let Some(ignore) = ignore {
             peaks.retain(|peak| {
@@ -237,7 +226,7 @@ where
             .iter()
             .chain(peaks[bounds.end..].iter())
             .map(|peak| scorer.score_peak(peak))
-            .collect::<Vec<F>>();
+            .collect::<Vec<f64>>();
         let (mean, std_dev) = Self::mean_sd_scores(scores_sfr);
         if let Some(threshold) = self.threshold {
             peaks = peaks
@@ -253,16 +242,13 @@ where
     }
 }
 
-impl<F> Default for CurvatureAnalysis<F> {
+impl Default for CurvatureAnalysis {
     fn default() -> Self {
-        Self { threshold: None }
+        Self { threshold: Some(5.0) }
     }
 }
 
-impl<F> CurvatureAnalysis<F>
-where
-    F: Float + Sum,
-{
+impl CurvatureAnalysis {
     /// Creates a new `CurvatureAnalysis` with the given score threshold.
     ///
     /// # Example
@@ -273,7 +259,7 @@ where
     /// let finder_with_filter = CurvatureAnalysis::<f64>::new(Some(5.0));
     /// let finder_without_filter = CurvatureAnalysis::<f64>::new(None);
     /// ```
-    pub fn new(threshold: Option<F>) -> Self {
+    pub fn new(threshold: Option<f64>) -> Self {
         Self { threshold }
     }
 
@@ -293,13 +279,13 @@ where
     }
 
     /// Computes the mean and standard deviation of a vector of scores.
-    fn mean_sd_scores(scores: Vec<F>) -> (F, F) {
-        let mean = scores.iter().copied().sum::<F>() / F::from(scores.len()).unwrap();
+    fn mean_sd_scores(scores: Vec<f64>) -> (f64, f64) {
+        let mean = scores.iter().copied().sum::<f64>() / (scores.len() as f64);
         let variance = scores
             .iter()
             .map(|score| (*score - mean).powi(2))
-            .sum::<F>()
-            / F::from(scores.len()).unwrap();
+            .sum::<f64>()
+            / (scores.len() as f64);
 
         (mean, variance.sqrt())
     }

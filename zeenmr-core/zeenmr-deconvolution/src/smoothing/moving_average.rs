@@ -1,5 +1,4 @@
 use crate::smoothing::{CircularBuffer, Smooth};
-use num_traits::Float;
 use std::borrow::Borrow;
 
 #[cfg(feature = "serde")]
@@ -34,25 +33,22 @@ pub struct MovingAverage {
     window_size: usize,
 }
 
-impl<F> Smooth<F> for MovingAverage
-where
-    F: Float,
-{
-    fn smooth<I>(&self, data: I) -> Vec<F>
+impl Smooth for MovingAverage {
+    fn smooth<I>(&self, data: I) -> Vec<f64>
     where
         I: IntoIterator,
-        I::Item: Borrow<F>,
+        I::Item: Borrow<f64>,
     {
         let mut data = data
             .into_iter()
             .map(|value| *value.borrow())
-            .collect::<Vec<F>>();
-        let mut cache = CircularBuffer::<F>::new(self.window_size);
+            .collect::<Vec<f64>>();
+        let mut cache = CircularBuffer::<f64>::new(self.window_size);
         let half_window = self.window_size / 2;
         let len = data.len();
         for _ in 0..self.iterations {
-            let mut div = F::one();
-            let mut sum = F::zero();
+            let mut div = 1.0;
+            let mut sum = 0.0;
             for value in data.iter().take(half_window) {
                 cache.push(*value);
                 sum = sum + *value;
@@ -62,14 +58,14 @@ where
                 if let Some(popped) = cache.push(data[i + half_window]) {
                     sum = sum - popped;
                 } else {
-                    div = F::one() / F::from(cache.len()).unwrap();
+                    div = 1.0 / cache.len() as f64;
                 };
                 data[i] = sum * div;
             }
             for value in data[(len - half_window)..].iter_mut() {
                 if let Some(popped) = cache.pop() {
                     sum = sum - popped;
-                    div = F::one() / F::from(cache.len()).unwrap();
+                    div = 1.0 / cache.len() as f64;
                     *value = sum * div;
                 }
             }
