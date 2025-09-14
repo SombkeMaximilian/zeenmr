@@ -536,7 +536,7 @@ impl Spectrum {
     /// # }
     /// ```
     pub fn shift_width(&self) -> Ratio {
-        self.linspace.width_ppm()
+        self.linspace.shift_width()
     }
 
     /// Returns the central frequency of the spectral axis.
