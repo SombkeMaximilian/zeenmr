@@ -1,7 +1,7 @@
 use crate::Evaluate;
 
 /// Marker trait for types that can represent peak shapes in spectral data.
-pub trait PeakShape: Evaluate {}
+pub trait PeakShape: Evaluate + Center + Maximum + Width + Area {}
 
 impl<P> PeakShape for P where P: Evaluate + Center + Maximum + Width + Area {}
 
