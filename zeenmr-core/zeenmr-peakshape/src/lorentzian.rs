@@ -1,5 +1,5 @@
-use crate::{Area, Center, Evaluate, Maximum, Width};
 use crate::estimate::ThreePointStencil;
+use crate::{Area, Center, Evaluate, Maximum, Width};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -155,6 +155,7 @@ impl ThreePointStencil for Lorentzian {
 }
 
 impl Lorentzian {
+    /// Creates a new [`Lorentzian`] with the specified parameters.
     pub fn new(amp: f64, hwhm: f64, center: f64) -> Self {
         Self {
             amp_scale: amp * hwhm,
