@@ -203,9 +203,9 @@ where
                 });
         }
         peak_shapes.retain(|peak_shape| {
-                peak_shape.maximum() > crate::CHECK_PRECISION
-                    && peak_shape.half_width() > crate::CHECK_PRECISION
-                    && peak_shape.area() > crate::CHECK_PRECISION
+            peak_shape.maximum() > crate::CHECK_PRECISION
+                && peak_shape.half_width() > crate::CHECK_PRECISION
+                && peak_shape.area() > crate::CHECK_PRECISION
         });
 
         peak_shapes.into_par_iter()
