@@ -1,9 +1,8 @@
 use crate::estimate::ThreePointStencil;
-use crate::{Area, Center, Evaluate, Maximum, Width};
+use crate::{Area, Center, CheckPrecision, Evaluate, Maximum, Width};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use crate::peak_shape::PrecisionCheck;
 
 /// Represents a [Lorentzian] peak shape.
 ///
@@ -132,7 +131,7 @@ impl Area for Lorentzian {
     }
 }
 
-impl PrecisionCheck for Lorentzian {
+impl CheckPrecision for Lorentzian {
     fn parameters_below(&self, precision: f64) -> bool {
         self.amp_scale.abs() < precision || self.scale2.abs() < precision
     }

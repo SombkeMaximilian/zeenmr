@@ -1,9 +1,9 @@
 use crate::Evaluate;
 
 /// Marker trait for types that can represent peak shapes in spectral data.
-pub trait PeakShape: Evaluate + Center + Maximum + Width + Area + PrecisionCheck {}
+pub trait PeakShape: Evaluate + Center + Maximum + Width + Area + CheckPrecision {}
 
-impl<P> PeakShape for P where P: Evaluate + Center + Maximum + Width + Area + PrecisionCheck {}
+impl<P> PeakShape for P where P: Evaluate + Center + Maximum + Width + Area + CheckPrecision {}
 
 /// Trait for the center of a peak shape.
 pub trait Center {
@@ -48,7 +48,7 @@ pub trait Area {
 ///
 /// This trait should **not** check if a position parameter is below the
 /// precision, as positions can validly be near zero.
-pub trait PrecisionCheck {
+pub trait CheckPrecision {
     /// Checks if any of the peak shape's parameters are below the given
     /// precision.
     fn parameters_below(&self, precision: f64) -> bool;
