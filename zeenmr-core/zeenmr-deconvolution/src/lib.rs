@@ -4,6 +4,9 @@
 //! Data structures and algorithms for deconstructing NMR spectra into their
 //! constituent component signals.
 
+/// Small constant to check for non-zero parameters.
+pub(crate) const CHECK_PRECISION: f64 = 1.0e+3 * f64::EPSILON;
+
 pub mod error;
 
 pub mod fitting;

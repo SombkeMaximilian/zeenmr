@@ -1,42 +1,236 @@
+use crate::fitting::FitPeakShapes;
 use crate::peak_finding::Peak;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use std::marker::PhantomData;
+use uom::si::ratio::part_per_million as ppm;
+use zeenmr_peakshape::PeakShape;
+use zeenmr_peakshape::estimate::ThreePointStencil;
+use zeenmr_peakshape::iter::SuperpositionMap;
 use zeenmr_spectrum::Spectrum;
+
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
+
+#[cfg(feature = "rayon")]
+use zeenmr_peakshape::iter::ParSuperpositionMap;
 
 /// A reduced representation of a spectrum that only contains the data points
 /// that are part of peaks.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct ReducedSpectrum {
-    /// Peaks found in the original spectrum.
-    peaks: Vec<Peak>,
+    /// Chemical shifts that are part of the peaks in ppm.
+    shifts: Vec<f64>,
     /// Intensity values that are part of the peaks.
-    intensities: Vec<(f64, f64, f64)>,
+    intensities: Vec<f64>,
 }
 
 impl ReducedSpectrum {
     /// Extracts the positions and intensities of the peaks from the spectrum
     /// and constructs a `ReducedSpectrum` from them.
-    fn new<I>(spectrum: &Spectrum, peaks: Vec<Peak>) -> Self {
-        let intensities = peaks
-            .iter()
-            .map(|peak| {
+    fn new<I>(spectrum: &Spectrum, peaks: I) -> Self
+    where
+        I: IntoIterator<Item = Peak>,
+    {
+        let (shifts, intensities) = peaks
+            .into_iter()
+            .flat_map(|peak| [peak.left, peak.center, peak.right])
+            .map(|index| {
                 (
-                    spectrum.intensities()[peak.left],
-                    spectrum.intensities()[peak.center],
-                    spectrum.intensities()[peak.right],
+                    // unwrapping is safe here because peak indices are always valid
+                    spectrum
+                        .index_to_shift(index)
+                        .unwrap()
+                        .get::<ppm>(),
+                    spectrum.intensities()[index],
                 )
             })
-            .collect();
+            .unzip::<_, _, Vec<_>, Vec<_>>();
 
-        Self { peaks, intensities }
+        Self {
+            shifts,
+            intensities,
+        }
     }
 
-    /// Returns the positions of the intensities in the original [`Spectrum`].
-    fn peaks(&self) -> &[Peak] {
-        &self.peaks
+    /// Returns an iterator over the peak stencils in the reduced spectrum.
+    fn stencils(&self) -> impl Iterator<Item = PeakStencil> {
+        self.shifts
+            .chunks(3)
+            .zip(self.intensities.chunks(3))
+            .map(|(shifts, intensities)| {
+                let mut stencil = PeakStencil {
+                    shifts: (shifts[0], shifts[1], shifts[2]),
+                    intensities: (intensities[0], intensities[1], intensities[2]),
+                };
+                stencil.mirror_shoulder();
+
+                stencil
+            })
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+struct PeakStencil {
+    /// Chemical shifts of the three points in ppm.
+    shifts: (f64, f64, f64),
+    /// Intensity values of the three points.
+    intensities: (f64, f64, f64),
+}
+
+impl PeakStencil {
+    /// Mirrors the left/right data points onto the right/left data point if the
+    /// intensities are ascending/descending from left to center to right.
+    ///
+    /// For cases where the peak is a shoulder of another, larger peak, it is
+    /// required to make an assumption about the shape of the peak. This method
+    /// assumes that the peak is symmetric about the center data point and
+    /// mirrors the data point for which the intensity is lower than the center
+    /// data point onto the other side. This is done to ensure that the 3-point
+    /// stencil is working with data that has a peak-like shape.
+    fn mirror_shoulder(&mut self) {
+        let increasing =
+            self.intensities.0 <= self.intensities.1 && self.intensities.1 <= self.intensities.2;
+        let decreasing =
+            self.intensities.0 >= self.intensities.1 && self.intensities.1 >= self.intensities.2;
+        match (increasing, decreasing) {
+            (true, _) => {
+                self.intensities.2 = self.intensities.0;
+                self.shifts.2 = 2.0 * self.shifts.1 - self.shifts.0;
+            }
+            (_, true) => {
+                self.intensities.0 = self.intensities.2;
+                self.shifts.0 = 2.0 * self.shifts.1 - self.shifts.2;
+            }
+            _ => {}
+        };
+    }
+}
+
+/// Fitting algorithm based on the analytical solution of a system of equations
+/// using a 3-point peak stencil.
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+pub struct IterativeRefinement<P> {
+    /// Number of iterations to refine the peak parameters.
+    iterations: usize,
+    /// Marker for the peak shape type.
+    peak_shape: PhantomData<P>,
+}
+
+impl<P> FitPeakShapes<P> for IterativeRefinement<P>
+where
+    P: PeakShape + ThreePointStencil + Send + Sync,
+{
+    fn fit_peak_shapes<I>(&self, spectrum: &Spectrum, peaks: I) -> impl Iterator<Item = P>
+    where
+        I: IntoIterator<Item = Peak>,
+    {
+        let reduced_spectrum = ReducedSpectrum::new(spectrum, peaks);
+        let mut stencils = reduced_spectrum.stencils().collect::<Vec<_>>();
+        let mut peak_shapes = stencils
+            .iter()
+            .map(|stencil| P::estimate_parameters(stencil.shifts, stencil.intensities))
+            .collect::<Vec<_>>();
+        for _ in 0..self.iterations {
+            let superpositions = reduced_spectrum
+                .shifts
+                .iter()
+                .copied()
+                .superposition(&peak_shapes);
+            let ratios = reduced_spectrum
+                .intensities
+                .iter()
+                .zip(superpositions)
+                .map(|(intensity, superposition)| intensity / superposition)
+                .collect::<Vec<_>>();
+            for (stencil, ratios) in stencils.iter_mut().zip(ratios.chunks(3)) {
+                stencil.intensities.0 *= ratios[0];
+                stencil.intensities.1 *= ratios[1];
+                stencil.intensities.2 *= ratios[2];
+                stencil.mirror_shoulder();
+            }
+            for (peak_shape, stencil) in peak_shapes.iter_mut().zip(stencils.iter()) {
+                *peak_shape = P::estimate_parameters(stencil.shifts, stencil.intensities);
+            }
+        }
+        peak_shapes.retain(|peak_shape| {
+            peak_shape.maximum() > crate::CHECK_PRECISION
+                && peak_shape.half_width() > crate::CHECK_PRECISION
+                && peak_shape.area() > crate::CHECK_PRECISION
+        });
+
+        peak_shapes.into_iter()
     }
 
-    /// Returns the intensities of the original [`Spectrum`] that are part of
-    /// peaks.
-    fn intensities(&self) -> &[(f64, f64, f64)] {
-        &self.intensities
+    #[cfg(feature = "rayon")]
+    fn par_fit_peak_shapes<I>(
+        &self,
+        spectrum: &Spectrum,
+        peaks: I,
+    ) -> impl IndexedParallelIterator<Item = P>
+    where
+        I: IntoIterator<Item = Peak>,
+    {
+        let reduced_spectrum = ReducedSpectrum::new(spectrum, peaks);
+        let mut stencils = reduced_spectrum.stencils().collect::<Vec<_>>();
+        let mut peak_shapes = stencils
+            .iter()
+            .map(|stencil| P::estimate_parameters(stencil.shifts, stencil.intensities))
+            .collect::<Vec<_>>();
+        for _ in 0..self.iterations {
+            let superpositions = reduced_spectrum
+                .shifts
+                .par_iter()
+                .copied()
+                .superposition(&peak_shapes)
+                .collect::<Vec<_>>();
+            let ratios = reduced_spectrum
+                .intensities
+                .iter()
+                .zip(superpositions.into_iter())
+                .map(|(intensity, superposition)| intensity / superposition)
+                .collect::<Vec<_>>();
+            for (stencil, ratios) in stencils.iter_mut().zip(ratios.chunks(3)) {
+                stencil.intensities.0 *= ratios[0];
+                stencil.intensities.1 *= ratios[1];
+                stencil.intensities.2 *= ratios[2];
+                stencil.mirror_shoulder();
+            }
+            peak_shapes
+                .par_iter_mut()
+                .zip(stencils.par_iter())
+                .for_each(|(peak_shape, stencil)| {
+                    *peak_shape = P::estimate_parameters(stencil.shifts, stencil.intensities);
+                });
+        }
+        peak_shapes.retain(|peak_shape| {
+                peak_shape.maximum() > crate::CHECK_PRECISION
+                    && peak_shape.half_width() > crate::CHECK_PRECISION
+                    && peak_shape.area() > crate::CHECK_PRECISION
+        });
+
+        peak_shapes.into_par_iter()
+    }
+}
+
+impl<P> Default for IterativeRefinement<P>
+where
+    P: PeakShape + ThreePointStencil,
+{
+    fn default() -> Self {
+        Self::new(10)
+    }
+}
+
+impl<P> IterativeRefinement<P>
+where
+    P: PeakShape + ThreePointStencil,
+{
+    /// Creates a new `IterativeRefinement` fitter with the specified number of
+    /// iterations.
+    pub fn new(iterations: usize) -> Self {
+        Self {
+            iterations,
+            peak_shape: PhantomData,
+        }
     }
 }
