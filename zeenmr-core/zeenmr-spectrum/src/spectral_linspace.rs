@@ -110,8 +110,9 @@ impl SpectralLinspace {
     /// Returns the chemical shift range of the spectral axis.
     pub(crate) fn shift_range(&self) -> ChemicalShiftRange {
         let start = self.reference_offset();
+        let width = (self.range.end - self.range.start) / self.larmor;
 
-        (start, start + self.width_ppm()).into()
+        (start, start + width).into()
     }
 
     /// Returns the width of the spectral axis in terms of frequency.
@@ -120,7 +121,7 @@ impl SpectralLinspace {
     }
 
     /// Returns the width of the spectral axis in terms of chemical shift.
-    pub(crate) fn width_ppm(&self) -> Ratio {
+    pub(crate) fn shift_width(&self) -> Ratio {
         self.freq_width() / self.larmor
     }
 
