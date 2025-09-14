@@ -55,6 +55,6 @@ pub trait PrecisionCheck {
 
     /// Checks if all the peak shape's parameters are above the given precision.
     fn parameters_above(&self, precision: f64) -> bool {
-        !self.is_below(precision)
+        !self.parameters_below(precision)
     }
 }
