@@ -1,4 +1,4 @@
-use crate::Evaluate;
+use crate::{Area, Center, Evaluate, Maximum, Width};
 use crate::estimate::ThreePointStencil;
 
 #[cfg(feature = "serde")]
@@ -100,6 +100,34 @@ pub struct Lorentzian {
 impl Evaluate for Lorentzian {
     fn evaluate(&self, at: f64) -> f64 {
         self.amp_scale / (self.scale2 + (at - self.center).powi(2))
+    }
+}
+
+impl Center for Lorentzian {
+    fn center(&self) -> f64 {
+        self.center
+    }
+}
+
+impl Maximum for Lorentzian {
+    fn maximum(&self) -> f64 {
+        self.amp_scale / self.scale2
+    }
+}
+
+impl Width for Lorentzian {
+    fn width(&self) -> f64 {
+        2.0 * self.scale2.sqrt()
+    }
+
+    fn half_width(&self) -> f64 {
+        self.scale2.sqrt()
+    }
+}
+
+impl Area for Lorentzian {
+    fn area(&self) -> f64 {
+        std::f64::consts::PI * self.amp_scale / self.scale2.sqrt()
     }
 }
 

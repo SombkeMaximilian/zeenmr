@@ -4,7 +4,7 @@
 //! Data structures for representing and manipulating NMR peak shapes.
 
 mod peak_shape;
-pub use peak_shape::PeakShape;
+pub use peak_shape::{Area, Center, Maximum, PeakShape, Width};
 
 pub mod estimate;
 
