@@ -153,11 +153,9 @@ impl CurvatureScore<'_> {
     fn score_peak(&self, peak: &Peak) -> f64 {
         let left_sum = self.0[peak.left - 1..peak.center]
             .iter()
-            .copied()
             .sum::<f64>();
         let right_sum = self.0[peak.center - 1..peak.right]
             .iter()
-            .copied()
             .sum::<f64>();
 
         left_sum.min(right_sum)
@@ -284,7 +282,7 @@ impl CurvatureAnalysis {
 
     /// Computes the mean and standard deviation of a vector of scores.
     fn mean_sd_scores(scores: Vec<f64>) -> (f64, f64) {
-        let mean = scores.iter().copied().sum::<f64>() / (scores.len() as f64);
+        let mean = scores.iter().sum::<f64>() / (scores.len() as f64);
         let variance = scores
             .iter()
             .map(|score| (*score - mean).powi(2))
