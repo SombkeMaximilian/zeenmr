@@ -244,7 +244,9 @@ impl FindPeaks for CurvatureAnalysis {
 
 impl Default for CurvatureAnalysis {
     fn default() -> Self {
-        Self { threshold: Some(5.0) }
+        Self {
+            threshold: Some(5.0),
+        }
     }
 }
 
