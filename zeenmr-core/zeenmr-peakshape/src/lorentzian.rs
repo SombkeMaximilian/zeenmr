@@ -3,6 +3,7 @@ use crate::{Area, Center, Evaluate, Maximum, Width};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use crate::peak_shape::PrecisionCheck;
 
 /// Represents a [Lorentzian] peak shape.
 ///
@@ -128,6 +129,12 @@ impl Width for Lorentzian {
 impl Area for Lorentzian {
     fn area(&self) -> f64 {
         std::f64::consts::PI * self.amp_scale / self.scale2.sqrt()
+    }
+}
+
+impl PrecisionCheck for Lorentzian {
+    fn parameters_below(&self, precision: f64) -> bool {
+        self.amp_scale.abs() < precision || self.scale2.abs() < precision
     }
 }
 
