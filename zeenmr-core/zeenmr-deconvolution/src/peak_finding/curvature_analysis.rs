@@ -233,6 +233,8 @@ impl FindPeaks for CurvatureAnalysis {
                 .drain(bounds.start..bounds.end)
                 .filter(|peak| scorer.score_peak(peak) >= mean + threshold * std_dev)
                 .collect();
+        } else {
+            peaks = peaks.drain(bounds.start..bounds.end).collect();
         }
 
         match peaks.is_empty() {
