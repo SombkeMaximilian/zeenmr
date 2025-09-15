@@ -828,11 +828,11 @@ impl Spectrum {
     ///
     /// [`RelativeRange`]: crate::RelativeRange
     ///
-    /// # Errors
+    /// # Panics
     ///
     /// Infallible under normal circumstances, but it is possible to create
     /// invalid [`Spectrum`] instances through deserialization, in which case
-    /// it returns an error if the deserialized boundaries are out of range.
+    /// it panics if the deserialized boundaries are out of range.
     ///
     /// # Example
     ///
@@ -853,32 +853,33 @@ impl Spectrum {
     ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
     /// )?;
     ///
-    /// let freq_boundaries = spectrum.signal_boundaries::<FrequencyRange>()?;
+    /// let freq_boundaries = spectrum.signal_boundaries::<FrequencyRange>();
     /// assert_approx_eq!(f64, freq_boundaries.start.get::<hertz>(), 1200.0);
     /// assert_approx_eq!(f64, freq_boundaries.end.get::<hertz>(), 10800.0);
     ///
-    /// let shift_boundaries = spectrum.signal_boundaries::<ChemicalShiftRange>()?;
+    /// let shift_boundaries = spectrum.signal_boundaries::<ChemicalShiftRange>();
     /// assert_approx_eq!(f64, shift_boundaries.start.get::<ppm>(), 2.0);
     /// assert_approx_eq!(f64, shift_boundaries.end.get::<ppm>(), 18.0);
     ///
-    /// let rel_boundaries = spectrum.signal_boundaries::<RelativeRange>()?;
+    /// let rel_boundaries = spectrum.signal_boundaries::<RelativeRange>();
     /// assert_approx_eq!(f64, rel_boundaries.start, 0.1);
     /// assert_approx_eq!(f64, rel_boundaries.end, 0.9);
     ///
-    /// let index_boundaries = spectrum.signal_boundaries::<IndexRange>()?;
+    /// let index_boundaries = spectrum.signal_boundaries::<IndexRange>();
     /// assert_eq!(index_boundaries.start, 1);
     /// assert_eq!(index_boundaries.end, 10);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn signal_boundaries<R>(&self) -> Result<R>
+    pub fn signal_boundaries<R>(&self) -> R
     where
         R: TryFromIndexRange,
     {
         debug_assert!(self.signal_boundaries.start < self.len());
         debug_assert!(self.signal_boundaries.end < self.len());
 
-        R::try_from_index_range(self.signal_boundaries, self)
+        // unwrapping is only safe if deserialization produces invalid spectra
+        R::try_from_index_range(self.signal_boundaries, self).unwrap()
     }
 
     /// Sets the ID of the `Spectrum`.
