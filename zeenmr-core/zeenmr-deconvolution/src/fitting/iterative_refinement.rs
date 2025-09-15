@@ -116,7 +116,8 @@ pub struct IterativeRefinement<P> {
     /// Number of iterations to refine the peak parameters.
     pub iterations: usize,
     /// Marker for the peak shape type.
-    peak_shape: PhantomData<P>,
+    #[cfg_attr(feature = "serde", serde(skip))]
+    peak_shape: PhantomData<fn() -> P>,
 }
 
 // manual impls to avoid `P: Copy`, which isn't necessary with PhantomData.
