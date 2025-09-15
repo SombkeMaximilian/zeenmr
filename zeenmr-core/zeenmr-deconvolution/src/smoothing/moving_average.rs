@@ -101,3 +101,16 @@ impl MovingAverage {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recover() {
+        let moving_average = MovingAverage::default();
+        let settings = moving_average.settings();
+        let recovered = settings.into();
+        assert_eq!(moving_average, recovered);
+    }
+}

@@ -34,3 +34,16 @@ impl Identity {
         Self
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recover() {
+        let identity = Identity;
+        let settings = identity.settings();
+        let recovered = settings.into();
+        assert_eq!(identity, recovered);
+    }
+}

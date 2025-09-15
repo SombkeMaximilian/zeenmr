@@ -252,3 +252,17 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zeenmr_peakshape::Lorentzian;
+
+    #[test]
+    fn recover() {
+        let iterative_refinement = IterativeRefinement::<Lorentzian>::default();
+        let settings = iterative_refinement.settings();
+        let recovered = settings.into();
+        assert_eq!(iterative_refinement, recovered);
+    }
+}

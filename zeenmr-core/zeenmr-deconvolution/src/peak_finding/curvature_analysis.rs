@@ -298,3 +298,16 @@ impl CurvatureAnalysis {
         (mean, variance.sqrt())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recover() {
+        let curvature_analysis = CurvatureAnalysis::default();
+        let settings = curvature_analysis.settings();
+        let recovered = settings.into();
+        assert_eq!(curvature_analysis, recovered);
+    }
+}
