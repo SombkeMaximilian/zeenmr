@@ -15,3 +15,6 @@ pub mod smoothing;
 
 mod deconvoluter;
 pub use deconvoluter::Deconvoluter;
+
+mod deconvolution;
+pub use deconvolution::Deconvolution;

@@ -1,6 +1,5 @@
 use crate::fitting::FitPeakShapes;
 use crate::peak_finding::Peak;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::marker::PhantomData;
 use uom::si::ratio::part_per_million as ppm;
 use zeenmr_peakshape::PeakShape;
