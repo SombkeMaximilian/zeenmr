@@ -20,9 +20,9 @@ where
     pub fn new<I, SM, PF, FT>(peak_shapes: I, deconvoluter: &Deconvoluter<P, SM, PF, FT>) -> Self
     where
         I: IntoIterator<Item = P>,
-        SM: Smooth<Settings = SMS> + Send + Sync,
-        PF: FindPeaks<Settings = PFS> + Send + Sync,
-        FT: FitPeakShapes<P, Settings = FTS> + Send + Sync,
+        SM: Smooth<Settings = SMS>,
+        PF: FindPeaks<Settings = PFS>,
+        FT: FitPeakShapes<P, Settings = FTS>,
     {
         Self {
             smoothing_settings: deconvoluter.smoothing_settings(),

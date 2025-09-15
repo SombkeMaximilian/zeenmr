@@ -18,9 +18,9 @@ pub struct Deconvoluter<P, SM, PF, FT> {
 impl<P, SM, PF, FT> Deconvoluter<P, SM, PF, FT>
 where
     P: PeakShape + Send + Sync,
-    SM: Smooth + Send + Sync,
-    PF: FindPeaks + Send + Sync,
-    FT: FitPeakShapes<P> + Send + Sync,
+    SM: Smooth,
+    PF: FindPeaks,
+    FT: FitPeakShapes<P>,
 {
     pub fn new(smoother: SM, peak_finder: PF, fitter: FT) -> Self {
         Self {

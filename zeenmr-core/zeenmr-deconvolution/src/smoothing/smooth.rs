@@ -1,7 +1,7 @@
 use std::borrow::Borrow;
 
 /// Trait for smoothing algorithms that process a sequence of values.
-pub trait Smooth: Sized {
+pub trait Smooth: Sized + Send + Sync {
     /// Settings type for the smoothing algorithm.
     type Settings: Into<Self>;
 
