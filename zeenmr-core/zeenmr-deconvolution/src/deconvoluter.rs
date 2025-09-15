@@ -31,7 +31,22 @@ where
         }
     }
 
-    pub fn deconvolute(&self, spectrum: &Spectrum) -> Result<Deconvolution<P>> {
+    pub fn smoothing_settings(&self) -> SM::Settings {
+        self.smoother.settings()
+    }
+
+    pub fn peak_finding_settings(&self) -> PF::Settings {
+        self.peak_finder.settings()
+    }
+
+    pub fn fitting_settings(&self) -> FT::Settings {
+        self.fitter.settings()
+    }
+
+    pub fn deconvolute(
+        &self,
+        spectrum: &Spectrum,
+    ) -> Result<Deconvolution<P, SM::Settings, PF::Settings, FT::Settings>> {
         let intensities = self.smoother.smooth(spectrum.intensities());
         let peaks = self.peak_finder.find_peaks(
             intensities,
@@ -40,6 +55,6 @@ where
         )?;
         let peak_shapes = self.fitter.fit_peak_shapes(spectrum, peaks);
 
-        Ok(Deconvolution::new(peak_shapes))
+        Ok(Deconvolution::new(peak_shapes, self))
     }
 }
