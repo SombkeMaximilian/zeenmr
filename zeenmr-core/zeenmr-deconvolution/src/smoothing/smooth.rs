@@ -1,9 +1,9 @@
 use std::borrow::Borrow;
 
 /// Trait for smoothing algorithms that process a sequence of values.
-pub trait Smooth {
+pub trait Smooth: Sized {
     /// Settings type for the smoothing algorithm.
-    type Settings;
+    type Settings: Into<Self>;
 
     /// Returns the settings used for smoothing.
     fn settings(&self) -> Self::Settings;

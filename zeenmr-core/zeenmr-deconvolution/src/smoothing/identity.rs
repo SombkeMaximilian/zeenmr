@@ -5,6 +5,13 @@ use std::borrow::Borrow;
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub struct Identity;
 
+// required trait bound for associated type `Settings`
+impl From<()> for Identity {
+    fn from(_: ()) -> Self {
+        Self
+    }
+}
+
 impl Smooth for Identity {
     type Settings = ();
 

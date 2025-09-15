@@ -6,12 +6,12 @@ use zeenmr_spectrum::Spectrum;
 use rayon::iter::IndexedParallelIterator;
 
 /// Trait for fitting peak shapes to a spectrum given a set of detected peaks.
-pub trait FitPeakShapes<P>
+pub trait FitPeakShapes<P>: Sized
 where
     P: PeakShape + Send + Sync,
 {
     /// Settings type for the peak fitting algorithm.
-    type Settings;
+    type Settings: Into<Self>;
 
     /// Returns the settings used for peak fitting.
     fn settings(&self) -> Self::Settings;
