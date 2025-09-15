@@ -80,7 +80,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// When the `serde` feature is enabled, `Lorentzian` can be serialized and
 /// deserialized using `serde`.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Lorentzian {
     /// Numerator of the Lorentzian function.
