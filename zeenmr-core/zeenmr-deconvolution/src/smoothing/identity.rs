@@ -6,6 +6,10 @@ use std::borrow::Borrow;
 pub struct Identity;
 
 impl Smooth for Identity {
+    type Settings = ();
+
+    fn settings(&self) -> Self::Settings {}
+
     fn smooth<I>(&self, data: I) -> Vec<f64>
     where
         I: IntoIterator,

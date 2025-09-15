@@ -4,6 +4,12 @@ use zeenmr_spectrum::IndexRange;
 
 /// Trait for finding peaks in a smoothed signal.
 pub trait FindPeaks {
+    /// Settings type for the peak finding algorithm.
+    type Settings;
+
+    /// Returns the settings used for peak finding.
+    fn settings(&self) -> Self::Settings;
+
     /// Finds peaks in the given smoothed signal within the specified bounds,
     /// optionally ignoring certain regions.
     fn find_peaks(

@@ -28,12 +28,18 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MovingAverage {
     /// Number of iterations to apply the filter.
-    iterations: usize,
+    pub iterations: usize,
     /// Size of the sliding window.
-    window_size: usize,
+    pub window_size: usize,
 }
 
 impl Smooth for MovingAverage {
+    type Settings = Self;
+
+    fn settings(&self) -> Self::Settings {
+        *self
+    }
+
     fn smooth<I>(&self, data: I) -> Vec<f64>
     where
         I: IntoIterator,

@@ -13,6 +13,9 @@ use rayon::prelude::*;
 #[cfg(feature = "rayon")]
 use zeenmr_peakshape::iter::ParSuperpositionMap;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 /// A reduced representation of a spectrum that only contains the data points
 /// that are part of peaks.
 #[derive(Clone, Debug)]
@@ -107,18 +110,34 @@ impl PeakStencil {
 
 /// Fitting algorithm based on the analytical solution of a system of equations
 /// using a 3-point peak stencil.
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Eq, PartialEq, Hash, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IterativeRefinement<P> {
     /// Number of iterations to refine the peak parameters.
-    iterations: usize,
+    pub iterations: usize,
     /// Marker for the peak shape type.
     peak_shape: PhantomData<P>,
+}
+
+// manual impls to avoid `P: Copy`, which isn't necessary with PhantomData.
+impl<P> Copy for IterativeRefinement<P> {}
+
+impl<P> Clone for IterativeRefinement<P> {
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 
 impl<P> FitPeakShapes<P> for IterativeRefinement<P>
 where
     P: PeakShape + ThreePointStencil + Send + Sync,
 {
+    type Settings = Self;
+
+    fn settings(&self) -> Self::Settings {
+        *self
+    }
+
     fn fit_peak_shapes<I>(&self, spectrum: &Spectrum, peaks: I) -> impl Iterator<Item = P>
     where
         I: IntoIterator<Item = Peak>,

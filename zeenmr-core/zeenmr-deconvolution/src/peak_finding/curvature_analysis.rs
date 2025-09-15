@@ -181,14 +181,20 @@ impl CurvatureScore<'_> {
 /// curvature changes around the peak. A higher score indicates a sharper peak.
 /// The score is computed as the minimum of the sums of the absolute second
 /// derivative values within bounds on both sides of the peak center.
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CurvatureAnalysis {
     /// Score threshold for peak filtering.
-    threshold: Option<f64>,
+    pub threshold: Option<f64>,
 }
 
 impl FindPeaks for CurvatureAnalysis {
+    type Settings = Self;
+
+    fn settings(&self) -> Self::Settings {
+        *self
+    }
+
     fn find_peaks(
         &self,
         smoothed: Vec<f64>,

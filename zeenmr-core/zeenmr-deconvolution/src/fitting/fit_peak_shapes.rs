@@ -10,6 +10,12 @@ pub trait FitPeakShapes<P>
 where
     P: PeakShape + Send + Sync,
 {
+    /// Settings type for the peak fitting algorithm.
+    type Settings;
+
+    /// Returns the settings used for peak fitting.
+    fn settings(&self) -> Self::Settings;
+
     /// Fits peak shapes to the spectrum using the provided peaks.
     fn fit_peak_shapes<I>(&self, spectrum: &Spectrum, peaks: I) -> impl Iterator<Item = P>
     where
