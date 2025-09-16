@@ -8,6 +8,22 @@ use zeenmr_peakshape::PeakShape;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+/// Result of a deconvolution.
+///
+/// A `Deconvolution` contains the deconvoluted signals as peak shapes, the
+/// settings used for deconvolution, and the mean squared error of between the
+/// original [`Spectrum`] and the superposition of peak shapes.
+///
+/// [`Spectrum`]: zeenmr_spectrum::Spectrum
+///
+/// # Serialization with [Serde]
+///
+/// [Serde]: https://serde.rs/
+///
+/// When the `serde` feature is enabled, `Deconvolution` implements the
+/// [`Serialize`] and [`Deserialize`] traits provided that the contained
+/// types also implement them. This is guaranteed for any types provided by
+/// this crate.
 #[derive(Clone, PartialEq, Debug)]
 #[cfg_attr(
     feature = "serde",
@@ -24,10 +40,15 @@ use serde::{Deserialize, Serialize};
     ))
 )]
 pub struct Deconvolution<P, SMS, PFS, FTS> {
+    /// Smoothing settings used.
     smoothing_settings: SMS,
+    /// Peak finding settings used.
     peak_finding_settings: PFS,
+    /// Fitting settings used.
     fitting_settings: FTS,
+    /// Mean squared error of the deconvolution.
     mse: f64,
+    /// Deconvoluted peak shapes.
     #[cfg_attr(feature = "serde", serde(with = "serialize_peak_shapes"))]
     peak_shapes: Arc<[P]>,
 }
@@ -61,6 +82,10 @@ impl<P, SMS, PFS, FTS> Deconvolution<P, SMS, PFS, FTS>
 where
     P: PeakShape + Send + Sync,
 {
+    /// Creates a new `Deconvolution`.
+    ///
+    /// Normally, this type is only instantiated by the deconvolution functions
+    /// of the [`Deconvoluter`] type.
     pub fn new<I, SM, PF, FT>(
         peak_shapes: I,
         deconvoluter: &Deconvoluter<P, SM, PF, FT>,
@@ -81,22 +106,27 @@ where
         }
     }
 
+    /// Returns the smoothing settings used in the deconvolution.
     pub fn smoothing_settings(&self) -> &SMS {
         &self.smoothing_settings
     }
 
+    /// Returns the peak finding settings used in the deconvolution.
     pub fn peak_finding_settings(&self) -> &PFS {
         &self.peak_finding_settings
     }
 
+    /// Returns the fitting settings used in the deconvolution.
     pub fn fitting_settings(&self) -> &FTS {
         &self.fitting_settings
     }
 
+    /// Returns the deconvoluted peak shapes.
     pub fn peak_shapes(&self) -> &[P] {
         &self.peak_shapes
     }
 
+    /// Returns the mean squared error of the deconvolution.
     pub fn mse(&self) -> f64 {
         self.mse
     }
