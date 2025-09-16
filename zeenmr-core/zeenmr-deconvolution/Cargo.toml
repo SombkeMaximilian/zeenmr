@@ -24,7 +24,7 @@ categories = [
 
 [features]
 default = []
-rayon = ["dep:rayon", "zeenmr-peakshape/rayon"]
+rayon = ["dep:rayon", "zeenmr-spectrum/rayon", "zeenmr-peakshape/rayon"]
 serde = ["dep:serde"]
 
 [dependencies]
