@@ -5,7 +5,7 @@ use zeenmr_spectrum::IndexRange;
 /// Trait for finding peaks in a smoothed signal.
 pub trait FindPeaks: Sized + Send + Sync {
     /// Settings type for the peak finding algorithm.
-    type Settings: Into<Self>;
+    type Settings: Into<Self> + Send + Sync;
 
     /// Returns the settings used for peak finding.
     fn settings(&self) -> Self::Settings;
@@ -16,6 +16,6 @@ pub trait FindPeaks: Sized + Send + Sync {
         &self,
         smoothed: Vec<f64>,
         signal: IndexRange,
-        ignore: Option<&[IndexRange]>,
+        ignore: Option<Vec<IndexRange>>,
     ) -> Result<Vec<Peak>>;
 }

@@ -11,7 +11,7 @@ where
     P: PeakShape + Send + Sync,
 {
     /// Settings type for the peak fitting algorithm.
-    type Settings: Into<Self>;
+    type Settings: Into<Self> + Send + Sync;
 
     /// Returns the settings used for peak fitting.
     fn settings(&self) -> Self::Settings;

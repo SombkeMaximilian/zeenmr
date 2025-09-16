@@ -3,7 +3,7 @@ use std::borrow::Borrow;
 /// Trait for smoothing algorithms that process a sequence of values.
 pub trait Smooth: Sized + Send + Sync {
     /// Settings type for the smoothing algorithm.
-    type Settings: Into<Self>;
+    type Settings: Into<Self> + Send + Sync;
 
     /// Returns the settings used for smoothing.
     fn settings(&self) -> Self::Settings;
