@@ -1467,8 +1467,8 @@ impl Spectrum {
     ///     Frequency::new::<hertz>(2000.0),
     ///     Frequency::new::<hertz>(10000.0),
     /// ))?;
-    /// assert_eq!(spectrum.signal_boundaries::<IndexRange>()?.start, 2);
-    /// assert_eq!(spectrum.signal_boundaries::<IndexRange>()?.end, 9);
+    /// assert_eq!(spectrum.signal_boundaries::<IndexRange>().start, 2);
+    /// assert_eq!(spectrum.signal_boundaries::<IndexRange>().end, 9);
     /// # Ok(())
     /// # }
     /// ```
