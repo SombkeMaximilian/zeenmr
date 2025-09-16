@@ -263,6 +263,7 @@ mod tests {
     fn recover() {
         let iterative_refinement = IterativeRefinement::<Lorentzian>::default();
         let settings = iterative_refinement.settings();
+        #[allow(clippy::useless_conversion)] // settings type might not remain `Self`
         let recovered = settings.into();
         assert_eq!(iterative_refinement, recovered);
     }

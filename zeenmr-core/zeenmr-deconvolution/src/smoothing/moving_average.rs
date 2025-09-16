@@ -57,12 +57,12 @@ impl Smooth for MovingAverage {
             let mut sum = 0.0;
             for value in data.iter().take(half_window) {
                 cache.push(*value);
-                sum = sum + *value;
+                sum += *value;
             }
             for i in 0..(len - half_window) {
-                sum = sum + data[i + half_window];
+                sum += data[i + half_window];
                 if let Some(popped) = cache.push(data[i + half_window]) {
-                    sum = sum - popped;
+                    sum -= popped;
                 } else {
                     div = 1.0 / cache.len() as f64;
                 };
@@ -70,7 +70,7 @@ impl Smooth for MovingAverage {
             }
             for value in data[(len - half_window)..].iter_mut() {
                 if let Some(popped) = cache.pop() {
-                    sum = sum - popped;
+                    sum -= popped;
                     div = 1.0 / cache.len() as f64;
                     *value = sum * div;
                 }
@@ -110,6 +110,7 @@ mod tests {
     fn recover() {
         let moving_average = MovingAverage::default();
         let settings = moving_average.settings();
+        #[allow(clippy::useless_conversion)] // settings type might not remain `Self`
         let recovered = settings.into();
         assert_eq!(moving_average, recovered);
     }

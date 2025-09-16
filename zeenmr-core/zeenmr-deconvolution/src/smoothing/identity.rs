@@ -42,6 +42,7 @@ mod tests {
     #[test]
     fn recover() {
         let identity = Identity;
+        #[allow(clippy::let_unit_value)] // settings type might not always stay the same
         let settings = identity.settings();
         let recovered = settings.into();
         assert_eq!(identity, recovered);

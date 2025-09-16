@@ -307,6 +307,7 @@ mod tests {
     fn recover() {
         let curvature_analysis = CurvatureAnalysis::default();
         let settings = curvature_analysis.settings();
+        #[allow(clippy::useless_conversion)] // settings type might not remain `Self`
         let recovered = settings.into();
         assert_eq!(curvature_analysis, recovered);
     }
