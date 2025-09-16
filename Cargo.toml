@@ -15,9 +15,12 @@ zeenmr = { version = "0.1.0", path = "zeenmr" }
 zeenmr-deconvolution = { version = "0.1.0", path = "zeenmr-core/zeenmr-deconvolution" }
 zeenmr-peakshape = { version = "0.1.0", path = "zeenmr-core/zeenmr-peakshape" }
 zeenmr-spectrum = { version = "0.1.0", path = "zeenmr-core/zeenmr-spectrum" }
+zeenmr-parse = { version = "0.1.0", path = "zeenmr-core/zeenmr-parse" }
 
 num-traits = { version = "0.2.19" }
 uom = { git = "https://github.com/SombkeMaximilian/uom", branch = "gyromagnetic_ratio", default-features = false, features = ["autoconvert", "std", "si", "f64"] }
+
+regex = { version = "1.11.2" }
 
 rayon = { version = "1.10.0" }
 

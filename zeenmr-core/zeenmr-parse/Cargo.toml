@@ -1,0 +1,33 @@
+[package]
+name = "zeenmr-parse"
+version = "0.1.0"
+authors = ["Maximilian Sombke <sombkemaximilian@gmail.com>"]
+edition = "2024"
+rust-version = "1.85.0"
+description = """
+    Parsers for common NMR data formats.
+"""
+readme = "README.md"
+repository = "https://github.com/spang-lab/zeenmr"
+license = "MIT"
+keywords = [
+    "bioinformatics",
+    "metabolomics",
+    "nmr",
+    "parser",
+]
+categories = [
+    "science::bioinformatics",
+    "parser-implementations",
+]
+
+[features]
+default = []
+
+[dependencies]
+zeenmr-spectrum = { workspace = true }
+
+regex = { workspace = true }
+
+[lints]
+workspace = true
