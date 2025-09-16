@@ -9,7 +9,20 @@ use zeenmr_peakshape::PeakShape;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, PartialEq, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(bound(
+        serialize = "P: Serialize,\
+                     SMS: Serialize,\
+                     PFS: Serialize,\
+                     FTS: Serialize",
+        deserialize = "P: Deserialize<'de>,\
+                       SMS: Deserialize<'de>,\
+                       PFS: Deserialize<'de>,\
+                       FTS: Deserialize<'de>"
+    ))
+)]
 pub struct Deconvolution<P, SMS, PFS, FTS> {
     smoothing_settings: SMS,
     peak_finding_settings: PFS,
