@@ -143,6 +143,12 @@ mod serialize_intensities {
     }
 }
 
+impl AsRef<Spectrum> for Spectrum {
+    fn as_ref(&self) -> &Spectrum {
+        self
+    }
+}
+
 impl Spectrum {
     /// Constructs a [`Spectrum`] from an iterator of `intensities` and
     /// parameters for the spectral axis.
