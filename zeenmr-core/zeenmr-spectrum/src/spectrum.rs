@@ -7,6 +7,9 @@ use std::sync::Arc;
 use uom::si::f64::{Frequency, MagneticFluxDensity, Ratio};
 use uom::typenum::P2;
 
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
+
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -746,6 +749,43 @@ impl Spectrum {
         self.linspace.frequencies()
     }
 
+    /// Returns a parallel iterator over the spectral frequencies.
+    ///
+    /// A new iterator is created each time this method is called, only
+    /// computing the frequency values on demand.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use float_cmp::assert_approx_eq;
+    /// use num_traits::Zero;
+    /// use rayon::prelude::*;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
+    /// use zeenmr_spectrum::Spectrum;
+    ///
+    /// # fn main() -> zeenmr_spectrum::error::Result<()> {
+    /// let spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
+    /// let frequencies = spectrum
+    ///     .par_frequencies()
+    ///     .map(|f| f.get::<hertz>())
+    ///     .collect::<Vec<f64>>();
+    /// assert_eq!(frequencies.len(), 3);
+    /// assert_approx_eq!(f64, frequencies[0], 0.0);
+    /// assert_approx_eq!(f64, frequencies[1], 6000.0);
+    /// assert_approx_eq!(f64, frequencies[2], 12000.0);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg(feature = "rayon")]
+    pub fn par_frequencies(&self) -> impl IndexedParallelIterator<Item = Frequency> + use<> {
+        self.linspace.par_frequencies()
+    }
+
     /// Returns an iterator over the chemical shifts.
     ///
     /// A new iterator is created each time this method is called, only
@@ -777,6 +817,44 @@ impl Spectrum {
     /// ```
     pub fn shifts(&self) -> impl Iterator<Item = Ratio> + use<> {
         self.linspace.shifts()
+    }
+
+    /// Returns a parallel iterator over the chemical shifts.
+    ///
+    /// A new iterator is created each time this method is called, only
+    /// computing the chemical shift values on demand.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use float_cmp::assert_approx_eq;
+    /// use num_traits::Zero;
+    /// use rayon::prelude::*;
+    /// use uom::si::f64::Frequency;
+    /// use uom::si::frequency::{hertz, megahertz};
+    /// use uom::si::ratio::part_per_million as ppm;
+    /// use zeenmr_spectrum::Spectrum;
+    ///
+    /// # fn main() -> zeenmr_spectrum::error::Result<()> {
+    /// let spectrum = Spectrum::new(
+    ///     vec![1.0, 2.0, 3.0],
+    ///     Frequency::new::<megahertz>(600.0),
+    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
+    /// )?;
+    /// let shifts = spectrum
+    ///     .par_shifts()
+    ///     .map(|s| s.get::<ppm>())
+    ///     .collect::<Vec<f64>>();
+    /// assert_eq!(shifts.len(), 3);
+    /// assert_approx_eq!(f64, shifts[0], 0.0);
+    /// assert_approx_eq!(f64, shifts[1], 10.0);
+    /// assert_approx_eq!(f64, shifts[2], 20.0);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg(feature = "rayon")]
+    pub fn par_shifts(&self) -> impl IndexedParallelIterator<Item = Ratio> + use<> {
+        self.linspace.par_shifts()
     }
 
     /// Returns the signal intensities of the spectrum as a slice.

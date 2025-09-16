@@ -5,6 +5,9 @@ use uom::si::f64::{Frequency, Ratio};
 use uom::si::frequency::hertz;
 use uom::si::ratio::ratio;
 
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
+
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -260,6 +263,20 @@ impl SpectralLinspace {
         (0..self.size).map(move |i| start + step * i as f64)
     }
 
+    /// Returns a parallel iterator over the frequencies.
+    ///
+    /// Computing each frequency value only requires one addition and one
+    /// multiplication, so we opt not to cache the frequencies in memory.
+    #[cfg(feature = "rayon")]
+    pub(crate) fn par_frequencies(&self) -> impl IndexedParallelIterator<Item = Frequency> + use<> {
+        let step = self.freq_step();
+        let start = self.range.start;
+
+        (0..self.size)
+            .into_par_iter()
+            .map(move |i| start + step * i as f64)
+    }
+
     /// Returns an iterator over the chemical shifts.
     ///
     /// Computing each chemical shift value only requires one addition and one
@@ -269,6 +286,20 @@ impl SpectralLinspace {
         let offset = self.reference_offset();
 
         (0..self.size).map(move |i| offset + step * i as f64)
+    }
+
+    /// Returns a parallel iterator over the chemical shifts.
+    ///
+    /// Computing each chemical shift value only requires one addition and one
+    /// multiplication, so we opt not to cache the chemical shifts in memory.
+    #[cfg(feature = "rayon")]
+    pub(crate) fn par_shifts(&self) -> impl IndexedParallelIterator<Item = Ratio> + use<> {
+        let step = self.shift_step();
+        let offset = self.reference_offset();
+
+        (0..self.size)
+            .into_par_iter()
+            .map(move |i| offset + step * i as f64)
     }
 
     /// Sets the frequency range of the spectrum.
