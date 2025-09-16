@@ -38,9 +38,7 @@ pub enum Kind {
     /// Since the data structures provided by this library are intended to be
     /// used in numerical computation contexts, non-finite float values would
     /// corrupt all further processing steps and are therefore not allowed at
-    /// the user boundary.
-    ///
-    /// [`InvalidShiftReference`]: Kind::InvalidShiftReference
+    /// the user boundary
     NonFiniteFloat,
     /// The input data is empty.
     ///
