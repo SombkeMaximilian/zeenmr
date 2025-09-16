@@ -339,11 +339,11 @@ impl Spectrum {
         self.nucleus().and_then(|nucleus| {
             nucleus
                 .gyromagnetic_ratio()
-                .and_then(|(gyro, uncertainty)| {
-                    Some((
+                .map(|(gyro, uncertainty)| {
+                    (
                         self.larmor() / gyro,
                         self.larmor().abs() / gyro.powi(P2::new()) * uncertainty,
-                    ))
+                    )
                 })
         })
     }
@@ -1221,7 +1221,7 @@ impl Spectrum {
         let larmor = self.nucleus().and_then(|nucleus| {
             nucleus
                 .gyromagnetic_ratio()
-                .and_then(|(gyro, _)| Some(gyro * b_field))
+                .map(|(gyro, _)| gyro * b_field)
         });
 
         match larmor {
