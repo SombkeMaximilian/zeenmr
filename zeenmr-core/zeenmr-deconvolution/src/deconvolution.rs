@@ -5,13 +5,43 @@ use crate::smoothing::Smooth;
 use std::sync::Arc;
 use zeenmr_peakshape::PeakShape;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 #[derive(Clone, PartialEq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Deconvolution<P, SMS, PFS, FTS> {
     smoothing_settings: SMS,
     peak_finding_settings: PFS,
     fitting_settings: FTS,
-    peak_shapes: Arc<[P]>,
     mse: f64,
+    #[cfg_attr(feature = "serde", serde(with = "serialize_peak_shapes"))]
+    peak_shapes: Arc<[P]>,
+}
+
+// Enabling the `rc` feature of serde would force it on everyone using this
+// crate, so we just implement this manually for now. If `Arc` turns out to be
+// unnecessary, we can switch to `Box<[P]>` later and remove this module.
+#[cfg(feature = "serde")]
+mod serialize_peak_shapes {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::sync::Arc;
+
+    pub(crate) fn serialize<P, S>(peak_shapes: &Arc<[P]>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        P: Serialize,
+        S: Serializer,
+    {
+        peak_shapes.as_ref().serialize(serializer)
+    }
+
+    pub(crate) fn deserialize<'de, P, D>(deserializer: D) -> Result<Arc<[P]>, D::Error>
+    where
+        P: Deserialize<'de>,
+        D: Deserializer<'de>,
+    {
+        Ok(Box::<[P]>::deserialize(deserializer)?.into())
+    }
 }
 
 impl<P, SMS, PFS, FTS> Deconvolution<P, SMS, PFS, FTS>
