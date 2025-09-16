@@ -28,6 +28,13 @@ pub struct Error {
 #[non_exhaustive]
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub enum Kind {
+    /// Received a non-finite float value.
+    ///
+    /// Since the data structures provided by this library are intended to be
+    /// used in numerical computation contexts, non-finite float values would
+    /// corrupt all further processing steps and are therefore not allowed at
+    /// the user boundary.
+    NonFiniteFloat,
     /// No peaks were detected in the input data.
     ///
     /// Indicates that intensities may have been read incorrectly or something
@@ -48,6 +55,10 @@ pub enum Kind {
     /// region. If there is no noise, i.e., no peaks can be found, this process
     /// might silently fail. This error avoids that issue.
     EmptySignalFreeRegion,
+    /// Ignore region is invalid.
+    ///
+    /// Both bounds of a region to ignore must be finite floats.
+    InvalidIgnoreRegion,
 }
 
 impl From<Kind> for Error {
@@ -65,9 +76,14 @@ impl std::error::Error for Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let description = match self.kind() {
+            Kind::NonFiniteFloat => "non-finite float value received",
             Kind::NoPeaksDetected => "no peaks detected",
             Kind::EmptySignalRegion => "no peaks found in signal region",
             Kind::EmptySignalFreeRegion => "no peaks found in signal-free region",
+            Kind::InvalidIgnoreRegion => match &self.source {
+                Some(_) => "ignore region contains non-finite values",
+                None => unreachable!("valid ignore region falsely detected as invalid"),
+            },
         };
 
         write!(f, "{description}")
@@ -75,33 +91,41 @@ impl std::fmt::Display for Error {
 }
 
 impl Error {
+    /// Creates a [`NonFiniteFloat`] error.
+    ///
+    /// [`NonFiniteFloat`]: Kind::NonFiniteFloat
+    pub(crate) fn non_finite_float() -> Self {
+        Kind::NonFiniteFloat.into()
+    }
+
     /// Creates a [`NoPeaksDetected`] error.
     ///
     /// [`NoPeaksDetected`]: Kind::NoPeaksDetected
     pub(crate) fn no_peaks_detected() -> Self {
-        Self {
-            kind: Kind::NoPeaksDetected,
-            source: None,
-        }
+        Kind::NoPeaksDetected.into()
     }
 
     /// Creates an [`EmptySignalRegion`] error.
     ///
     /// [`EmptySignalRegion`]: Kind::EmptySignalRegion
     pub(crate) fn empty_signal_region() -> Self {
-        Self {
-            kind: Kind::EmptySignalRegion,
-            source: None,
-        }
+        Kind::EmptySignalRegion.into()
     }
 
     /// Creates an [`EmptySignalFreeRegion`] error.
     ///
     /// [`EmptySignalFreeRegion`]: Kind::EmptySignalFreeRegion
     pub(crate) fn empty_signal_free_region() -> Self {
+        Kind::EmptySignalFreeRegion.into()
+    }
+
+    /// Creates an [`InvalidIgnoreRegion`] error.
+    ///
+    /// [`InvalidIgnoreRegion`]: Kind::InvalidIgnoreRegion
+    pub(crate) fn invalid_ignore_region() -> Self {
         Self {
-            kind: Kind::EmptySignalFreeRegion,
-            source: None,
+            kind: Kind::InvalidIgnoreRegion,
+            source: Some(Arc::new(Self::non_finite_float())),
         }
     }
 
