@@ -15,7 +15,7 @@ use rayon::prelude::*;
 #[cfg(feature = "rayon")]
 use zeenmr_peakshape::iter::ParSuperpositionMap;
 
-#[derive(Clone, Eq, PartialEq, Hash, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Deconvoluter<P, SM, PF, FT> {
     smoother: SM,
     peak_finder: PF,
