@@ -264,8 +264,8 @@ impl CurvatureAnalysis {
     /// ```
     /// use zeenmr_deconvolution::peak_finding::CurvatureAnalysis;
     ///
-    /// let finder_with_filter = CurvatureAnalysis::<f64>::new(Some(5.0));
-    /// let finder_without_filter = CurvatureAnalysis::<f64>::new(None);
+    /// let finder_with_filter = CurvatureAnalysis::new(Some(5.0));
+    /// let finder_without_filter = CurvatureAnalysis::new(None);
     /// ```
     pub fn new(threshold: Option<f64>) -> Self {
         Self { threshold }
