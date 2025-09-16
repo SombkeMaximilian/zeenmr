@@ -15,12 +15,19 @@ use rayon::prelude::*;
 #[cfg(feature = "rayon")]
 use zeenmr_peakshape::iter::ParSuperpositionMap;
 
+/// Deconvolution pipeline that combines smoothing, peak finding, and peak shape
+/// fitting to deconvolute a [`Spectrum`] into its constituent peak shapes.
 #[derive(Clone, Debug, Default)]
 pub struct Deconvoluter<P, SM, PF, FT> {
+    /// Smoothing algorithm.
     smoother: SM,
+    /// Peak finding algorithm.
     peak_finder: PF,
+    /// Peak shape fitting algorithm.
     fitter: FT,
+    /// Chemical shift ranges to ignore during deconvolution.
     ignore: Option<Vec<ChemicalShiftRange>>,
+    /// Marker for the peak shape type.
     peak_shape: PhantomData<P>,
 }
 
