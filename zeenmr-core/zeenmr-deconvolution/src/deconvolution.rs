@@ -5,7 +5,7 @@ use crate::smoothing::Smooth;
 use std::sync::Arc;
 use zeenmr_peakshape::PeakShape;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct Deconvolution<P, SMS, PFS, FTS> {
     smoothing_settings: SMS,
     peak_finding_settings: PFS,
