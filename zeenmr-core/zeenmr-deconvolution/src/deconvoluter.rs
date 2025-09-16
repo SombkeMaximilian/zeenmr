@@ -318,7 +318,7 @@ where
         )?;
         let peak_shapes = self
             .fitter
-            .fit_peak_shapes(spectrum, peaks)
+            .par_fit_peak_shapes(spectrum, peaks)
             .collect::<Vec<P>>();
         let superpositions = spectrum
             .par_shifts()
