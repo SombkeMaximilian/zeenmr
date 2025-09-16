@@ -162,10 +162,10 @@ impl ThreePointStencil for Lorentzian {
 
 impl Lorentzian {
     /// Creates a new [`Lorentzian`] with the specified parameters.
-    pub fn new(amp: f64, hwhm: f64, center: f64) -> Self {
+    pub fn new(amp: f64, scale: f64, center: f64) -> Self {
         Self {
-            amp_scale: amp * hwhm,
-            scale2: hwhm.powi(2),
+            amp_scale: amp * scale,
+            scale2: scale.powi(2),
             center,
         }
     }
