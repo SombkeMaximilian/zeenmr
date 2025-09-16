@@ -14,7 +14,7 @@ pub mod peak_finding;
 pub mod smoothing;
 
 mod deconvoluter;
-pub use deconvoluter::{Deconvoluter, DeconvoluteMap, ParDeconvoluteMap};
+pub use deconvoluter::{DeconvoluteMap, Deconvoluter, ParDeconvoluteMap};
 
 mod deconvolution;
 pub use deconvolution::Deconvolution;
