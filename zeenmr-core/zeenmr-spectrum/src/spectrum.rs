@@ -195,8 +195,8 @@ impl Spectrum {
     /// ```
     pub fn new<I, R>(intensities: I, larmor: Frequency, range: R) -> Result<Self>
     where
-        R: Into<FrequencyRange>,
         I: IntoIterator<Item = f64>,
+        R: Into<FrequencyRange>,
     {
         let intensities = Self::validate_intensities(intensities)?;
         let range = range.into();
