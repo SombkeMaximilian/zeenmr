@@ -27,6 +27,7 @@ default = []
 [dependencies]
 zeenmr-spectrum = { workspace = true }
 
+byteorder = { workspace = true }
 logos = { workspace = true }
 regex = { workspace = true }
 
