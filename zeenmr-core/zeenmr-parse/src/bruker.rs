@@ -9,3 +9,6 @@ pub use parser::Value;
 
 mod fid;
 pub use fid::BrukerFid;
+
+mod spectrum;
+pub use spectrum::BrukerSpectrum;
