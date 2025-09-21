@@ -1,2 +1,2 @@
-mod bruker;
-mod jcampdx;
+pub mod bruker;
+pub mod jcampdx;

@@ -27,6 +27,7 @@ default = []
 [dependencies]
 zeenmr-spectrum = { workspace = true }
 
+logos = { workspace = true }
 regex = { workspace = true }
 
 [lints]
