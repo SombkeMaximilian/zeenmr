@@ -43,9 +43,9 @@ impl BrukerFid {
             Some(_) => Endian::Big,
             _ => panic!("unsupported or missing BYTORDA value in acqus file"),
         };
-        let exponent = match acqus.get("NC_PROC") {
+        let exponent = match acqus.get("NC") {
             Some(Value::Integer(exp)) => (*exp) as i32,
-            _ => 0,
+            _ => panic!("missing NC value in acqus file"),
         };
         let size = match acqus.get("TD") {
             Some(Value::Integer(td)) => (*td) as usize,
