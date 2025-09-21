@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct BrukerFid {
+    /// Experiment identifier.
+    id: Option<String>,
     /// Acquisition parameters from the `acqus` file.
     acqus: HashMap<String, Value>,
     /// Raw data from the `fid` file.
@@ -24,6 +26,10 @@ impl BrukerFid {
     where
         P: AsRef<Path>,
     {
+        let id = path
+            .as_ref()
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string());
         let acqus_path = path
             .as_ref()
             .join(format!("{experiment}"))
@@ -52,9 +58,19 @@ impl BrukerFid {
             Some(Value::Integer(td)) => (*td) as usize,
             _ => panic!("missing TD value in acqus file"),
         };
-        let raw = read_bruker_binary(fid_path, size, data_type, endian, exponent);
+        let fid = read_bruker_binary(fid_path, size, data_type, endian, exponent);
 
-        Self { acqus, fid: raw }
+        Self {
+            id,
+            acqus,
+            fid,
+        }
+    }
+
+    /// Returns the experiment identifier.
+    #[inline]
+    pub fn id(&self) -> Option<&str> {
+        self.id.as_deref()
     }
 
     /// Return the acquisition parameter with the specified key, if it exists.

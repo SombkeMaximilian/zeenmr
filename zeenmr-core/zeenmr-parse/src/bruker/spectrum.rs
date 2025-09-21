@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct BrukerSpectrum {
+    /// Experiment identifier.
+    id: Option<String>,
     /// Acquisition parameters from the `acqus` file.
     acqus: HashMap<String, Value>,
     /// Processing parameters from the `procs` file.
@@ -28,6 +30,10 @@ impl BrukerSpectrum {
     where
         P: AsRef<Path>,
     {
+        let id = path
+            .as_ref()
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string());
         let acqus_path = path
             .as_ref()
             .join(format!("{experiment}"))
@@ -66,11 +72,18 @@ impl BrukerSpectrum {
         let imag = read_bruker_binary(imag_path, size, data_type, endian, exponent);
 
         Self {
+            id,
             acqus,
             procs,
             real,
             imag,
         }
+    }
+
+    /// Returns the experiment identifier.
+    #[inline]
+    pub fn id(&self) -> Option<&str> {
+        self.id.as_deref()
     }
 
     /// Return the acquisition parameter with the specified key, if it exists.
