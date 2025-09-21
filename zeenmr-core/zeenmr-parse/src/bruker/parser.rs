@@ -53,7 +53,7 @@ enum Token {
 
 /// Possible values in Bruker parameter files.
 #[derive(Clone, PartialEq, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize), serde(untagged))]
 pub enum Value {
     /// Empty values for unset parameters.
     Empty,
