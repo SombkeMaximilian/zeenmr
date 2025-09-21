@@ -7,3 +7,5 @@ mod parser;
 pub(crate) use parser::Parser;
 pub use parser::Value;
 
+mod fid;
+pub use fid::BrukerFid;
