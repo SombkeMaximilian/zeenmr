@@ -90,7 +90,7 @@ mod tests {
             .join("blood_01");
         let fid = BrukerFid::read(path, 10);
         assert_eq!(fid.acqus.len(), 240);
-        assert_eq!(fid.fid.len(), 65536);
+        assert_eq!(fid.fid.len(), 2_usize.pow(16));
     }
 
     #[cfg(feature = "serde")]
