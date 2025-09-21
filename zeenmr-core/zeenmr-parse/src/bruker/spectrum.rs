@@ -2,6 +2,10 @@ use crate::bruker::{DataType, Endian, Parser, Value, read_bruker_binary};
 use std::collections::HashMap;
 use std::fs::read_to_string;
 use std::path::Path;
+use uom::si::f64::{Frequency, Ratio};
+use uom::si::frequency::{hertz, megahertz};
+use uom::si::ratio::part_per_million as ppm;
+use zeenmr_spectrum::Spectrum;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -20,6 +24,40 @@ pub struct BrukerSpectrum {
     real: Vec<f64>,
     /// Imaginary values of the fourier-transformed FID from the `1i` file.
     imag: Vec<f64>,
+}
+
+impl TryFrom<BrukerSpectrum> for Spectrum {
+    type Error = ();
+
+    fn try_from(value: BrukerSpectrum) -> Result<Self, Self::Error> {
+        let range = match value.procs.get("SW_p") {
+            Some(Value::Float(sw)) => (
+                Frequency::new::<hertz>(*sw),
+                Frequency::new::<hertz>(0.0),
+            ),
+            _ => return Err(()),
+        };
+        let larmor = match value.procs.get("SF") {
+            Some(Value::Float(sf)) => Frequency::new::<megahertz>(*sf),
+            _ => return Err(()),
+        };
+        let mut spectrum = Spectrum::new(
+            value.real,
+            larmor,
+            range,
+        ).unwrap();
+        if let Some(id) = value.id {
+            spectrum.set_id(id);
+        }
+        if let Some(Value::String(nucleus)) = value.acqus.get("NUC1") {
+            spectrum.set_nucleus(nucleus);
+        }
+        if let Some(Value::Float(offset)) = value.procs.get("OFFSET") {
+            spectrum.set_shift_reference_value(Ratio::new::<ppm>(*offset)).unwrap();
+        }
+
+        Ok(spectrum)
+    }
 }
 
 impl BrukerSpectrum {
