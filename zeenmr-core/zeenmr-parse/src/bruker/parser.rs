@@ -3,6 +3,9 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 /// Bruker parameter file lexer.
 #[derive(Clone, PartialEq, Debug, Logos)]
 #[logos(subpattern newline = r"\n|\r\n|\r")]
@@ -50,6 +53,7 @@ enum Token {
 
 /// Possible values in Bruker parameter files.
 #[derive(Clone, PartialEq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Value {
     /// Empty values for unset parameters.
     Empty,
