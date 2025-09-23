@@ -19,7 +19,6 @@ pub(crate) enum DataType {
 
 impl DataType {
     /// Returns the size in bytes of the data type.
-    #[inline]
     fn size_of(&self) -> usize {
         match self {
             DataType::I32 => size_of::<i32>(),
@@ -44,7 +43,6 @@ pub(crate) enum Endian {
 
 /// Reads a Bruker binary file (e.g., `1r`, `1i`, `fid`) and returns its
 /// contents as a collection of `f64` values.
-#[inline]
 pub(crate) fn read_bruker_binary<P>(
     path: P,
     size: usize,

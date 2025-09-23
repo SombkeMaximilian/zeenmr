@@ -145,19 +145,16 @@ impl<'source> Parser<'source> {
     }
 
     /// Check if currently inside a bounded structure.
-    #[inline]
     fn is_bounded(&self) -> bool {
         !self.bounded_stack.is_empty()
     }
 
     /// Check if currently building an array.
-    #[inline]
     fn is_array(&self) -> bool {
         self.array_size.is_some()
     }
 
     /// Process a key token.
-    #[inline]
     fn key(&mut self) {
         if self.is_bounded() || self.is_array() {
             panic!("unexpected key inside bounded structure or array");
@@ -180,13 +177,11 @@ impl<'source> Parser<'source> {
     }
 
     /// Start a new bounded structure.
-    #[inline]
     fn start_bounded(&mut self) {
         self.bounded_stack.push(Vec::new());
     }
 
     /// End the current bounded structure.
-    #[inline]
     fn end_bounded(&mut self) {
         let value = match self.bounded_stack.pop() {
             Some(closed) => match closed.len() {
@@ -237,7 +232,6 @@ impl<'source> Parser<'source> {
     }
 
     /// Parse a range token to determine the size of the following array.
-    #[inline]
     fn range(&mut self) {
         static RANGE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\d+)\.\.(\d+)").unwrap());
         if !self.bounded_stack.is_empty() {
@@ -263,7 +257,6 @@ impl<'source> Parser<'source> {
     }
 
     /// Parse a numeric token.
-    #[inline]
     fn numeric(&mut self) {
         let value = match self.lexer.slice().parse::<i64>() {
             Ok(int) => Value::Integer(int),
@@ -300,7 +293,6 @@ impl<'source> Parser<'source> {
     }
 
     /// Parse a version token.
-    #[inline]
     fn version(&mut self) {
         static VERSION: LazyLock<Regex> =
             LazyLock::new(|| Regex::new(r"(\d+)\.(\d+)\.(\d+)").unwrap());
@@ -355,7 +347,6 @@ impl<'source> Parser<'source> {
     }
 
     /// Parse a string token.
-    #[inline]
     fn string(&mut self) {
         let value = self.lexer.slice();
         if let Some(bounded) = self.bounded_stack.last_mut() {

@@ -21,7 +21,6 @@ pub struct BrukerFid {
 impl BrukerFid {
     /// Reads a Bruker FID dataset from the specified directory and experiment
     /// number.
-    #[inline]
     pub fn read<P>(path: P, experiment: u32) -> Self
     where
         P: AsRef<Path>,
@@ -60,27 +59,20 @@ impl BrukerFid {
         };
         let fid = read_bruker_binary(fid_path, size, data_type, endian, exponent);
 
-        Self {
-            id,
-            acqus,
-            fid,
-        }
+        Self { id, acqus, fid }
     }
 
     /// Returns the experiment identifier.
-    #[inline]
     pub fn id(&self) -> Option<&str> {
         self.id.as_deref()
     }
 
     /// Return the acquisition parameter with the specified key, if it exists.
-    #[inline]
     pub fn get(&self, key: &str) -> Option<&Value> {
         self.acqus.get(key)
     }
 
     /// Returns the raw FID data.
-    #[inline]
     pub fn fid(&self) -> &[f64] {
         &self.fid
     }

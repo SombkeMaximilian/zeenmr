@@ -31,21 +31,14 @@ impl TryFrom<BrukerSpectrum> for Spectrum {
 
     fn try_from(value: BrukerSpectrum) -> Result<Self, Self::Error> {
         let range = match value.procs.get("SW_p") {
-            Some(Value::Float(sw)) => (
-                Frequency::new::<hertz>(*sw),
-                Frequency::new::<hertz>(0.0),
-            ),
+            Some(Value::Float(sw)) => (Frequency::new::<hertz>(*sw), Frequency::new::<hertz>(0.0)),
             _ => return Err(()),
         };
         let larmor = match value.procs.get("SF") {
             Some(Value::Float(sf)) => Frequency::new::<megahertz>(*sf),
             _ => return Err(()),
         };
-        let mut spectrum = Spectrum::new(
-            value.real,
-            larmor,
-            range,
-        ).unwrap();
+        let mut spectrum = Spectrum::new(value.real, larmor, range).unwrap();
         if let Some(id) = value.id {
             spectrum.set_id(id);
         }
@@ -53,7 +46,9 @@ impl TryFrom<BrukerSpectrum> for Spectrum {
             spectrum.set_nucleus(nucleus);
         }
         if let Some(Value::Float(offset)) = value.procs.get("OFFSET") {
-            spectrum.set_shift_reference_value(Ratio::new::<ppm>(*offset)).unwrap();
+            spectrum
+                .set_shift_reference_value(Ratio::new::<ppm>(*offset))
+                .unwrap();
         }
 
         Ok(spectrum)
@@ -63,7 +58,6 @@ impl TryFrom<BrukerSpectrum> for Spectrum {
 impl BrukerSpectrum {
     /// Reads a processed Bruker spectrum from the specified directory,
     /// experiment number, and processing number.
-    #[inline]
     pub fn read<P>(path: P, experiment: u32, processing: u32) -> Self
     where
         P: AsRef<Path>,
@@ -119,31 +113,26 @@ impl BrukerSpectrum {
     }
 
     /// Returns the experiment identifier.
-    #[inline]
     pub fn id(&self) -> Option<&str> {
         self.id.as_deref()
     }
 
     /// Return the acquisition parameter with the specified key, if it exists.
-    #[inline]
     pub fn get_acqus(&self, key: &str) -> Option<&Value> {
         self.acqus.get(key)
     }
 
     /// Return the processing parameter with the specified key, if it exists.
-    #[inline]
     pub fn get_procs(&self, key: &str) -> Option<&Value> {
         self.procs.get(key)
     }
 
     /// Returns the real part of the spectrum.
-    #[inline]
     pub fn real(&self) -> &[f64] {
         &self.real
     }
 
     /// Returns the imaginary part of the spectrum.
-    #[inline]
     pub fn imag(&self) -> &[f64] {
         &self.imag
     }
