@@ -19,6 +19,18 @@ enum HeaderToken {
     /// Commas separating multiple values.
     #[token(",")]
     Comma,
+    /// Opening parenthesis to start compound values or ranges.
+    #[token("(")]
+    OpenParenthesis,
+    /// Closing parenthesis to end compound values or ranges.
+    #[token(")")]
+    CloseParenthesis,
+    /// Starting angle brackets for strings with whitespace.
+    #[token("<")]
+    OpenAngle,
+    /// Ending angle brackets for strings with whitespace.
+    #[token(">")]
+    CloseAngle,
     /// Integer or floating point values in standard or scientific notation.
     #[regex(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?")]
     Numeric,
@@ -242,6 +254,8 @@ pub(crate) struct Parser<'source> {
     current_key: &'source str,
     /// Current value being built.
     current_value: Value,
+    /// Bounded structure stack for values inside parentheses.
+    bounded_stack: Vec<Vec<Value>>,
 }
 
 impl<'source> From<&'source str> for Parser<'source> {
@@ -273,6 +287,7 @@ impl<'source> From<&'source str> for Parser<'source> {
             data_blocks: Vec::new(),
             current_key: &value[start..end],
             current_value: Value::Empty,
+            bounded_stack: Vec::new(),
         }
     }
 }
@@ -284,13 +299,25 @@ impl<'source> Parser<'source> {
                 Ok(HeaderToken::Key) => self.key(),
                 Ok(HeaderToken::Equals) => panic!("unexpected key value separator"),
                 Ok(HeaderToken::Comma) => continue,
-                Ok(HeaderToken::String) => continue,
-                Ok(HeaderToken::Numeric) => continue,
-                Ok(HeaderToken::DataBlock(_)) => continue,
+                Ok(HeaderToken::OpenParenthesis) | Ok(HeaderToken::OpenAngle) => {
+                    self.start_bounded()
+                }
+                Ok(HeaderToken::CloseParenthesis) | Ok(HeaderToken::CloseAngle) => {
+                    self.end_bounded()
+                }
+                Ok(HeaderToken::Numeric) => self.numeric(),
+                Ok(HeaderToken::String) => self.string(),
+                Ok(HeaderToken::DataBlock((kind, format, data))) => {
+                    self.data_block(kind, format, data)
+                }
                 Ok(HeaderToken::End) => break,
                 Err(e) => panic!("lexing error: {:?}", e),
             }
         }
+    }
+
+    fn is_bounded(&self) -> bool {
+        !self.bounded_stack.is_empty()
     }
 
     fn key(&mut self) {
@@ -310,6 +337,96 @@ impl<'source> Parser<'source> {
         }
         let end = self.lexer.span().start;
         self.current_key = &self.current_key[start..end];
+    }
+
+    fn start_bounded(&mut self) {
+        self.bounded_stack.push(Vec::new());
+    }
+
+    fn end_bounded(&mut self) {
+        let value = match self.bounded_stack.pop() {
+            Some(closed) => match closed.len() {
+                0 => Value::Empty,
+                1 => closed.into_iter().next().unwrap(),
+                _ => Value::Array(closed),
+            },
+            None => panic!("unmatched closing parenthesis"),
+        };
+        if let Some(bounded) = self.bounded_stack.last_mut() {
+            bounded.push(value);
+        } else {
+            match self.current_value {
+                Value::Empty => {
+                    self.current_value = value;
+                }
+                Value::Array(ref mut array) => {
+                    array.push(value);
+                }
+                _ => {
+                    let old = std::mem::replace(&mut self.current_value, Value::Empty);
+                    self.current_value = Value::Array(vec![old, value]);
+                }
+            }
+        }
+    }
+
+    fn numeric(&mut self) {
+        let value = match self.lexer.slice().parse::<i64>() {
+            Ok(int) => Value::Integer(int),
+            Err(_) => Value::Float(self.lexer.slice().parse::<f64>().unwrap()),
+        };
+        if let Some(bounded) = self.bounded_stack.last_mut() {
+            bounded.push(value);
+        } else {
+            match self.current_value {
+                Value::Empty => {
+                    self.current_value = value;
+                }
+                Value::Array(ref mut array) => {
+                    array.push(value);
+                }
+                _ => {
+                    let old = std::mem::replace(&mut self.current_value, Value::Empty);
+                    self.current_value = Value::Array(vec![old, value]);
+                }
+            }
+        }
+    }
+
+    fn string(&mut self) {
+        let value = self.lexer.slice();
+        if let Some(bounded) = self.bounded_stack.last_mut() {
+            bounded.push(Value::String(value.to_string()));
+        } else {
+            match self.current_value {
+                Value::Empty => {
+                    self.current_value = Value::String(value.to_string());
+                }
+                Value::String(ref mut previous) => {
+                    if previous.len() > 0 {
+                        previous.push(' ');
+                    }
+                    previous.push_str(value);
+                }
+                Value::Array(ref mut array) => match array.last_mut() {
+                    Some(&mut Value::String(ref mut previous)) => {
+                        if previous.len() > 0 {
+                            previous.push(' ');
+                        }
+                        previous.push_str(value);
+                    }
+                    _ => array.push(Value::String(value.to_string())),
+                },
+                _ => {
+                    let old = std::mem::replace(&mut self.current_value, Value::Empty);
+                    self.current_value = Value::Array(vec![old, Value::String(value.to_string())]);
+                }
+            }
+        }
+    }
+
+    fn data_block(&mut self, kind: DataKind, format: Vec<FormatToken>, data: Vec<DataToken>) {
+        todo!()
     }
 }
 
