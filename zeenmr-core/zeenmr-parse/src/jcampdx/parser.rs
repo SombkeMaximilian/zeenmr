@@ -22,7 +22,7 @@ enum HeaderToken {
     /// Integer or floating point values in standard or scientific notation.
     #[regex(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?")]
     Numeric,
-    /// Anything not numeric is a string
+    /// Anything not numeric is a string.
     #[regex(r"[^ \t\r\n=#$,]*")]
     String,
     /// Data block for spectral data.
@@ -161,7 +161,7 @@ enum DataToken {
     /// Invalid data point, marked as `?` in the JCAMP-DX standard.
     #[token("?")]
     Invalid,
-    /// End of data block
+    /// End of data block.
     #[regex(r"##PAGE=[^\r\n]*")]
     #[regex(r"##END[^\r\n]*")]
     End,
