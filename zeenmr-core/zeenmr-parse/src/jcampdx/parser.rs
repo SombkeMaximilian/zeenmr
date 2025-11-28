@@ -28,16 +28,22 @@ enum HeaderToken {
     /// Data block for spectral data.
     #[regex(r"##(XYDATA)=", data_block)]
     #[regex(r"##(XYPOINTS)=", data_block)]
-    #[regex(r"##(DATA[\s_-]TABLE)=", data_block)]
     #[regex(r"##(PEAK[\s_-]TABLE)=", data_block)]
-    #[regex(r"##(PEAK[\s_-]ASSIGNMENTS)=", data_block)]
-    DataBlock((String, Vec<FormatToken>, Vec<DataToken>)),
+    #[regex(r"##(DATA[\s_-]TABLE)=", data_block)]
+    DataBlock((DataKind, Vec<FormatToken>, Vec<DataToken>)),
     /// End of a dataset.
     #[token("##END=")]
     End,
 }
 
-fn data_block(lexer: &mut Lexer<HeaderToken>) -> (String, Vec<FormatToken>, Vec<DataToken>) {
+#[derive(Clone, Eq, PartialEq, Debug)]
+enum DataKind {
+    XYData,
+    XYPoints,
+    PeakTable,
+}
+
+fn data_block(lexer: &mut Lexer<HeaderToken>) -> (DataKind, Vec<FormatToken>, Vec<DataToken>) {
     let mut kind = &lexer.slice()[2..lexer.slice().len() - 1];
     let mut format_lexer = lexer.clone().morph::<FormatToken>();
     let mut format = Vec::new();
@@ -52,6 +58,18 @@ fn data_block(lexer: &mut Lexer<HeaderToken>) -> (String, Vec<FormatToken>, Vec<
             Err(e) => panic!("lexing error: {:?}", e),
         }
     }
+    let kind = kind
+        .trim()
+        .replace(" ", "")
+        .replace("-", "")
+        .replace("_", "")
+        .to_uppercase();
+    let kind = match kind.as_str() {
+        "XYDATA" => DataKind::XYData,
+        "XYPOINTS" => DataKind::XYPoints,
+        "PEAKTABLE" | "PEAKS" => DataKind::PeakTable,
+        _ => panic!("unsupported data kind"),
+    };
     while format[0] == FormatToken::OpenParenthesis
         && format[format.len() - 1] == FormatToken::CloseParenthesis
     {
@@ -69,13 +87,13 @@ fn data_block(lexer: &mut Lexer<HeaderToken>) -> (String, Vec<FormatToken>, Vec<
     }
     *lexer = data_lexer.morph();
 
-    (kind.to_uppercase(), format, data)
+    (kind, format, data)
 }
 
 #[derive(Clone, PartialEq, Debug, Logos)]
+#[logos(subpattern newline = r"\n|\r\n|\r")]
 #[logos(subpattern space = r"[ \t]")]
 #[logos(skip r"(?&space)")]
-#[logos(subpattern newline = r"\n|\r\n|\r")]
 enum FormatToken {
     /// Identifier for a quantity.
     ///
@@ -112,9 +130,9 @@ enum FormatToken {
 }
 
 #[derive(Clone, PartialEq, Debug, Logos)]
+#[logos(subpattern newline = r"\n|\r\n|\r")]
 #[logos(subpattern space = r"[ \t]")]
 #[logos(skip r"(?&space)")]
-#[logos(subpattern newline = r"\n|\r\n|\r")]
 #[logos(subpattern comment = r"\$\$[^\r\n]+(?&newline)")]
 #[logos(skip r"(?&comment)")]
 enum DataToken {
