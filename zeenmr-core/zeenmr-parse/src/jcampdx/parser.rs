@@ -122,7 +122,7 @@ enum FormatToken {
     #[token(",")]
     Comma,
     /// A `DATA TABLE` data block contains the exact type of data after a comma.
-    #[regex(r"XYDATA|XYPOINTS|PEAK[\s_-]TABLE|PEAK[\s_-]ASSIGNMENTS")]
+    #[regex(r"XYDATA|XYPOINTS|PEAKS|PEAK[\s_-]TABLE")]
     DataBlockKind,
     /// A new line ends a data block format specifier.
     #[regex(r"(?&newline)")]
