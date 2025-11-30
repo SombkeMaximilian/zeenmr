@@ -8,6 +8,8 @@ use std::collections::HashMap;
 #[logos(skip r"(?&whitespace)")]
 #[logos(subpattern comment = r"\$\$[^\r\n]+(?&newline)")]
 #[logos(skip r"(?&comment)")]
+#[logos(subpattern page = r"##PAGE[^\r\n]*")]
+#[logos(skip r"(?&page)")]
 enum HeaderToken {
     /// JCAMP-DX header keys start with `##` or `##.`. Bruker-specific keys
     /// start with `##$` but follow the same rules otherwise.
@@ -34,7 +36,7 @@ enum HeaderToken {
     #[token(">")]
     CloseAngle,
     /// Integer or floating point values in standard or scientific notation.
-    #[regex(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?")]
+    #[regex(r"-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?")]
     Numeric,
     /// Anything not numeric is a string.
     #[regex(r"[^ \t\r\n=#$,<>\(\)]*")]
@@ -194,7 +196,7 @@ enum DataToken {
     #[token(">")]
     CloseAngle,
     /// Numeric values.
-    #[regex(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?", |lexer| lexer.slice().parse::<f64>().unwrap())]
+    #[regex(r"-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?", |lexer| lexer.slice().parse::<f64>().unwrap())]
     Numeric(f64),
     /// Anything else is a string.
     #[regex(r"[^ \t\r\n?,;<>\(\)]*", |lexer| lexer.slice().to_string())]
@@ -219,7 +221,7 @@ enum EncodedToken {
     #[regex(r"(?&newline)")]
     CheckPoint,
     /// Numeric values, `AFFN` in the JCAMP-DX standard.
-    #[regex(r"[+-]?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?", affn)]
+    #[regex(r"[+-]?(0|[1-9]\d*)(\.\d+)?([eE][+-]\d+)?", affn)]
     Numeric(i64),
     /// Compressed value, `SQZ` in the JCAMP-DX standard.
     #[regex(r"[@A-Ia-i]\d*", asdf)]

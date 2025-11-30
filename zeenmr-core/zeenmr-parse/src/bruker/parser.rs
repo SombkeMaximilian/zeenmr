@@ -37,7 +37,7 @@ enum Token {
     #[regex(r"\(\d+\.\.\d+\)")]
     Range,
     /// Numeric values.
-    #[regex(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?")]
+    #[regex(r"-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?")]
     Numeric,
     /// Version values that can be disambiguated from [`Token::Numeric`]
     /// immediately by their three-part structure.
