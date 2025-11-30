@@ -357,10 +357,12 @@ impl<'source> Parser<'source> {
                 }
                 Ok(HeaderToken::Numeric) => self.numeric(),
                 Ok(HeaderToken::String) => self.string(),
-                Ok(HeaderToken::DataBlock((kind, format, data))) => {
-                    self.data_block(kind, format, data)
+                Ok(HeaderToken::DataBlock(data_block)) => self.data_block(data_block),
+                Ok(HeaderToken::End) => {
+                    self.parameters
+                        .insert(self.current_key.to_string(), self.current_value.clone());
+                    break;
                 }
-                Ok(HeaderToken::End) => break,
                 Err(e) => panic!("lexing error: {:?}", e),
             }
         }
@@ -386,7 +388,7 @@ impl<'source> Parser<'source> {
             }
         }
         let end = self.lexer.span().start;
-        self.current_key = &self.current_key[start..end];
+        self.current_key = &self.lexer.source()[start..end];
     }
 
     fn start_bounded(&mut self) {
