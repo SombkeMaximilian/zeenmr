@@ -348,7 +348,7 @@ impl<'source> From<&'source str> for Parser<'source> {
 }
 
 impl<'source> Parser<'source> {
-    pub(crate) fn parse_source(&mut self) {
+    pub(crate) fn parse_source(mut self) {
         while let Some(token) = self.lexer.next() {
             let clear_auto_concatenate = token != Ok(HeaderToken::Comma);
             match token {
