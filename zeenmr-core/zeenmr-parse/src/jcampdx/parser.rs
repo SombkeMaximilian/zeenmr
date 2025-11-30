@@ -662,12 +662,36 @@ mod tests {
     lexer_test!(lexer_v6_xydata_sqz, "v6", "xydata_sqz.dx");
     lexer_test!(lexer_v6_xydata_difdup, "v6", "xydata_difdup.dx");
 
-    #[test]
-    fn current() {
-        let text = "##DATA CLASS= XYDATA";
-        let mut lexer = HeaderToken::lexer(&text);
-        while let Some(token) = lexer.next() {
-            println!("{:?}: {}", token, &lexer.slice());
-        }
+    macro_rules! parser_test {
+        ($name:ident, $version:tt, $file:tt) => {
+            #[test]
+            fn $name() {
+                let path = workspace_dir()
+                    .join("data")
+                    .join("jcamp-dx")
+                    .join("test")
+                    .join($version)
+                    .join($file);
+                let content = read_to_string(path).unwrap();
+                let parsed = Parser::from(content.as_str()).parse_source();
+            }
+        };
     }
+
+    parser_test!(parser_v5_ntuples_affn, "v5", "ntuples_affn.dx");
+    parser_test!(parser_v5_ntuples_pac, "v5", "ntuples_pac.dx");
+    parser_test!(parser_v5_ntuples_sqz, "v5", "ntuples_sqz.dx");
+    parser_test!(parser_v5_ntuples_difdup, "v5", "ntuples_difdup.dx");
+    parser_test!(parser_v5_xydata_affn, "v5", "xydata_affn.dx");
+    parser_test!(parser_v5_xydata_pac, "v5", "xydata_pac.dx");
+    parser_test!(parser_v5_xydata_sqz, "v5", "xydata_sqz.dx");
+    parser_test!(parser_v5_xydata_difdup, "v5", "xydata_difdup.dx");
+    parser_test!(parser_v6_ntuples_affn, "v6", "ntuples_affn.dx");
+    parser_test!(parser_v6_ntuples_pac, "v6", "ntuples_pac.dx");
+    parser_test!(parser_v6_ntuples_sqz, "v6", "ntuples_sqz.dx");
+    parser_test!(parser_v6_ntuples_difdup, "v6", "ntuples_difdup.dx");
+    parser_test!(parser_v6_xydata_affn, "v6", "xydata_affn.dx");
+    parser_test!(parser_v6_xydata_pac, "v6", "xydata_pac.dx");
+    parser_test!(parser_v6_xydata_sqz, "v6", "xydata_sqz.dx");
+    parser_test!(parser_v6_xydata_difdup, "v6", "xydata_difdup.dx");
 }
