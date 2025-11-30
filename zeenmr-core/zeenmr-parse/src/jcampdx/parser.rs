@@ -9,9 +9,11 @@ use std::collections::HashMap;
 #[logos(subpattern comment = r"\$\$[^\r\n]+(?&newline)")]
 #[logos(skip r"(?&comment)")]
 enum HeaderToken {
-    /// JCAMP-DX header keys start with `##` or `##.`.
+    /// JCAMP-DX header keys start with `##` or `##.`. Bruker-specific keys
+    /// start with `##$` but follow the same rules otherwise.
     #[token("##")]
     #[token("##.")]
+    #[token("##$")]
     Key,
     /// The separator between key and value is always an equals sign.
     #[token("=")]
@@ -35,17 +37,31 @@ enum HeaderToken {
     #[regex(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?")]
     Numeric,
     /// Anything not numeric is a string.
-    #[regex(r"[^ \t\r\n=#$,]*")]
+    #[regex(r"[^ \t\r\n=#$,<>\(\)]*")]
     String,
     /// Data block for spectral data.
     #[regex(r"##(XYDATA)=", data_block)]
     #[regex(r"##(XYPOINTS)=", data_block)]
     #[regex(r"##(PEAK[\s_-]TABLE)=", data_block)]
+    #[regex(r"##(PEAK[\s_-]ASSIGNMENTS)=", data_block)]
     #[regex(r"##(DATA[\s_-]TABLE)=", data_block)]
-    DataBlock((DataKind, Vec<FormatToken>, Vec<DataToken>)),
+    DataBlock(DataBlock),
     /// End of a dataset.
     #[token("##END=")]
     End,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+enum DataBlock {
+    Encoded {
+        format: Vec<FormatToken>,
+        data: Vec<EncodedToken>,
+    },
+    Grouped {
+        kind: DataKind,
+        format: Vec<FormatToken>,
+        data: Vec<DataToken>,
+    },
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -53,15 +69,15 @@ enum DataKind {
     XYData,
     XYPoints,
     PeakTable,
+    PeakAssignments,
 }
 
-fn data_block(lexer: &mut Lexer<HeaderToken>) -> (DataKind, Vec<FormatToken>, Vec<DataToken>) {
+fn data_block(lexer: &mut Lexer<HeaderToken>) -> DataBlock {
     let mut kind = &lexer.slice()[2..lexer.slice().len() - 1];
     let mut format_lexer = lexer.clone().morph::<FormatToken>();
     let mut format = Vec::new();
     while let Some(token) = format_lexer.next() {
         match token {
-            Ok(FormatToken::Comma) => continue,
             Ok(FormatToken::DataBlockKind) => {
                 kind = &format_lexer.slice();
             }
@@ -80,32 +96,49 @@ fn data_block(lexer: &mut Lexer<HeaderToken>) -> (DataKind, Vec<FormatToken>, Ve
         "XYDATA" => DataKind::XYData,
         "XYPOINTS" => DataKind::XYPoints,
         "PEAKTABLE" | "PEAKS" => DataKind::PeakTable,
+        "PEAKASSIGNMENTS" => DataKind::PeakAssignments,
         _ => panic!("unsupported data kind"),
     };
-    while format[0] == FormatToken::OpenParenthesis
-        && format[format.len() - 1] == FormatToken::CloseParenthesis
-    {
-        format.remove(0);
-        format.remove(format.len() - 1);
-    }
-    let mut data_lexer = format_lexer.clone().morph::<DataToken>();
-    let mut data = Vec::new();
-    while let Some(token) = data_lexer.next() {
-        match token {
-            Ok(DataToken::End) => break,
-            Ok(token) => data.push(token),
-            Err(e) => panic!("lexing error: {:?}", e),
+    match kind {
+        DataKind::XYData => {
+            let mut data_lexer = format_lexer.clone().morph::<EncodedToken>();
+            let mut data = Vec::new();
+            while let Some(token) = data_lexer.next() {
+                match token {
+                    Ok(EncodedToken::End) => break,
+                    Ok(token) => data.push(token),
+                    Err(e) => panic!("lexing error: {:?}", e),
+                }
+            }
+            *lexer = data_lexer.morph();
+
+            DataBlock::Encoded { format, data }
+        }
+        DataKind::XYPoints | DataKind::PeakTable | DataKind::PeakAssignments => {
+            let mut data_lexer = format_lexer.clone().morph::<DataToken>();
+            let mut data = Vec::new();
+            while let Some(token) = data_lexer.next() {
+                match token {
+                    Ok(DataToken::End) => break,
+                    Ok(token) => data.push(token),
+                    Err(e) => panic!("lexing error: {:?}", e),
+                }
+            }
+            *lexer = data_lexer.morph();
+
+            DataBlock::Grouped { kind, format, data }
         }
     }
-    *lexer = data_lexer.morph();
-
-    (kind, format, data)
 }
 
 #[derive(Clone, PartialEq, Debug, Logos)]
 #[logos(subpattern newline = r"\n|\r\n|\r")]
 #[logos(subpattern space = r"[ \t]")]
 #[logos(skip r"(?&space)")]
+#[logos(subpattern parentheses = r"[()]")]
+#[logos(skip r"(?&parentheses)")]
+#[logos(subpattern comma = r",")]
+#[logos(skip r"(?&comma)")]
 enum FormatToken {
     /// Identifier for a quantity.
     ///
@@ -124,15 +157,6 @@ enum FormatToken {
     /// Repeat current identifier until line ends.
     #[token("..")]
     Repeat,
-    /// Opening parenthesis to begin pattern.
-    #[token("(")]
-    OpenParenthesis,
-    /// Closing parenthesis to end pattern.
-    #[token(")")]
-    CloseParenthesis,
-    /// Extra information after a comma.
-    #[token(",")]
-    Comma,
     /// A `DATA TABLE` data block contains the exact type of data after a comma.
     #[regex(r"XYDATA|XYPOINTS|PEAKS|PEAK[\s_-]TABLE")]
     DataBlockKind,
@@ -148,13 +172,49 @@ enum FormatToken {
 #[logos(subpattern comment = r"\$\$[^\r\n]+(?&newline)")]
 #[logos(skip r"(?&comment)")]
 enum DataToken {
-    /// For XY pairs, XYZ triplets, etc., semicolons are to separate groups.
+    /// Every new line is a checkpoint.
+    #[regex(r"(?&newline)")]
+    CheckPoints,
+    /// Semicolons separate groups.
     #[token(";")]
-    GroupSeparator,
-    /// Within XY pairs, XYZ triplets, etc., commas are used to separate
-    /// coordinates.
+    SemiColon,
+    /// Commas separate members of groups.
     #[token(",")]
-    CoordinateSeparator,
+    Comma,
+    /// Opening parenthesis to start a group.
+    #[token("(")]
+    OpenParenthesis,
+    /// Closing parenthesis to end a group.
+    #[token(")")]
+    CloseParenthesis,
+    /// Starting angle brackets for strings with whitespace.
+    #[token("<")]
+    OpenAngle,
+    /// Ending angle brackets for strings with whitespace.
+    #[token(">")]
+    CloseAngle,
+    /// Numeric values.
+    #[regex(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?", |lexer| lexer.slice().parse::<f64>().unwrap())]
+    Numeric(f64),
+    /// Anything else is a string.
+    #[regex(r"[^ \t\r\n?,;<>\(\)]*", |lexer| lexer.slice().to_string())]
+    String(String),
+    /// Invalid data point, marked as `?` in the JCAMP-DX standard.
+    #[token("?")]
+    Invalid,
+    /// End of data block.
+    #[regex(r"##PAGE=[^\r\n]*")]
+    #[regex(r"##END[^\r\n]*")]
+    End,
+}
+
+#[derive(Clone, PartialEq, Debug, Logos)]
+#[logos(subpattern newline = r"\n|\r\n|\r")]
+#[logos(subpattern space = r"[ \t]")]
+#[logos(skip r"(?&space)")]
+#[logos(subpattern comment = r"\$\$[^\r\n]+(?&newline)")]
+#[logos(skip r"(?&comment)")]
+enum EncodedToken {
     /// Every new line is a checkpoint.
     #[regex(r"(?&newline)")]
     CheckPoint,
@@ -180,7 +240,7 @@ enum DataToken {
 }
 
 /// Parse an `AFFN` numeric value.
-fn affn(lexer: &Lexer<DataToken>) -> i64 {
+fn affn(lexer: &Lexer<EncodedToken>) -> i64 {
     match lexer.slice().parse::<i64>() {
         Ok(int) => int,
         Err(_) => lexer.slice().parse::<f64>().unwrap() as i64,
@@ -188,7 +248,7 @@ fn affn(lexer: &Lexer<DataToken>) -> i64 {
 }
 
 /// Parse an `ASDF` compressed, difference, or duplicate value.
-fn asdf(lexer: &Lexer<DataToken>) -> i64 {
+fn asdf(lexer: &Lexer<EncodedToken>) -> i64 {
     let encoded = &lexer.slice()[..1];
     let decoded: i64 = match encoded {
         "@" | "%" => 0,
@@ -234,13 +294,6 @@ pub enum Value {
     Array(Vec<Value>),
 }
 
-/// Data block containing either real or imaginary values.
-#[derive(Clone, PartialEq, Debug)]
-pub enum DataBlock {
-    Real(Vec<f64>),
-    Imag(Vec<f64>),
-}
-
 /// Parser implementation for the JCAMP-DX file format.
 #[derive(Debug)]
 pub(crate) struct Parser<'source> {
@@ -248,8 +301,6 @@ pub(crate) struct Parser<'source> {
     lexer: Lexer<'source, HeaderToken>,
     /// Parsed parameters.
     parameters: HashMap<String, Value>,
-    /// Parsed data blocks.
-    data_blocks: Vec<DataBlock>,
     /// Current key being processed.
     current_key: &'source str,
     /// Current value being built.
@@ -284,7 +335,6 @@ impl<'source> From<&'source str> for Parser<'source> {
         Self {
             lexer,
             parameters: HashMap::new(),
-            data_blocks: Vec::new(),
             current_key: &value[start..end],
             current_value: Value::Empty,
             bounded_stack: Vec::new(),
@@ -457,10 +507,17 @@ mod tests {
                 let mut data_blocks = 0;
                 while let Some(token) = lexer.next() {
                     assert!(token.is_ok());
-                    if let Ok(HeaderToken::DataBlock((_, _, data))) = token {
-                        // lower bound for 131072 points + around 7000 checkpoints
-                        data_blocks += 1;
-                        assert!(data.len() > 2_usize.pow(17) + 14_000);
+                    if let Ok(HeaderToken::DataBlock(data_block)) = token {
+                        match data_block {
+                            DataBlock::Encoded { format, data } => {
+                                // lower bound for 131072 points + around 7000 checkpoints
+                                assert!(data.len() > 2_usize.pow(17) + 14_000);
+                                data_blocks += 1;
+                            }
+                            DataBlock::Grouped { format, data, .. } => {
+                                panic!("unexpected grouped data block")
+                            }
+                        }
                     }
                 }
                 assert_ne!(data_blocks, 0);
