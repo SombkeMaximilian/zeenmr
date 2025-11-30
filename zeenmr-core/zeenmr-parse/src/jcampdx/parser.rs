@@ -515,8 +515,88 @@ impl<'source> Parser<'source> {
         }
     }
 
-    fn data_block(&mut self, kind: DataKind, format: Vec<FormatToken>, data: Vec<DataToken>) {
-        todo!()
+    fn data_block(&mut self, data_block: DataBlock) {
+        match data_block {
+            DataBlock::Encoded { format, data } => match &format[..] {
+                [
+                    FormatToken::Identifier(x),
+                    FormatToken::Increment,
+                    FormatToken::Identifier(y),
+                    FormatToken::Repeat,
+                    FormatToken::Identifier(y_check),
+                ] => {
+                    if y != y_check {
+                        panic!("non-repeating identifier");
+                    } else {
+                        self.encoded_block(data);
+                    }
+                }
+                _ => panic!("incompatible format"),
+            },
+            _ => todo!(),
+        }
+    }
+
+    fn encoded_block(&mut self, data: Vec<EncodedToken>) {
+        let mut check_point = true;
+        let mut last_was_difference = None;
+        let mut integrity_check = false;
+        let mut decoded = Vec::new();
+        let mut check_points = vec![0_usize];
+        let mut check_point_values = Vec::new();
+        let mut data_stream = data.into_iter();
+        while let Some(token) = data_stream.next() {
+            match token {
+                EncodedToken::CheckPoint => {
+                    check_point = true;
+                    if last_was_difference.is_some() {
+                        integrity_check = true;
+                    }
+                    check_points.push(decoded.len());
+                }
+                EncodedToken::Numeric(value) | EncodedToken::Compressed(value) => {
+                    if check_point {
+                        check_point = false;
+                        check_point_values.push(value);
+                    } else {
+                        if integrity_check {
+                            let previous = *decoded.last().unwrap();
+                            if !(value == previous) {
+                                panic!("integrity check failed");
+                            }
+                        } else {
+                            decoded.push(value);
+                        }
+                        last_was_difference = None;
+                        integrity_check = false;
+                    }
+                }
+                EncodedToken::Difference(value) => {
+                    if check_point {
+                        panic!("first value after check point cannot be difference");
+                    }
+                    let result = *decoded.last().unwrap() + value;
+                    decoded.push(result);
+                    last_was_difference = Some(value);
+                }
+                EncodedToken::Duplicate(value) => {
+                    if check_point {
+                        panic!("first value after check point cannot be duplicate");
+                    }
+                    let previous = *decoded.last().unwrap();
+                    if let Some(diff) = last_was_difference {
+                        let values = (1..value).map(|i| previous + (diff * i as i64));
+                        decoded.extend(values);
+                    } else {
+                        for _ in 1..value {
+                            decoded.push(previous);
+                        }
+                    }
+                }
+                EncodedToken::Invalid => panic!("invalid value"),
+                EncodedToken::End => break,
+            }
+        }
     }
 }
 
