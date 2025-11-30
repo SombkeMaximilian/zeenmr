@@ -307,6 +307,8 @@ pub(crate) struct Parser<'source> {
     current_value: Value,
     /// Bounded structure stack for values inside parentheses.
     bounded_stack: Vec<Vec<Value>>,
+    /// Strings not separated by a comma are automatically combined.
+    auto_concatenate: bool,
 }
 
 impl<'source> From<&'source str> for Parser<'source> {
@@ -338,6 +340,7 @@ impl<'source> From<&'source str> for Parser<'source> {
             current_key: &value[start..end],
             current_value: Value::Empty,
             bounded_stack: Vec::new(),
+            auto_concatenate: false,
         }
     }
 }
@@ -345,10 +348,11 @@ impl<'source> From<&'source str> for Parser<'source> {
 impl<'source> Parser<'source> {
     pub(crate) fn parse_source(&mut self) {
         while let Some(token) = self.lexer.next() {
+            let clear_auto_concatenate = token != Ok(HeaderToken::Comma);
             match token {
                 Ok(HeaderToken::Key) => self.key(),
                 Ok(HeaderToken::Equals) => panic!("unexpected key value separator"),
-                Ok(HeaderToken::Comma) => continue,
+                Ok(HeaderToken::Comma) => self.comma(),
                 Ok(HeaderToken::OpenParenthesis) | Ok(HeaderToken::OpenAngle) => {
                     self.start_bounded()
                 }
@@ -364,6 +368,9 @@ impl<'source> Parser<'source> {
                     break;
                 }
                 Err(e) => panic!("lexing error: {:?}", e),
+            }
+            if clear_auto_concatenate {
+                self.auto_concatenate = false;
             }
         }
     }
@@ -389,6 +396,29 @@ impl<'source> Parser<'source> {
         }
         let end = self.lexer.span().start;
         self.current_key = &self.lexer.source()[start..end];
+    }
+
+    fn comma(&mut self) {
+        if !self.auto_concatenate {
+            self.auto_concatenate = true;
+        } else {
+            if let Some(bounded) = self.bounded_stack.last_mut() {
+                bounded.push(Value::Empty);
+            } else {
+                match self.current_value {
+                    Value::Empty => {
+                        self.current_value = Value::Array(vec![Value::Empty]);
+                    }
+                    Value::Array(ref mut array) => {
+                        array.push(Value::Empty);
+                    }
+                    _ => {
+                        let old = std::mem::replace(&mut self.current_value, Value::Empty);
+                        self.current_value = Value::Array(vec![old, Value::Empty]);
+                    }
+                }
+            }
+        }
     }
 
     fn start_bounded(&mut self) {
@@ -455,10 +485,16 @@ impl<'source> Parser<'source> {
                     self.current_value = Value::String(value.to_string());
                 }
                 Value::String(ref mut previous) => {
-                    if previous.len() > 0 {
-                        previous.push(' ');
+                    if self.auto_concatenate {
+                        let old = std::mem::replace(&mut self.current_value, Value::Empty);
+                        self.current_value =
+                            Value::Array(vec![old, Value::String(value.to_string())]);
+                    } else {
+                        if previous.len() > 0 {
+                            previous.push(' ');
+                        }
+                        previous.push_str(value);
                     }
-                    previous.push_str(value);
                 }
                 Value::Array(ref mut array) => match array.last_mut() {
                     Some(&mut Value::String(ref mut previous)) => {
