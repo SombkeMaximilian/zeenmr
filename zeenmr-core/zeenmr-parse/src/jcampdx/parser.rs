@@ -551,8 +551,10 @@ impl<'source> Parser<'source> {
                     check_point = true;
                     if last_was_difference.is_some() {
                         integrity_check = true;
+                        check_points.push(decoded.len() - 1);
+                    } else {
+                        check_points.push(decoded.len());
                     }
-                    check_points.push(decoded.len());
                 }
                 EncodedToken::Numeric(value) | EncodedToken::Compressed(value) => {
                     if check_point {
