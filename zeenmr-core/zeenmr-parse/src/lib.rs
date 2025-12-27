@@ -3,5 +3,8 @@
 
 //! Parsers for common NMR data formats.
 
+mod location;
+pub(crate) use location::{Cursor, Position};
+
 pub mod bruker;
 pub mod jcampdx;
