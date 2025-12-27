@@ -15,3 +15,9 @@ pub(crate) struct Position {
     /// Column in the source.
     pub(crate) column: usize,
 }
+
+/// Trait for getting the current location in the source.
+pub(crate) trait Location {
+    /// Returns the current position in the source.
+    fn location(&self) -> Position;
+}
