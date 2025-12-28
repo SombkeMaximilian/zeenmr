@@ -1,6 +1,7 @@
 use crate::Location;
 use crate::jcampdx::decoding::error::{Error, Kind, Result};
-use crate::jcampdx::decoding::{CheckPoint, DecodedBlock, DecodeExit, EncodedToken};
+use crate::jcampdx::decoding::{CheckPoint, DecodeExit, DecodedBlock, EncodedToken};
+use crate::location::Cursor;
 use logos::{Lexer, Logos};
 
 /// Decoding phase relative to checkpoints.
@@ -78,6 +79,24 @@ impl<'source> From<&'source str> for Decoder<'source> {
     }
 }
 
+impl<'source, T> From<Lexer<'source, T>> for Decoder<'source>
+where
+    T: Logos<'source, Source = str> + Clone,
+    T::Extras: Clone + Into<Cursor>,
+{
+    fn from(value: Lexer<'source, T>) -> Self {
+        Self {
+            lexer: value.clone().morph(),
+            phase: Phase::CheckPoint,
+            state: State::Normal,
+            decoded: Vec::new(),
+            check_points: vec![0],
+            check_point_values: Vec::new(),
+            errors: Vec::new(),
+        }
+    }
+}
+
 impl<'source> Decoder<'source> {
     pub(crate) fn decode_source(mut self) -> Result<DecodeExit<'source, i64>> {
         while let Some(token) = self.lexer.next() {
@@ -88,14 +107,15 @@ impl<'source> Decoder<'source> {
                 Ok(EncodedToken::Difference(diff)) => self.difference(diff)?,
                 Ok(EncodedToken::Duplicate(num)) => self.duplicate(num as usize)?,
                 Ok(EncodedToken::Invalid(position)) => {
-                    self.errors.push(Error::invalid_value(position, self.decoded.len()));
+                    self.errors
+                        .push(Error::invalid_value(position, self.decoded.len()));
                     self.numeric(i64::MIN);
-                },
+                }
                 Ok(EncodedToken::End) => {
                     let lexer = self.lexer.clone();
 
                     return Ok(DecodeExit::HeaderKey(self.finalize(), lexer));
-                },
+                }
                 Err(e) => match e.kind() {
                     Kind::InvalidLiteral => return Err(e),
                     _ => self.errors.push(e),
@@ -167,7 +187,9 @@ impl<'source> Decoder<'source> {
 
                 Ok(())
             }
-            Phase::CheckPoint | Phase::FirstData => Err(Error::dif_dup_after_check_point(self.lexer.location())),
+            Phase::CheckPoint | Phase::FirstData => {
+                Err(Error::dif_dup_after_check_point(self.lexer.location()))
+            }
         }
     }
 
@@ -189,7 +211,9 @@ impl<'source> Decoder<'source> {
 
                 Ok(())
             }
-            Phase::CheckPoint | Phase::FirstData => Err(Error::dif_dup_after_check_point(self.lexer.location())),
+            Phase::CheckPoint | Phase::FirstData => {
+                Err(Error::dif_dup_after_check_point(self.lexer.location()))
+            }
         }
     }
 }
@@ -317,7 +341,10 @@ mod tests {
     fatal_error_test!(
         invalid_literal,
         "10 1 2 3 4 # 6 7 8 9 10",
-        Error::invalid_literal(Position { line: 0, column: 11 })
+        Error::invalid_literal(Position {
+            line: 0,
+            column: 11
+        })
     );
     fatal_error_test!(
         dif_dup_check_point_value,
