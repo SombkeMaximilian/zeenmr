@@ -223,7 +223,7 @@ impl<'source> Decoder<'source> {
             Phase::Data | Phase::FirstData => {
                 self.errors.push(Error::overflow_with_index(
                     self.lexer.location(),
-                    self.decoded.len() - 1,
+                    self.decoded.len(),
                 ));
                 self.numeric(i64::MIN);
             }
