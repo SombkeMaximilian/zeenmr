@@ -28,7 +28,7 @@ pub(crate) enum EncodedToken {
     #[regex(r"[S-Zs]\d*", asdf)]
     Duplicate(i64),
     /// Invalid data point, marked as `?` in the JCAMP-DX standard.
-    #[token("?", invalid)]
+    #[token("?", Location::location)]
     Invalid(Position),
     /// An encoded block optionally ends with the next JCAMP-DX header key.
     #[token("##")]
@@ -120,14 +120,6 @@ fn asdf(lexer: &Lexer<EncodedToken>) -> Result<i64> {
             }
             _ => unreachable!(),
         },
-    }
-}
-
-/// Returns the position of the invalid value.
-fn invalid(lexer: &Lexer<EncodedToken>) -> Position {
-    Position {
-        line: lexer.extras.line,
-        column: lexer.span().start - lexer.extras.index,
     }
 }
 
