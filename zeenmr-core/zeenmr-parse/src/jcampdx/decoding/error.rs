@@ -13,7 +13,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// An `Error` that occurred during decoding of a block.
 ///
 /// See the [`Kind`] enum for the different kinds of errors that can occur.
-#[derive(Clone, Eq, PartialEq, Debug, Default)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub struct Error {
     /// The `Kind` of error that occurred.
     kind: Kind,
@@ -28,7 +28,7 @@ pub struct Error {
 /// Marked as non-exhaustive to allow for new variants to be added in the future
 /// without breaking compatibility.
 #[non_exhaustive]
-#[derive(Clone, Eq, PartialEq, Debug, Default)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub enum Kind {
     /// A literal does not match any token.
     #[default]
