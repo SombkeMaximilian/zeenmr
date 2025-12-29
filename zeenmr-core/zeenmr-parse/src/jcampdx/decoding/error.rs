@@ -102,6 +102,17 @@ impl Error {
         }
     }
 
+    /// Creates an [`Overflow`] error with an index.
+    ///
+    /// [`Overflow`]: Kind::Overflow
+    pub(crate) fn overflow_with_index(position: Position, index: usize) -> Self {
+        Self {
+            kind: Kind::Overflow,
+            position,
+            index: Some(index),
+        }
+    }
+
     /// Creates an [`IntegrityCheck`] error.
     ///
     /// [`IntegrityCheck`]: Kind::IntegrityCheck
@@ -149,5 +160,16 @@ impl Error {
     /// Returns the `Kind` of error that occurred.
     pub fn kind(&self) -> &Kind {
         &self.kind
+    }
+
+    /// Returns the position in the source that caused the error.
+    pub fn position(&self) -> Position {
+        self.position
+    }
+
+    /// Returns the index of the value in the decoded sequence which caused the
+    /// error.
+    pub fn index(&self) -> Option<usize> {
+        self.index
     }
 }
