@@ -117,8 +117,9 @@ impl<'source> Decoder<'source> {
                     return Ok(DecodeExit::HeaderKey(self.finalize(), lexer));
                 }
                 Err(e) => match e.kind() {
+                    Kind::Overflow => self.overflow(),
                     Kind::InvalidLiteral | Kind::UnsupportedFormat => return Err(e),
-                    _ => self.errors.push(e),
+                    _ => unreachable!(),
                 },
             }
         }
@@ -213,6 +214,22 @@ impl<'source> Decoder<'source> {
             }
             Phase::CheckPoint | Phase::FirstData => {
                 Err(Error::dif_dup_after_check_point(self.lexer.location()))
+            }
+        }
+    }
+
+    fn overflow(&mut self) {
+        match self.phase {
+            Phase::Data | Phase::FirstData => {
+                self.errors.push(Error::overflow_with_index(
+                    self.lexer.location(),
+                    self.decoded.len() - 1,
+                ));
+                self.numeric(i64::MIN);
+            }
+            Phase::CheckPoint => {
+                self.errors.push(Error::overflow(self.lexer.location()));
+                self.numeric(i64::MIN);
             }
         }
     }
