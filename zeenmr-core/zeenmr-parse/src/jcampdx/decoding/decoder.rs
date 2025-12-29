@@ -387,4 +387,34 @@ mod tests {
             }
         };
     }
+
+    recoverable_error_test!(
+        overflow,
+        "7 10000000000000000000 1 1 1\n\
+         3 -10000000000000000000 1 1 1",
+        [
+            Error::overflow_with_index(Position { line: 0, column: 2 }, 0),
+            Error::overflow_with_index(Position { line: 1, column: 2 }, 4),
+        ]
+    );
+    recoverable_error_test!(
+        integrity_check,
+        "7 A0LnK\n\
+         4 IK%nM\n\
+         0 G",
+        [
+            Error::integrity_check(Position { line: 1, column: 2 }, 3),
+            Error::integrity_check(Position { line: 2, column: 2 }, 7),
+        ]
+    );
+    recoverable_error_test!(
+        invalid_value,
+        "7 1 1 ? 1\n\
+         3 0 ? 1 ?",
+        [
+            Error::invalid_value(Position { line: 0, column: 6 }, 2),
+            Error::invalid_value(Position { line: 1, column: 4 }, 5),
+            Error::invalid_value(Position { line: 1, column: 8 }, 7),
+        ]
+    );
 }
