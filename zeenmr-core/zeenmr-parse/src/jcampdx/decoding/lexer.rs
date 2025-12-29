@@ -37,15 +37,6 @@ pub(crate) enum EncodedToken {
     End,
 }
 
-impl Location for Lexer<'_, EncodedToken> {
-    fn location(&self) -> Position {
-        Position {
-            line: self.extras.line,
-            column: self.span().start - self.extras.index,
-        }
-    }
-}
-
 /// Literals that could not be matched to any token.
 fn invalid_literal(lexer: &Lexer<EncodedToken>) -> Error {
     Error::invalid_literal(lexer.location())

@@ -1,3 +1,5 @@
+use logos::{Lexer, Logos};
+
 /// File cursor for reporting locations in errors.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub(crate) struct Cursor {
@@ -20,4 +22,16 @@ pub(crate) struct Position {
 pub(crate) trait Location {
     /// Returns the current position in the source.
     fn location(&self) -> Position;
+}
+
+impl<'source, T> Location for Lexer<'source, T>
+where
+    T: Logos<'source, Extras = Cursor>,
+{
+    fn location(&self) -> Position {
+        Position {
+            line: self.extras.line,
+            column: self.span().start - self.extras.index,
+        }
+    }
 }
