@@ -6,8 +6,8 @@ use crate::Position;
 ///
 /// [`Result`]: std::result::Result
 ///
-/// This type alias avoids writing out `Result<T, zeenmr_parse::Error>`
-/// directly.
+/// This type alias avoids writing out
+/// `Result<T, zeenmr_parse::jcampdx::decoding::error::Error>` directly.
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// An `Error` that occurred during decoding of a block.
