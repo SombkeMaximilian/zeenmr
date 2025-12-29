@@ -1,5 +1,5 @@
 use crate::jcampdx::decoding::error::{Error, Result};
-use crate::{Cursor, Location, Position};
+use crate::{Cursor, Location, Position, UpdateCursor};
 use logos::{Lexer, Logos};
 use std::num::IntErrorKind;
 
@@ -13,7 +13,7 @@ use std::num::IntErrorKind;
 #[logos(skip r"(?&comment)")]
 pub(crate) enum EncodedToken {
     /// Every new line is a checkpoint.
-    #[regex(r"(?&newline)", check_point)]
+    #[regex(r"(?&newline)", UpdateCursor::newline)]
     CheckPoint,
     /// Numeric values, `AFFN` in the JCAMP-DX standard.
     #[regex(r"[+-]?(0|[1-9]\d*)(\.\d+)?([eE][+-]\d+)?", affn)]
@@ -40,12 +40,6 @@ pub(crate) enum EncodedToken {
 /// Literals that could not be matched to any token.
 fn invalid_literal(lexer: &Lexer<EncodedToken>) -> Error {
     Error::invalid_literal(lexer.location())
-}
-
-/// Updates the cursor at the start of every line.
-fn check_point(lexer: &mut Lexer<EncodedToken>) {
-    lexer.extras.line += 1;
-    lexer.extras.index = lexer.span().end;
 }
 
 /// Parse an `AFFN` numeric value.

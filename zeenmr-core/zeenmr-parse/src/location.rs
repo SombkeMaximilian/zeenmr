@@ -9,6 +9,22 @@ pub(crate) struct Cursor {
     pub(crate) index: usize,
 }
 
+/// Trait for updating the [`Cursor`] within a Lexer.
+pub(crate) trait UpdateCursor {
+    /// Updates the [`Cursor`] on a new line.
+    fn newline(&mut self);
+}
+
+impl<'source, T> UpdateCursor for Lexer<'source, T>
+where
+    T: Logos<'source, Extras = Cursor>
+{
+    fn newline(&mut self) {
+        self.extras.line += 1;
+        self.extras.index = self.span().end;
+    }
+}
+
 /// Position of a token in the source.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub(crate) struct Position {
