@@ -117,7 +117,7 @@ impl<'source> Decoder<'source> {
                     return Ok(DecodeExit::HeaderKey(self.finalize(), lexer));
                 }
                 Err(e) => match e.kind() {
-                    Kind::InvalidLiteral => return Err(e),
+                    Kind::InvalidLiteral | Kind::UnsupportedFormat => return Err(e),
                     _ => self.errors.push(e),
                 },
             }

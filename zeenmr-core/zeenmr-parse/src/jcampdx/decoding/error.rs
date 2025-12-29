@@ -55,6 +55,11 @@ pub enum Kind {
     /// line. If they're the first value in a line, they can't be resolved. This
     /// applies to the checkpoint value itself and the first actual data value.
     DifDupAfterCheckPoint,
+    /// Input contains an unsupported format.
+    ///
+    /// This currently includes using floating point values in `XYDATA` blocks,
+    /// which practically never gets used over `ASDF` encoding.
+    UnsupportedFormat,
 }
 
 impl std::error::Error for Error {}
@@ -67,6 +72,7 @@ impl std::fmt::Display for Error {
             Kind::IntegrityCheck => "integrity check failed",
             Kind::InvalidValue => "invalid value",
             Kind::DifDupAfterCheckPoint => "DIF or DUP after checkpoint",
+            Kind::UnsupportedFormat => "unsupported format",
         };
 
         write!(f, "{description}")
@@ -124,6 +130,17 @@ impl Error {
     pub(crate) fn dif_dup_after_check_point(position: Position) -> Self {
         Self {
             kind: Kind::DifDupAfterCheckPoint,
+            position,
+            index: None,
+        }
+    }
+
+    /// Creates an [`UnsupportedFormat`] error.
+    ///
+    /// [`UnsupportedFormat`]: Kind::UnsupportedFormat
+    pub(crate) fn unsupported_format(position: Position) -> Self {
+        Self {
+            kind: Kind::UnsupportedFormat,
             position,
             index: None,
         }
