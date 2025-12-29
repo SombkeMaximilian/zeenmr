@@ -63,13 +63,17 @@ fn affn(lexer: &Lexer<EncodedToken>) -> Result<i64> {
         Ok(int) => Ok(int),
         Err(e) => match e.kind() {
             IntErrorKind::InvalidDigit => {
-                let float = lexer.slice().parse::<f64>().unwrap();
+                let float = lexer
+                    .slice()
+                    .parse::<f64>()
+                    .map_err(|_| Error::unsupported_format(lexer.location()))?;
 
-                match float.fract() != 0.0 {
-                    true => Ok(float as i64),
-                    false => Err(Error::unsupported_format(lexer.location())),
+                if float.fract() == 0.0 {
+                    Ok(float as i64)
+                } else {
+                    Err(Error::unsupported_format(lexer.location()))
                 }
-            },
+            }
             IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
                 Err(Error::overflow(lexer.location()))
             }
