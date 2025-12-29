@@ -169,6 +169,8 @@ impl Error {
 
     /// Returns the index of the value in the decoded sequence which caused the
     /// error.
+    ///
+    /// If the error occurred in the checkpoint value, this returns [`None`].
     pub fn index(&self) -> Option<usize> {
         self.index
     }
