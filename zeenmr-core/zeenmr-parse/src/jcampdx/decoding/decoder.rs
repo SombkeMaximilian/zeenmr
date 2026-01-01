@@ -86,7 +86,7 @@ where
 {
     fn from(value: Lexer<'source, T>) -> Self {
         Self {
-            lexer: value.clone().morph(),
+            lexer: value.morph(),
             phase: Phase::CheckPoint,
             state: State::Normal,
             decoded: Vec::new(),
