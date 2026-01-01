@@ -17,7 +17,7 @@ pub(crate) trait UpdateCursor {
 
 impl<'source, T> UpdateCursor for Lexer<'source, T>
 where
-    T: Logos<'source, Extras = Cursor>
+    T: Logos<'source, Extras = Cursor>,
 {
     fn newline(&mut self) {
         self.extras.line += 1;

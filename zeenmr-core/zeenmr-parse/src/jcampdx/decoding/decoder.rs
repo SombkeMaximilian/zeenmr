@@ -228,7 +228,8 @@ impl<'source> Decoder<'source> {
                 self.numeric(i64::MIN);
             }
             Phase::CheckPoint => {
-                self.errors.push(Error::overflow(self.lexer.location()));
+                self.errors
+                    .push(Error::overflow(self.lexer.location()));
                 self.numeric(i64::MIN);
             }
         }
