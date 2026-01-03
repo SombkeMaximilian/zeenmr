@@ -1,6 +1,8 @@
 //! JCAMP-DX file format parsing.
 
-mod decoding;
+pub(crate) mod block_format;
+
+pub(crate) mod decoding;
 
 mod parser;
 pub(crate) use parser::Parser;
