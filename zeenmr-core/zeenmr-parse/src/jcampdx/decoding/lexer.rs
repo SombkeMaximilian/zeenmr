@@ -113,7 +113,7 @@ mod tests {
     use super::*;
 
     macro_rules! lexer_test {
-        ($name:ident, $data:tt) => {
+        ($name:ident, $data:expr) => {
             #[test]
             fn $name() {
                 let data = $data;
@@ -133,7 +133,7 @@ mod tests {
     lexer_test!(invalid, "9 1 2 3 ? 5 6 7 8 9 10");
 
     macro_rules! error_test {
-        ($name:ident, $data:tt, $error:expr) => {
+        ($name:ident, $data:expr, $error:expr) => {
             #[test]
             fn $name() {
                 let data = $data;
