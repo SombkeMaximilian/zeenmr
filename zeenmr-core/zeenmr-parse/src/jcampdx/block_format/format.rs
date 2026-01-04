@@ -1,7 +1,8 @@
 use crate::jcampdx::block_format::Identifier;
 
+/// Layout of the lines in a data block.
 #[derive(Clone, Eq, PartialEq, Debug)]
-pub(crate) enum BlockFormat {
+pub(crate) enum LineLayout {
     /// `XYDATA` specific layout.
     ///
     /// Each line contains one value for the first identifier, typically `X`,
@@ -21,4 +22,27 @@ pub(crate) enum BlockFormat {
     ///
     /// Each line contains one group of values for the identifiers.
     SingleGroup(Vec<Identifier>),
+}
+
+/// Format of a data block.
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub(crate) struct BlockFormat<'source> {
+    /// Layout of the lines.
+    line_layout: LineLayout,
+    /// Optional kind descriptor.
+    kind: Option<&'source str>,
+}
+
+impl<'source> BlockFormat<'source> {
+    pub(crate) fn new(line_layout: LineLayout, kind: Option<&'source str>) -> Self {
+        Self { line_layout, kind }
+    }
+
+    pub(crate) fn line_layout(&self) -> &LineLayout {
+        &self.line_layout
+    }
+
+    pub(crate) fn kind(&self) -> Option<&'source str> {
+        self.kind
+    }
 }

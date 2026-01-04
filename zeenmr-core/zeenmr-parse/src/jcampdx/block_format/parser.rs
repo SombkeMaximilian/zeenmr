@@ -1,5 +1,5 @@
 use crate::jcampdx::block_format::error::{Error, Result};
-use crate::jcampdx::block_format::{BlockFormat, FormatToken};
+use crate::jcampdx::block_format::{BlockFormat, FormatToken, LineLayout};
 use crate::{Cursor, Location, Position};
 use logos::{Lexer, Logos};
 
@@ -102,16 +102,22 @@ impl<'source> FormatParser<'source> {
                     .map(|identifier| (*identifier).into())
                     .collect();
 
-                Ok(BlockFormat::SingleGroup(identifiers))
+                Ok(BlockFormat::new(
+                    LineLayout::SingleGroup(identifiers),
+                    self.block_kind,
+                ))
             }
             State::AfterIncrement => {
                 let increment = self.increment[0].into();
                 let repeating = self.prefix[0].into();
 
-                Ok(BlockFormat::RepeatingValue {
-                    increment,
-                    repeating,
-                })
+                Ok(BlockFormat::new(
+                    LineLayout::RepeatingValue {
+                        increment,
+                        repeating,
+                    },
+                    self.block_kind,
+                ))
             }
             State::Suffix => {
                 if self.prefix != self.suffix {
@@ -125,15 +131,21 @@ impl<'source> FormatParser<'source> {
                         .map(|identifier| (*identifier).into())
                         .collect();
 
-                    Ok(BlockFormat::MultiGroup(identifiers))
+                    Ok(BlockFormat::new(
+                        LineLayout::MultiGroup(identifiers),
+                        self.block_kind,
+                    ))
                 } else {
                     let increment = self.increment[0].into();
                     let repeating = self.prefix[0].into();
 
-                    Ok(BlockFormat::RepeatingValue {
-                        increment,
-                        repeating,
-                    })
+                    Ok(BlockFormat::new(
+                        LineLayout::RepeatingValue {
+                            increment,
+                            repeating,
+                        },
+                        self.block_kind,
+                    ))
                 }
             }
         }
@@ -191,7 +203,7 @@ impl<'source> FormatParser<'source> {
         match self.block_kind {
             Some(_) => unreachable!(),
             None => {
-                self.block_kind = Some(self.lexer.slice());
+                self.block_kind = Some(&self.lexer.slice()[1..].trim());
 
                 if let Some(next) = self.lexer.next().transpose()? {
                     match next {
@@ -216,7 +228,8 @@ mod tests {
             fn $name() {
                 let data = $data;
                 let expected = $expected;
-                let parsed = FormatParser::from(data).parse_format().unwrap();
+                let mut parser = FormatParser::from(data);
+                let parsed = parser.parse_format().unwrap();
                 assert_eq!(parsed, expected);
             }
         };
@@ -225,37 +238,52 @@ mod tests {
     parser_test!(
         repeating,
         "(X++(Y..Y))\n",
-        BlockFormat::RepeatingValue {
-            increment: "X".into(),
-            repeating: "Y".into(),
-        }
+        BlockFormat::new(
+            LineLayout::RepeatingValue {
+                increment: "X".into(),
+                repeating: "Y".into(),
+            },
+            None
+        )
     );
     parser_test!(
         repeating_block_kind,
         "(X++(R..R)), XYDATA\n",
-        BlockFormat::RepeatingValue {
-            increment: "X".into(),
-            repeating: "R".into(),
-        }
+        BlockFormat::new(
+            LineLayout::RepeatingValue {
+                increment: "X".into(),
+                repeating: "R".into(),
+            },
+            Some("XYDATA")
+        )
     );
     parser_test!(
         multi_group,
         "(XY..XY)\n",
-        BlockFormat::MultiGroup(vec!["X".into(), "Y".into()])
+        BlockFormat::new(LineLayout::MultiGroup(vec!["X".into(), "Y".into()]), None)
     );
     parser_test!(
         multi_group_block_kind,
         "(XY..XY), PEAKS\n",
-        BlockFormat::MultiGroup(vec!["X".into(), "Y".into()])
+        BlockFormat::new(
+            LineLayout::MultiGroup(vec!["X".into(), "Y".into()]),
+            Some("PEAKS")
+        )
     );
     parser_test!(
         single_group,
         "(XYWA)\n",
-        BlockFormat::SingleGroup(vec!["X".into(), "Y".into(), "W".into(), "A".into()])
+        BlockFormat::new(
+            LineLayout::SingleGroup(vec!["X".into(), "Y".into(), "W".into(), "A".into()]),
+            None
+        )
     );
     parser_test!(
         single_group_block_kind,
         "(XYWA), PEAK ASSIGNMENTS\n",
-        BlockFormat::SingleGroup(vec!["X".into(), "Y".into(), "W".into(), "A".into()])
+        BlockFormat::new(
+            LineLayout::SingleGroup(vec!["X".into(), "Y".into(), "W".into(), "A".into()]),
+            Some("PEAK ASSIGNMENTS")
+        )
     );
 }
