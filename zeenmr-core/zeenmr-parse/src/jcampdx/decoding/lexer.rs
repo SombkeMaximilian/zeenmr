@@ -113,59 +113,176 @@ mod tests {
     use super::*;
 
     macro_rules! lexer_test {
-        ($name:ident, $data:expr) => {
+        ($name:ident, $data:expr, $tokens:expr) => {
             #[test]
             fn $name() {
                 let data = $data;
-                let mut lexer = EncodedToken::lexer(data);
-                if let Some(e) = lexer.find_map(Result::err) {
-                    panic!("lexer error: {e}");
-                }
+                let expected = $tokens;
+                let token = EncodedToken::lexer(data)
+                    .collect::<Vec<crate::jcampdx::decoding::error::Result<EncodedToken>>>();
+                assert_eq!(token, expected);
             }
         };
     }
 
-    lexer_test!(affn, "9 1 2 3 4 5 6 7 8 9 10");
-    lexer_test!(pac, "9 +1+2+3+4+5+6+7+8+9+10");
-    lexer_test!(sqz, "9 ABCDEFGHIA0");
-    lexer_test!(dif, "9 AJJJJJJJJJ");
-    lexer_test!(difdup, "9 AJs");
-    lexer_test!(invalid, "9 1 2 3 ? 5 6 7 8 9 10");
-
-    macro_rules! error_test {
-        ($name:ident, $data:expr, $error:expr) => {
-            #[test]
-            fn $name() {
-                let data = $data;
-                let error = $error;
-                let mut lexer = EncodedToken::lexer(data);
-                if let Some(e) = lexer.find_map(Result::err) {
-                    assert_eq!(e, error);
-                } else {
-                    panic!("no lexer error");
-                }
-            }
-        };
-    }
-
-    error_test!(
+    lexer_test!(
+        affn,
+        "9 1 2 3 4 5\n\
+         5 6 7 8 9 10",
+        [
+            Ok(EncodedToken::Numeric(9)),
+            Ok(EncodedToken::Numeric(1)),
+            Ok(EncodedToken::Numeric(2)),
+            Ok(EncodedToken::Numeric(3)),
+            Ok(EncodedToken::Numeric(4)),
+            Ok(EncodedToken::Numeric(5)),
+            Ok(EncodedToken::CheckPoint),
+            Ok(EncodedToken::Numeric(5)),
+            Ok(EncodedToken::Numeric(6)),
+            Ok(EncodedToken::Numeric(7)),
+            Ok(EncodedToken::Numeric(8)),
+            Ok(EncodedToken::Numeric(9)),
+            Ok(EncodedToken::Numeric(10)),
+        ]
+    );
+    lexer_test!(
+        pac,
+        "9 +1+2+3+4+5\n\
+         5 +6+7+8+9+10",
+        [
+            Ok(EncodedToken::Numeric(9)),
+            Ok(EncodedToken::Numeric(1)),
+            Ok(EncodedToken::Numeric(2)),
+            Ok(EncodedToken::Numeric(3)),
+            Ok(EncodedToken::Numeric(4)),
+            Ok(EncodedToken::Numeric(5)),
+            Ok(EncodedToken::CheckPoint),
+            Ok(EncodedToken::Numeric(5)),
+            Ok(EncodedToken::Numeric(6)),
+            Ok(EncodedToken::Numeric(7)),
+            Ok(EncodedToken::Numeric(8)),
+            Ok(EncodedToken::Numeric(9)),
+            Ok(EncodedToken::Numeric(10)),
+        ]
+    );
+    lexer_test!(
+        sqz,
+        "9 ABCDEFGHIA0",
+        [
+            Ok(EncodedToken::Numeric(9)),
+            Ok(EncodedToken::Compressed(1)),
+            Ok(EncodedToken::Compressed(2)),
+            Ok(EncodedToken::Compressed(3)),
+            Ok(EncodedToken::Compressed(4)),
+            Ok(EncodedToken::Compressed(5)),
+            Ok(EncodedToken::Compressed(6)),
+            Ok(EncodedToken::Compressed(7)),
+            Ok(EncodedToken::Compressed(8)),
+            Ok(EncodedToken::Compressed(9)),
+            Ok(EncodedToken::Compressed(10)),
+        ]
+    );
+    lexer_test!(
+        dif,
+        "9 AJJJJJJJJJ\n\
+         0 A0",
+        [
+            Ok(EncodedToken::Numeric(9)),
+            Ok(EncodedToken::Compressed(1)),
+            Ok(EncodedToken::Difference(1)),
+            Ok(EncodedToken::Difference(1)),
+            Ok(EncodedToken::Difference(1)),
+            Ok(EncodedToken::Difference(1)),
+            Ok(EncodedToken::Difference(1)),
+            Ok(EncodedToken::Difference(1)),
+            Ok(EncodedToken::Difference(1)),
+            Ok(EncodedToken::Difference(1)),
+            Ok(EncodedToken::Difference(1)),
+            Ok(EncodedToken::CheckPoint),
+            Ok(EncodedToken::Numeric(0)),
+            Ok(EncodedToken::Compressed(10)),
+        ]
+    );
+    lexer_test!(
+        difdup,
+        "9 AJs\n\
+         0 A0",
+        [
+            Ok(EncodedToken::Numeric(9)),
+            Ok(EncodedToken::Compressed(1)),
+            Ok(EncodedToken::Difference(1)),
+            Ok(EncodedToken::Duplicate(9)),
+            Ok(EncodedToken::CheckPoint),
+            Ok(EncodedToken::Numeric(0)),
+            Ok(EncodedToken::Compressed(10)),
+        ]
+    );
+    lexer_test!(
+        invalid,
+        "9 1 2 3 ? 5\n\
+         5 6 7 8 9 10",
+        [
+            Ok(EncodedToken::Numeric(9)),
+            Ok(EncodedToken::Numeric(1)),
+            Ok(EncodedToken::Numeric(2)),
+            Ok(EncodedToken::Numeric(3)),
+            Ok(EncodedToken::Invalid(Position { line: 0, column: 8 })),
+            Ok(EncodedToken::Numeric(5)),
+            Ok(EncodedToken::CheckPoint),
+            Ok(EncodedToken::Numeric(5)),
+            Ok(EncodedToken::Numeric(6)),
+            Ok(EncodedToken::Numeric(7)),
+            Ok(EncodedToken::Numeric(8)),
+            Ok(EncodedToken::Numeric(9)),
+            Ok(EncodedToken::Numeric(10)),
+        ]
+    );
+    lexer_test!(
         affn_positive_overflow,
-        "0 +900000000000000000000",
-        Error::overflow(Position { line: 0, column: 2 })
+        "4 +900000000000000000000 1 1 1 1",
+        [
+            Ok(EncodedToken::Numeric(4)),
+            Err(Error::overflow(Position { line: 0, column: 2 })),
+            Ok(EncodedToken::Numeric(1)),
+            Ok(EncodedToken::Numeric(1)),
+            Ok(EncodedToken::Numeric(1)),
+            Ok(EncodedToken::Numeric(1)),
+        ]
     );
-    error_test!(
+    lexer_test!(
         affn_negative_overflow,
-        "0 -900000000000000000000",
-        Error::overflow(Position { line: 0, column: 2 })
+        "4 -900000000000000000000 1 1 1 1",
+        [
+            Ok(EncodedToken::Numeric(4)),
+            Err(Error::overflow(Position { line: 0, column: 2 })),
+            Ok(EncodedToken::Numeric(1)),
+            Ok(EncodedToken::Numeric(1)),
+            Ok(EncodedToken::Numeric(1)),
+            Ok(EncodedToken::Numeric(1)),
+        ]
     );
-    error_test!(
+    lexer_test!(
         sqz_positive_overflow,
-        "0 I900000000000000000000",
-        Error::overflow(Position { line: 0, column: 2 })
+        "4 I900000000000000000000 1 1 1 1",
+        [
+            Ok(EncodedToken::Numeric(4)),
+            Err(Error::overflow(Position { line: 0, column: 2 })),
+            Ok(EncodedToken::Numeric(1)),
+            Ok(EncodedToken::Numeric(1)),
+            Ok(EncodedToken::Numeric(1)),
+            Ok(EncodedToken::Numeric(1)),
+        ]
     );
-    error_test!(
+    lexer_test!(
         sqz_negative_overflow,
-        "0 i900000000000000000000",
-        Error::overflow(Position { line: 0, column: 2 })
+        "4 i900000000000000000000 1 1 1 1",
+        [
+            Ok(EncodedToken::Numeric(4)),
+            Err(Error::overflow(Position { line: 0, column: 2 })),
+            Ok(EncodedToken::Numeric(1)),
+            Ok(EncodedToken::Numeric(1)),
+            Ok(EncodedToken::Numeric(1)),
+            Ok(EncodedToken::Numeric(1)),
+        ]
     );
 }
