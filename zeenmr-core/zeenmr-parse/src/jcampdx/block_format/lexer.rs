@@ -10,8 +10,6 @@ use logos::{Lexer, Logos};
 #[logos(skip r"(?&space)")]
 #[logos(subpattern parentheses = r"[()]")]
 #[logos(skip r"(?&parentheses)")]
-#[logos(subpattern comma = r",")]
-#[logos(skip r"(?&comma)")]
 pub(crate) enum FormatToken {
     /// Identifier for a quantity.
     ///
@@ -31,7 +29,7 @@ pub(crate) enum FormatToken {
     #[token("..")]
     Repeat,
     /// A `DATA TABLE` data block contains the exact type of data after a comma.
-    #[regex(r"XYDATA|XYPOINTS|PEAKS|PEAK[\s_-]TABLE|PEAK[\s_-]ASSIGNMENTS")]
+    #[regex(r",[^\n\r]+")]
     DataBlockKind,
     /// A new line ends a data block format specifier.
     #[regex(r"(?&newline)", UpdateCursor::newline)]
