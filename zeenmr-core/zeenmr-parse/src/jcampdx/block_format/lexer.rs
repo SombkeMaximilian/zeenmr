@@ -42,53 +42,111 @@ fn invalid_literal(lexer: &Lexer<FormatToken>) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use crate::location::Position;
     use super::*;
+    use crate::Position;
 
     macro_rules! lexer_test {
-        ($name:ident, $data:expr) => {
+        ($name:ident, $data:expr, $tokens:expr) => {
             #[test]
             fn $name() {
                 let data = $data;
-                let mut lexer = FormatToken::lexer(data);
-                if let Some(e) = lexer.find_map(Result::err) {
-                    panic!("lexer error: {e}");
-                }
+                let expected = $tokens;
+                let tokens = FormatToken::lexer(data)
+                    .collect::<Vec<crate::jcampdx::block_format::error::Result<FormatToken>>>();
+                assert_eq!(tokens, expected);
             }
         };
     }
 
-    lexer_test!(repeating, "(X++(Y..Y))\n");
-    lexer_test!(repeating_block_kind, "(X++(R..R)), XYDATA\n");
-    lexer_test!(multi_group, "(XY..XY)\n");
-    lexer_test!(multi_group_block_kind, "(XY..XY), PEAKS\n");
-    lexer_test!(single_group, "(XYWA)\n");
-    lexer_test!(single_group_block_kind, "(XYWA), PEAK ASSIGNMENTS\n");
-
-    macro_rules! error_test {
-        ($name:ident, $data:expr, $error:expr) => {
-            #[test]
-            fn $name() {
-                let data = $data;
-                let error = $error;
-                let mut lexer = FormatToken::lexer(data);
-                if let Some(e) = lexer.find_map(Result::err) {
-                    assert_eq!(e, error);
-                } else {
-                    panic!("no lexer error");
-                }
-            }
-        };
-    }
-
-    error_test!(
+    lexer_test!(
+        repeating,
+        "(X++(Y..Y))\n",
+        [
+            Ok(FormatToken::Identifier),
+            Ok(FormatToken::Increment),
+            Ok(FormatToken::Identifier),
+            Ok(FormatToken::Repeat),
+            Ok(FormatToken::Identifier),
+            Ok(FormatToken::End),
+        ]
+    );
+    lexer_test!(
+        repeating_block_kind,
+        "(X++(R..R)), XYDATA\n",
+        [
+            Ok(FormatToken::Identifier),
+            Ok(FormatToken::Increment),
+            Ok(FormatToken::Identifier),
+            Ok(FormatToken::Repeat),
+            Ok(FormatToken::Identifier),
+            Ok(FormatToken::DataBlockKind),
+            Ok(FormatToken::End),
+        ]
+    );
+    lexer_test!(
+        multi_group,
+        "(XY..XY)\n",
+        [
+            Ok(FormatToken::Identifier),
+            Ok(FormatToken::Identifier),
+            Ok(FormatToken::Repeat),
+            Ok(FormatToken::Identifier),
+            Ok(FormatToken::Identifier),
+            Ok(FormatToken::End),
+        ]
+    );
+    lexer_test!(
+        multi_group_block_kind,
+        "(XY..XY), PEAKS\n",
+        [
+            Ok(FormatToken::Identifier),
+            Ok(FormatToken::Identifier),
+            Ok(FormatToken::Repeat),
+            Ok(FormatToken::Identifier),
+            Ok(FormatToken::Identifier),
+            Ok(FormatToken::DataBlockKind),
+            Ok(FormatToken::End),
+        ]
+    );
+    lexer_test!(
+        single_group,
+        "(XYWA)\n",
+        [
+            Ok(FormatToken::Identifier),
+            Ok(FormatToken::Identifier),
+            Ok(FormatToken::Identifier),
+            Ok(FormatToken::Identifier),
+            Ok(FormatToken::End),
+        ]
+    );
+    lexer_test!(
+        single_group_block_kind,
+        "(XYWA), PEAK ASSIGNMENTS\n",
+        [
+            Ok(FormatToken::Identifier),
+            Ok(FormatToken::Identifier),
+            Ok(FormatToken::Identifier),
+            Ok(FormatToken::Identifier),
+            Ok(FormatToken::DataBlockKind),
+            Ok(FormatToken::End),
+        ]
+    );
+    lexer_test!(
         invalid_literal_repeat,
         "(X.Y)",
-        Error::invalid_literal(Position { line: 0, column: 2 })
+        [
+            Ok(FormatToken::Identifier),
+            Err(Error::invalid_literal(Position { line: 0, column: 2 })),
+            Ok(FormatToken::Identifier),
+        ]
     );
-    error_test!(
+    lexer_test!(
         invalid_literal_numeric,
         "(1..3)",
-        Error::invalid_literal(Position { line: 0, column: 1 })
+        [
+            Err(Error::invalid_literal(Position { line: 0, column: 1 })),
+            Ok(FormatToken::Repeat),
+            Err(Error::invalid_literal(Position { line: 0, column: 4 })),
+        ]
     );
 }
