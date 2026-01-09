@@ -14,7 +14,9 @@ pub mod peak_finding;
 pub mod smoothing;
 
 mod deconvoluter;
-pub use deconvoluter::{DeconvoluteMap, Deconvoluter, ParDeconvoluteMap};
+#[cfg(feature = "rayon")]
+pub use deconvoluter::ParDeconvoluteMap;
+pub use deconvoluter::{DeconvoluteMap, Deconvoluter};
 
 mod deconvolution;
 pub use deconvolution::Deconvolution;

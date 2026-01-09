@@ -84,6 +84,7 @@ where
     >;
 }
 
+#[cfg(feature = "rayon")]
 impl<S, I, P, SM, PF, FT> ParDeconvoluteMap<P, SM, PF, FT> for I
 where
     S: AsRef<Spectrum>,
