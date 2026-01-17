@@ -1,5 +1,7 @@
 //! JCAMP-DX file format parsing.
 
+pub mod error;
+
 pub(crate) mod block_format;
 
 pub(crate) mod decoding;
