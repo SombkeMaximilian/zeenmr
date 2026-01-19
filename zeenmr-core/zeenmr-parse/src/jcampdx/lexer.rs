@@ -80,6 +80,7 @@ fn invalid_literal(lexer: &Lexer<Token>) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::jcampdx::error::Result;
 
     macro_rules! lexer_test {
         ($name:ident, $data:expr, $tokens:expr) => {
@@ -87,8 +88,7 @@ mod tests {
             fn $name() {
                 let data = $data;
                 let expected = $tokens;
-                let tokens = Token::lexer(data)
-                    .collect::<Vec<crate::jcampdx::error::Result<Token>>>();
+                let tokens = Token::lexer(data).collect::<Vec<Result<Token>>>();
                 assert_eq!(tokens, expected);
             }
         };
@@ -149,11 +149,7 @@ mod tests {
     lexer_test!(
         end,
         "##END=",
-        [
-            Ok(Token::Key),
-            Ok(Token::End),
-            Ok(Token::Equals),
-        ]
+        [Ok(Token::Key), Ok(Token::End), Ok(Token::Equals),]
     );
     lexer_test!(
         end_ntuples,

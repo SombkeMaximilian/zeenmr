@@ -44,6 +44,7 @@ fn invalid_literal(lexer: &Lexer<FormatToken>) -> Error {
 mod tests {
     use super::*;
     use crate::Position;
+    use crate::jcampdx::block_format::error::Result;
 
     macro_rules! lexer_test {
         ($name:ident, $data:expr, $tokens:expr) => {
@@ -51,8 +52,7 @@ mod tests {
             fn $name() {
                 let data = $data;
                 let expected = $tokens;
-                let tokens = FormatToken::lexer(data)
-                    .collect::<Vec<crate::jcampdx::block_format::error::Result<FormatToken>>>();
+                let tokens = FormatToken::lexer(data).collect::<Vec<Result<FormatToken>>>();
                 assert_eq!(tokens, expected);
             }
         };

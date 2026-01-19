@@ -111,6 +111,7 @@ fn asdf(lexer: &Lexer<EncodedToken>) -> Result<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::jcampdx::decoding::error::Result;
 
     macro_rules! lexer_test {
         ($name:ident, $data:expr, $tokens:expr) => {
@@ -118,8 +119,7 @@ mod tests {
             fn $name() {
                 let data = $data;
                 let expected = $tokens;
-                let token = EncodedToken::lexer(data)
-                    .collect::<Vec<crate::jcampdx::decoding::error::Result<EncodedToken>>>();
+                let token = EncodedToken::lexer(data).collect::<Vec<Result<EncodedToken>>>();
                 assert_eq!(token, expected);
             }
         };
