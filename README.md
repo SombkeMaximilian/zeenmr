@@ -183,9 +183,11 @@ WIP
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the **GNU General Public License v3.0 or later**. See the [LICENSE](LICENSE) file for
+the full license text.
 
-### Contribution
+## Contributing
 
-Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you, as
-defined in the MIT license, shall be licensed as MIT, without any additional terms or conditions.
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in this project by you,
+as defined in the GNU General Public License v3.0 (or later), shall be licensed under the terms of the GPL v3.0
+(or later), without any additional terms or conditions.
