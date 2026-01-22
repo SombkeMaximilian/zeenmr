@@ -6,5 +6,8 @@
 mod location;
 pub(crate) use location::{Cursor, Location, Position, UpdateCursor};
 
+mod stack;
+pub(crate) use stack::{Frame, Stack};
+
 pub mod bruker;
 pub mod jcampdx;
