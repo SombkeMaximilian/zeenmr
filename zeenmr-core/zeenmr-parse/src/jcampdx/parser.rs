@@ -7,10 +7,10 @@ use std::collections::HashMap;
 /// Delimiters of bounded values.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 enum Delimiter {
-    /// Values bounded by parentheses are arrays.
+    /// Values bounded by parentheses.
     Parentheses,
-    /// Values bounded by angle brackets are strings.
-    Angle(usize),
+    /// Values bounded by angle brackets.
+    Angle,
 }
 
 /// JCAMP-DX file parser.
@@ -55,10 +55,10 @@ impl<'source> Parser<'source> {
             match token {
                 Ok(Token::Key) => self.key()?,
                 Ok(Token::Comma) => self.comma(),
-                Ok(Token::OpenParenthesis) => self.open_parenthesis(),
-                Ok(Token::CloseParenthesis) => self.close_parenthesis(),
-                Ok(Token::OpenAngle) => self.open_angle(),
-                Ok(Token::CloseAngle) => self.close_angle(),
+                Ok(Token::OpenParenthesis) => self.start_bounded(Delimiter::Parentheses),
+                Ok(Token::CloseParenthesis) => self.end_bounded(Delimiter::Parentheses)?,
+                Ok(Token::OpenAngle) => self.start_bounded(Delimiter::Angle),
+                Ok(Token::CloseAngle) => self.end_bounded(Delimiter::Angle)?,
                 Ok(Token::Numeric) => self.numeric(),
                 // Tokens like Title are only semantically special if they
                 // appear immediately after a Key and before an Equals.
@@ -196,13 +196,54 @@ impl<'source> Parser<'source> {
 
     fn comma(&mut self) {}
 
-    fn open_parenthesis(&mut self) {}
+    /// Adds a [`Frame`] to the [`Stack`] with the encountered delimiter kind.
+    ///
+    /// [`Frame`]: crate::Frame
+    fn start_bounded(&mut self, delimiter: Delimiter) {
+        self.bounded_stack
+            .push(delimiter, self.lexer.location());
+    }
 
-    fn close_parenthesis(&mut self) {}
+    /// Finalizes the [`Frame`] at the top of the [`Stack`].
+    ///
+    /// [`Frame`]: crate::Frame
+    ///
+    /// If the stack is not empty, appends the value to the enclosing frame,
+    /// allowing nested bounded structures. Otherwise, stores the resulting
+    /// [`Value`] in the current value being built by the `Parser`.
+    ///
+    /// [`Frame`]: crate::Frame
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the [`Delimiter`]s are mismatched, i.e., the
+    /// encountered delimiter does not match the one at the top of the
+    /// [`Stack`].
+    fn end_bounded(&mut self, delimiter: Delimiter) -> Result<()> {
+        if self.bounded_stack.top_delimiter() != Some(&delimiter) {
+            return Err(Error::mismatched_delimiter(self.lexer.location()));
+        }
+        let frame = self
+            .bounded_stack
+            .pop()
+            .ok_or_else(|| Error::mismatched_delimiter(self.lexer.location()))?;
+        let value = match frame.values.len() {
+            0 => Value::Empty,
+            1 => frame.values.into_iter().next().unwrap(),
+            _ => Value::Array(frame.values),
+        };
+        if let Some(top) = self.bounded_stack.top_mut() {
+            top.values.push(value);
+        } else {
+            match self.current_value {
+                Value::Empty => self.current_value = Value::Array(vec![value]),
+                Value::Array(ref mut array) => array.push(value),
+                _ => self.current_value = Value::Array(vec![self.take_current_value(), value]),
+            }
+        }
 
-    fn open_angle(&mut self) {}
-
-    fn close_angle(&mut self) {}
+        Ok(())
+    }
 
     fn numeric(&mut self) {}
 
@@ -246,7 +287,9 @@ mod tests {
                     .join($version)
                     .join($file);
                 let content = read_to_string(path).unwrap();
-                let parsed = Parser::from(content.as_str()).parse_source();
+                let parsed = Parser::from(content.as_str())
+                    .parse_source()
+                    .unwrap();
             }
         };
     }
