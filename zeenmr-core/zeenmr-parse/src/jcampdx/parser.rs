@@ -3,6 +3,7 @@ use crate::jcampdx::{Token, Value};
 use crate::{Location, Stack};
 use logos::{Lexer, Logos};
 use std::collections::HashMap;
+use std::num::IntErrorKind;
 
 /// Delimiters of bounded values.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -51,7 +52,7 @@ impl<'source> Parser<'source> {
         self.initialize()?;
 
         while let Some(token) = self.lexer.next() {
-            let clear_auto_concatenate = token != Ok(Token::Comma);
+            let reset_auto_concatenate = token != Ok(Token::Comma);
             match token {
                 Ok(Token::Key) => self.key()?,
                 Ok(Token::Comma) => self.comma(),
@@ -74,8 +75,8 @@ impl<'source> Parser<'source> {
                 | Ok(Token::End) => self.string(),
                 Err(e) => panic!("{e}"),
             }
-            if clear_auto_concatenate {
-                self.auto_concatenate = false;
+            if reset_auto_concatenate {
+                self.auto_concatenate = true;
             }
         }
 
@@ -137,7 +138,8 @@ impl<'source> Parser<'source> {
     /// [`Equals`]: Token::Equals
     fn key(&mut self) -> Result<()> {
         let current_value = self.take_current_value();
-        self.parameters.insert(self.current_key.to_string(), current_value);
+        self.parameters
+            .insert(self.current_key.to_string(), current_value);
         let start = self.lexer.span().end;
         let mut token_count = 0;
         let mut found_equals = false;
@@ -194,7 +196,32 @@ impl<'source> Parser<'source> {
         Ok(())
     }
 
-    fn comma(&mut self) {}
+    /// Handles comma separators.
+    ///
+    /// A comma disables automatic concatenation. If concatenation is already
+    /// disabled, i.e., consecutive commas are encountered, inserts an empty
+    /// value into the current context.
+    ///
+    /// [`Empty`]: Value::Empty
+    /// [`Comma`]: Token::Comma
+    fn comma(&mut self) {
+        if self.auto_concatenate {
+            self.auto_concatenate = false;
+        } else {
+            if let Some(top) = self.bounded_stack.top_mut() {
+                top.values.push(Value::Empty);
+            } else {
+                match self.current_value {
+                    Value::Empty => self.current_value = Value::Array(vec![Value::Empty]),
+                    Value::Array(ref mut array) => array.push(Value::Empty),
+                    _ => {
+                        self.current_value =
+                            Value::Array(vec![self.take_current_value(), Value::Empty])
+                    }
+                }
+            }
+        }
+    }
 
     /// Adds a [`Frame`] to the [`Stack`] with the encountered delimiter kind.
     ///
