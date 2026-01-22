@@ -25,9 +25,12 @@ pub enum Kind {
     #[default]
     InvalidLiteral,
     NoEntryPoint,
+    EmptyKey,
+    MultipleKeyTokens,
     Overflow,
     BlockFormat,
     Decode,
+    EndOfInput,
 }
 
 impl From<crate::jcampdx::block_format::error::Error> for Error {
@@ -69,9 +72,12 @@ impl std::fmt::Display for Error {
         let description = match self.kind() {
             Kind::InvalidLiteral => "invalid literal",
             Kind::NoEntryPoint => "no entry point",
+            Kind::EmptyKey => "empty key",
+            Kind::MultipleKeyTokens => "multiple key tokens",
             Kind::Overflow => "overflow",
             Kind::BlockFormat => "block format",
             Kind::Decode => "decode error",
+            Kind::EndOfInput => "end of input",
         };
 
         write!(f, "{description}")
@@ -90,12 +96,34 @@ impl Error {
         }
     }
 
+    /// Creates an [`EmptyKey`] error.
+    ///
+    /// [`EmptyKey`]: Kind::EmptyKey
+    pub(crate) fn empty_key(position: Position) -> Self {
+        Self {
+            kind: Kind::EmptyKey,
+            position,
+            source: None,
+        }
+    }
+
     /// Creates a [`NoEntryPoint`] error.
     ///
     /// [`NoEntryPoint`]: Kind::NoEntryPoint
     pub(crate) fn no_entry_point(position: Position) -> Self {
         Self {
             kind: Kind::NoEntryPoint,
+            position,
+            source: None,
+        }
+    }
+
+    /// Creates a [`MultipleKeyTokens`] error.
+    ///
+    /// [`MultipleKeyTokens`]: Kind::MultipleKeyTokens
+    pub(crate) fn multiple_key_tokens(position: Position) -> Self {
+        Self {
+            kind: Kind::MultipleKeyTokens,
             position,
             source: None,
         }
@@ -109,6 +137,17 @@ impl Error {
             kind: Kind::Overflow,
             position,
             source: Some(Arc::new(source)),
+        }
+    }
+
+    /// Creates an [`EndOfInput`] error.
+    ///
+    /// [`EndOfInput`]: Kind::EndOfInput
+    pub(crate) fn end_of_input(position: Position) -> Self {
+        Self {
+            kind: Kind::EndOfInput,
+            position,
+            source: None,
         }
     }
 
