@@ -235,7 +235,7 @@ impl<'source> Parser<'source> {
     ///
     /// [`Frame`]: crate::Frame
     ///
-    /// If the stack is not empty, appends the value to the enclosing frame,
+    /// If the stack is not empty, appends the value to the enclosing [`Frame`],
     /// allowing nested bounded structures. Otherwise, stores the resulting
     /// [`Value`] in the current value being built by the `Parser`.
     ///
