@@ -1,7 +1,8 @@
 /// Values in JCAMP-DX files.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, Default)]
 pub enum Value {
     /// Empty values for unset parameters.
+    #[default]
     Empty,
     /// Integer values.
     Integer(i64),
