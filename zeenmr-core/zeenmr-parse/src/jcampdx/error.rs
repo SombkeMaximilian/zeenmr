@@ -24,6 +24,7 @@ pub struct Error {
 pub enum Kind {
     #[default]
     InvalidLiteral,
+    NoEntryPoint,
     Overflow,
     BlockFormat,
     Decode,
@@ -67,6 +68,7 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let description = match self.kind() {
             Kind::InvalidLiteral => "invalid literal",
+            Kind::NoEntryPoint => "no entry point",
             Kind::Overflow => "overflow",
             Kind::BlockFormat => "block format",
             Kind::Decode => "decode error",
@@ -83,6 +85,17 @@ impl Error {
     pub(crate) fn invalid_literal(position: Position) -> Self {
         Self {
             kind: Kind::InvalidLiteral,
+            position,
+            source: None,
+        }
+    }
+
+    /// Creates a [`NoEntryPoint`] error.
+    ///
+    /// [`NoEntryPoint`]: Kind::NoEntryPoint
+    pub(crate) fn no_entry_point(position: Position) -> Self {
+        Self {
+            kind: Kind::NoEntryPoint,
             position,
             source: None,
         }
