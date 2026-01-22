@@ -27,6 +27,7 @@ pub enum Kind {
     NoEntryPoint,
     EmptyKey,
     MultipleKeyTokens,
+    MismatchedDelimiter,
     Overflow,
     BlockFormat,
     Decode,
@@ -74,6 +75,7 @@ impl std::fmt::Display for Error {
             Kind::NoEntryPoint => "no entry point",
             Kind::EmptyKey => "empty key",
             Kind::MultipleKeyTokens => "multiple key tokens",
+            Kind::MismatchedDelimiter => "mismatched delimiter",
             Kind::Overflow => "overflow",
             Kind::BlockFormat => "block format",
             Kind::Decode => "decode error",
@@ -124,6 +126,17 @@ impl Error {
     pub(crate) fn multiple_key_tokens(position: Position) -> Self {
         Self {
             kind: Kind::MultipleKeyTokens,
+            position,
+            source: None,
+        }
+    }
+
+    /// Creates a [`MismatchedDelimiter`] error.
+    ///
+    /// [`MismatchedDelimiter`]: Kind::MismatchedDelimiter
+    pub(crate) fn mismatched_delimiter(position: Position) -> Self {
+        Self {
+            kind: Kind::MismatchedDelimiter,
             position,
             source: None,
         }
