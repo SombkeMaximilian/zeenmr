@@ -136,6 +136,8 @@ impl<'source> Parser<'source> {
     /// [`Key`]: Token::Key
     /// [`Equals`]: Token::Equals
     fn key(&mut self) -> Result<()> {
+        let current_value = self.take_current_value();
+        self.parameters.insert(self.current_key.to_string(), current_value);
         let start = self.lexer.span().end;
         let mut token_count = 0;
         let mut found_equals = false;
@@ -146,7 +148,7 @@ impl<'source> Parser<'source> {
                 Token::Equals => {
                     found_equals = true;
                     break;
-                },
+                }
                 Token::Title
                 | Token::Tuples
                 | Token::Page
@@ -186,7 +188,7 @@ impl<'source> Parser<'source> {
             | None => {
                 let end = self.lexer.span().start;
                 self.current_key = self.lexer.source()[start..end].trim();
-            },
+            }
         }
 
         Ok(())
