@@ -13,9 +13,6 @@ use logos::{Lexer, Logos};
 #[logos(subpattern comment = r"\$\$[^\r\n]+(?&newline)?")]
 #[logos(skip r"(?&comment)")]
 pub(crate) enum Token {
-    /// A dataset always begins with a `TITLE` key.
-    #[token("TITLE")]
-    Title,
     /// JCAMP-DX header keys start with `##` or `##.`. Bruker-specific keys
     /// start with `##$` but follow the same rules otherwise.
     #[token("##")]
@@ -46,6 +43,9 @@ pub(crate) enum Token {
     /// Anything not numeric is a string.
     #[regex(r"[^ \t\r\n=#,<>\(\)]*")]
     String,
+    /// A dataset always begins with a `TITLE` key.
+    #[token("TITLE")]
+    Title,
     /// An `NTUPLES` key indicates that multiple data blocks belong to the same
     /// dataset.
     #[token("NTUPLES")]
