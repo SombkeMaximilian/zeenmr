@@ -272,9 +272,87 @@ impl<'source> Parser<'source> {
         Ok(())
     }
 
-    fn numeric(&mut self) {}
+    /// Parses [`Numeric`] tokens.
+    ///
+    /// [`Numeric`]: Token::Numeric
+    ///
+    /// Attempts to parse the token as `i64`. If parsing fails due to overflow,
+    /// records a non-fatal [`Overflow`] error and uses [`i64::MIN`] as the
+    /// value. Otherwise, falls back to parsing as `f64`.
+    ///
+    /// [`Overflow`]: crate::jcampdx::error::Kind::Overflow;
+    fn numeric(&mut self) {
+        let value = match self.lexer.slice().parse::<i64>() {
+            Ok(int) => Value::Integer(int),
+            Err(e) => match e.kind() {
+                IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
+                    self.errors
+                        .push(Error::overflow(self.lexer.location(), e));
 
-    fn string(&mut self) {}
+                    Value::Integer(i64::MIN)
+                }
+                _ => Value::Float(
+                    self.lexer
+                        .slice()
+                        .parse::<f64>()
+                        .expect("lexer (regex) matched non-numeric"),
+                ),
+            },
+        };
+        if let Some(top) = self.bounded_stack.top_mut() {
+            top.values.push(value);
+        } else {
+            match self.current_value {
+                Value::Empty => self.current_value = value,
+                Value::Array(ref mut array) => array.push(value),
+                _ => self.current_value = Value::Array(vec![self.take_current_value(), value]),
+            }
+        }
+    }
+
+    /// Handles [`String`] tokens.
+    ///
+    /// Inserts the string into the current context. If automatic concatenation
+    /// is enabled and the previous value is also a string, the values are
+    /// concatenated with a separating space. Otherwise, a new string value is
+    /// inserted.
+    ///
+    /// [`String`]: Token::String
+    fn string(&mut self) {
+        let value = self.lexer.slice();
+        let mut push_string = |values: &mut Vec<Value>| {
+            if let Some(Value::String(previous)) = values.last_mut()
+                && self.auto_concatenate
+            {
+                if !previous.is_empty() {
+                    previous.push(' ');
+                }
+                previous.push_str(value);
+            } else {
+                values.push(Value::String(value.to_string()));
+            }
+        };
+        if let Some(top) = self.bounded_stack.top_mut() {
+            push_string(&mut top.values);
+        } else {
+            match self.current_value {
+                Value::Empty => self.current_value = Value::String(value.to_string()),
+                Value::String(ref mut previous) if self.auto_concatenate => {
+                    if previous.len() > 0 {
+                        previous.push(' ');
+                    }
+                    previous.push_str(value);
+                }
+                Value::Array(ref mut array) => push_string(array),
+                _ => {
+                    self.current_value = Value::Array(vec![
+                        self.take_current_value(),
+                        Value::String(value.to_string()),
+                    ]);
+                }
+            }
+        }
+    }
 
     fn title(&mut self) {}
 
