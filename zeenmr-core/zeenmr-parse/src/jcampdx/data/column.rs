@@ -20,9 +20,7 @@ impl Column {
             Column::Integer(inner)
             | Column::Float(inner)
             | Column::String(inner)
-            | Column::Mixed(inner) => {
-                inner.id()
-            }
+            | Column::Mixed(inner) => inner.id(),
         }
     }
 }
@@ -71,7 +69,7 @@ impl<T> std::ops::DerefMut for RawColumn<T> {
 }
 
 impl<T> FromIterator<T> for RawColumn<T> {
-    fn from_iter<I: IntoIterator<Item=T>>(iter: I) -> Self {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         Self {
             id: String::new(),
             values: iter.into_iter().collect(),

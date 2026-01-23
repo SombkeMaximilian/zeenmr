@@ -5,8 +5,8 @@ mod column;
 pub use column::{Column, RawColumn};
 
 mod dataset;
-pub(crate) use dataset::DatasetBuilder;
 pub use dataset::Dataset;
+pub(crate) use dataset::DatasetBuilder;
 
 mod table;
 pub use table::Table;
