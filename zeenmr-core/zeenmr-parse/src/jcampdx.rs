@@ -9,8 +9,8 @@ pub(crate) mod decoding;
 mod lexer;
 pub(crate) use lexer::Token;
 
-mod dataset;
-pub use dataset::{Column, Dataset, Value};
+mod data;
+pub use data::{Column, Dataset, RawColumn, Table, Value};
 
 mod parser;
 pub(crate) use parser::Parser;
