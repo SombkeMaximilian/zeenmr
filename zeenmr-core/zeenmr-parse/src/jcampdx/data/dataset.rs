@@ -37,8 +37,8 @@ impl DatasetBuilder {
     }
 
     /// Inserts a new parameter.
-    pub(crate) fn insert(&mut self, key: &str, value: Value) {
-        self.parameters.insert(key.to_owned(), value);
+    pub(crate) fn insert_parameter(&mut self, key: &str, value: Value) {
+        self.parameters.insert(key.to_string(), value);
     }
 
     /// Pushes a `Table` onto the stack.

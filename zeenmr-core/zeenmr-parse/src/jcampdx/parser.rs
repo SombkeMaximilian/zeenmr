@@ -1,9 +1,10 @@
+use crate::jcampdx::data::DatasetBuilder;
 use crate::jcampdx::error::{Error, Result};
-use crate::jcampdx::{Token, Value};
+use crate::jcampdx::{Dataset, Token, Value};
 use crate::{Location, Stack};
 use logos::{Lexer, Logos};
-use std::collections::HashMap;
 use std::num::IntErrorKind;
+use std::ops::ControlFlow;
 
 /// Delimiters of bounded values.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -19,8 +20,8 @@ enum Delimiter {
 pub(crate) struct Parser<'source> {
     /// Lexer for tokenizing the key-value pairs in JCAMP-DX headers.
     lexer: Lexer<'source, Token>,
-    /// Parameters being constructed.
-    parameters: HashMap<String, Value>,
+    /// Dataset being constructed.
+    builder: DatasetBuilder,
     /// Current key.
     current_key: &'source str,
     /// Current value.
@@ -37,7 +38,21 @@ impl<'source> From<&'source str> for Parser<'source> {
     fn from(value: &'source str) -> Self {
         Self {
             lexer: Token::lexer(value),
-            parameters: HashMap::new(),
+            builder: Dataset::builder(),
+            current_key: "TITLE",
+            current_value: Value::Empty,
+            bounded_stack: Stack::new(),
+            auto_concatenate: false,
+            errors: Vec::new(),
+        }
+    }
+}
+
+impl<'source> From<Lexer<'source, Token>> for Parser<'source> {
+    fn from(value: Lexer<'source, Token>) -> Self {
+        Self {
+            lexer: value,
+            builder: Dataset::builder(),
             current_key: "TITLE",
             current_value: Value::Empty,
             bounded_stack: Stack::new(),
@@ -48,39 +63,54 @@ impl<'source> From<&'source str> for Parser<'source> {
 }
 
 impl<'source> Parser<'source> {
-    pub(crate) fn parse_source(mut self) -> Result<()> {
+    pub(crate) fn parse_source(&mut self) -> Result<Dataset> {
         self.initialize()?;
 
-        while let Some(token) = self.lexer.next() {
-            let reset_auto_concatenate = token != Ok(Token::Comma);
+        self.parse_values()
+    }
+
+    /// Main loop for parsing values.
+    ///
+    /// Advances the lexer until an [`End`] token is encountered. The caller
+    /// must ensure that the `Parser` is properly initialized to an entry point
+    /// ([`Title`] token).
+    ///
+    /// [`End`]: Token::End
+    /// [`Title`]: Token::Title
+    fn parse_values(&mut self) -> Result<Dataset> {
+        while let Some(token) = self.lexer.next().transpose()? {
+            let reset_auto_concatenate = token != Token::Comma;
             match token {
-                Ok(Token::Key) => self.key()?,
-                Ok(Token::Comma) => self.comma(),
-                Ok(Token::OpenParenthesis) => self.start_bounded(Delimiter::Parentheses),
-                Ok(Token::CloseParenthesis) => self.end_bounded(Delimiter::Parentheses)?,
-                Ok(Token::OpenAngle) => self.start_bounded(Delimiter::Angle),
-                Ok(Token::CloseAngle) => self.end_bounded(Delimiter::Angle)?,
-                Ok(Token::Numeric) => self.numeric(),
+                Token::Key => {
+                    if let ControlFlow::Break(_) = self.key()? {
+                        break;
+                    }
+                }
+                Token::Comma => self.comma(),
+                Token::OpenParenthesis => self.start_bounded(Delimiter::Parentheses),
+                Token::CloseParenthesis => self.end_bounded(Delimiter::Parentheses)?,
+                Token::OpenAngle => self.start_bounded(Delimiter::Angle),
+                Token::CloseAngle => self.end_bounded(Delimiter::Angle)?,
+                Token::Numeric => self.numeric(),
                 // Tokens like Title are only semantically special if they
                 // appear immediately after a Key and before an Equals.
                 // Otherwise, they are treated as normal string values.
-                Ok(Token::String)
-                | Ok(Token::Equals)
-                | Ok(Token::Title)
-                | Ok(Token::Tuples)
-                | Ok(Token::Page)
-                | Ok(Token::EncodedBlock)
-                | Ok(Token::GroupedBlock)
-                | Ok(Token::AmbiguousBlock)
-                | Ok(Token::End) => self.string(),
-                Err(e) => panic!("{e}"),
+                Token::String
+                | Token::Equals
+                | Token::Title
+                | Token::Tuples
+                | Token::Page
+                | Token::EncodedBlock
+                | Token::GroupedBlock
+                | Token::AmbiguousBlock
+                | Token::End => self.string(),
             }
             if reset_auto_concatenate {
                 self.auto_concatenate = true;
             }
         }
 
-        Ok(())
+        Ok(std::mem::take(&mut self.builder).finalize())
     }
 
     /// Returns `true` if not inside a bounded value.
@@ -136,10 +166,10 @@ impl<'source> Parser<'source> {
     ///
     /// [`Key`]: Token::Key
     /// [`Equals`]: Token::Equals
-    fn key(&mut self) -> Result<()> {
+    fn key(&mut self) -> Result<ControlFlow<()>> {
         let current_value = self.take_current_value();
-        self.parameters
-            .insert(self.current_key.to_string(), current_value);
+        self.builder
+            .insert_parameter(self.current_key, current_value);
         let start = self.lexer.span().end;
         let mut token_count = 0;
         let mut found_equals = false;
@@ -173,13 +203,13 @@ impl<'source> Parser<'source> {
         }
         match special {
             Some(Token::Key) | Some(Token::Equals) => unreachable!(),
-            Some(Token::Title) => self.title(),
+            Some(Token::Title) => self.title()?,
             Some(Token::Tuples) => self.tuples(),
             Some(Token::Page) => self.page(),
             Some(Token::EncodedBlock) => self.encoded_block(),
             Some(Token::GroupedBlock) => self.grouped_block(),
             Some(Token::AmbiguousBlock) => self.ambiguous_block(),
-            Some(Token::End) => self.end(),
+            Some(Token::End) => return Ok(ControlFlow::Break(())),
             Some(Token::Comma)
             | Some(Token::OpenParenthesis)
             | Some(Token::CloseParenthesis)
@@ -193,7 +223,7 @@ impl<'source> Parser<'source> {
             }
         }
 
-        Ok(())
+        Ok(ControlFlow::Continue(()))
     }
 
     /// Handles comma separators.
@@ -354,7 +384,19 @@ impl<'source> Parser<'source> {
         }
     }
 
-    fn title(&mut self) {}
+    /// Starts a `Parser` child.
+    ///
+    /// JCAMP-DX files can recursively contain child datasets, which are
+    /// [`Title`] and [`End`] token pairs within another [`Title`] and [`End`]
+    /// token pair.
+    fn title(&mut self) -> Result<()> {
+        let mut sub_parser = Self::from(self.lexer.clone());
+        let child_dataset = sub_parser.parse_values()?;
+        self.builder.push_child(child_dataset);
+        self.lexer = sub_parser.lexer;
+
+        Ok(())
+    }
 
     fn tuples(&mut self) {}
 
@@ -365,8 +407,6 @@ impl<'source> Parser<'source> {
     fn grouped_block(&mut self) {}
 
     fn ambiguous_block(&mut self) {}
-
-    fn end(&mut self) {}
 }
 
 #[cfg(test)]
