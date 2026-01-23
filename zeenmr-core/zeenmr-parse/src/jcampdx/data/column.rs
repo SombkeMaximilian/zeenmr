@@ -17,10 +17,10 @@ impl Column {
     /// Returns the id of the inner [`RawColumn`].
     pub fn id(&self) -> &str {
         match self {
-            Column::Integer(inner)
-            | Column::Float(inner)
-            | Column::String(inner)
-            | Column::Mixed(inner) => inner.id(),
+            Column::Integer(inner) => inner.id(),
+            Column::Float(inner) => inner.id(),
+            Column::String(inner) => inner.id(),
+            Column::Mixed(inner) => inner.id(),
         }
     }
 }
