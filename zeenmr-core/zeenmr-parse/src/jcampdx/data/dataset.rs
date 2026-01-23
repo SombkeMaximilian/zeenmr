@@ -23,6 +23,7 @@ impl Dataset {
 pub(crate) struct DatasetBuilder {
     parameters: HashMap<String, Value>,
     tables: Vec<Table>,
+    children: Vec<Dataset>,
 }
 
 impl DatasetBuilder {
@@ -31,7 +32,7 @@ impl DatasetBuilder {
         Dataset {
             parameters: self.parameters,
             tables: self.tables,
-            children: Vec::new(),
+            children: self.children,
         }
     }
 
@@ -40,8 +41,13 @@ impl DatasetBuilder {
         self.parameters.insert(key.to_owned(), value);
     }
 
-    /// Pushes a table onto the stack.
-    pub(crate) fn push(&mut self, table: Table) {
+    /// Pushes a `Table` onto the stack.
+    pub(crate) fn push_table(&mut self, table: Table) {
         self.tables.push(table);
+    }
+
+    /// Pushes a nested `Dataset` onto the stack.
+    pub(crate) fn push_child(&mut self, child: Dataset) {
+        self.children.push(child);
     }
 }
