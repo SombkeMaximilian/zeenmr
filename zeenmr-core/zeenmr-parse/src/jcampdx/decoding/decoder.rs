@@ -1,6 +1,6 @@
 use crate::Location;
 use crate::jcampdx::decoding::error::{Error, Kind, Result};
-use crate::jcampdx::decoding::{CheckPoint, DecodeExit, DecodedBlock, EncodedToken};
+use crate::jcampdx::decoding::{DecodedBlock, DecodedBlockBuilder, EncodedToken};
 use crate::location::Cursor;
 use logos::{Lexer, Logos};
 
@@ -43,7 +43,7 @@ enum State {
     ///
     /// [`Numeric`]: EncodedToken::Numeric
     /// [`Compressed`]: EncodedToken::Compressed
-    IntegrityCheck(i64),
+    IntegrityCheck,
 }
 
 /// Decoder for the `ASDF` format used in JCAMP-DX files.
@@ -55,14 +55,8 @@ pub(crate) struct Decoder<'source> {
     phase: Phase,
     /// Current state for duplicate values and integrity checks.
     state: State,
-    /// Decoded intensity values.
-    decoded: Vec<i64>,
-    /// Checkpoint indices in the sequence.
-    check_points: Vec<usize>,
-    /// Checkpoint values.
-    check_point_values: Vec<i64>,
-    /// Non-fatal errors that occur decoding.
-    errors: Vec<Error>,
+    /// Decoded block being constructed.
+    builder: DecodedBlockBuilder,
 }
 
 impl<'source> From<&'source str> for Decoder<'source> {
@@ -71,10 +65,7 @@ impl<'source> From<&'source str> for Decoder<'source> {
             lexer: EncodedToken::lexer(value),
             phase: Phase::CheckPoint,
             state: State::Normal,
-            decoded: Vec::new(),
-            check_points: vec![0],
-            check_point_values: Vec::new(),
-            errors: Vec::new(),
+            builder: DecodedBlockBuilder::default(),
         }
     }
 }
@@ -89,10 +80,7 @@ where
             lexer: value.morph(),
             phase: Phase::CheckPoint,
             state: State::Normal,
-            decoded: Vec::new(),
-            check_points: vec![0],
-            check_point_values: Vec::new(),
-            errors: Vec::new(),
+            builder: DecodedBlockBuilder::default(),
         }
     }
 }
@@ -103,7 +91,7 @@ impl<'source> Decoder<'source> {
         self.lexer
     }
 
-    pub(crate) fn decode_source(&mut self) -> Result<DecodeExit<'source, i64>> {
+    pub(crate) fn decode_source(&mut self) -> Result<DecodedBlock> {
         while let Some(token) = self.lexer.next() {
             match token {
                 Ok(EncodedToken::CheckPoint) => self.check_point(),
@@ -112,15 +100,11 @@ impl<'source> Decoder<'source> {
                 Ok(EncodedToken::Difference(diff)) => self.difference(diff)?,
                 Ok(EncodedToken::Duplicate(num)) => self.duplicate(num as usize)?,
                 Ok(EncodedToken::Invalid(position)) => {
-                    self.errors
-                        .push(Error::invalid_value(position, self.decoded.len()));
+                    self.builder
+                        .push_error(Error::invalid_value(position, self.builder.decoded_len()));
                     self.numeric(i64::MIN);
                 }
-                Ok(EncodedToken::End) => {
-                    let lexer = self.lexer.clone();
-
-                    return Ok(DecodeExit::HeaderKey(self.finalize(), lexer));
-                }
+                Ok(EncodedToken::End) => break,
                 Err(e) => match e.kind() {
                     Kind::Overflow => self.overflow(),
                     Kind::InvalidLiteral | Kind::UnsupportedFormat => return Err(e),
@@ -129,29 +113,17 @@ impl<'source> Decoder<'source> {
             }
         }
 
-        Ok(DecodeExit::EndOfInput(self.finalize()))
-    }
-
-    fn finalize(&mut self) -> DecodedBlock<i64> {
-        DecodedBlock::new(
-            std::mem::take(&mut self.decoded),
-            std::mem::take(&mut self.check_points)
-                .into_iter()
-                .zip(std::mem::take(&mut self.check_point_values).into_iter())
-                .map(|(index, value)| CheckPoint::new(index, value))
-                .collect(),
-            std::mem::take(&mut self.errors),
-        )
+        Ok(std::mem::take(&mut self.builder).finalize())
     }
 
     fn check_point(&mut self) {
         match self.state {
             State::LastWasDifference(_) => {
-                self.state = State::IntegrityCheck(*(self.decoded.last().unwrap()));
-                self.check_points.push(self.decoded.len() - 1);
+                self.state = State::IntegrityCheck;
+                self.builder.checkpoint_integrity_check();
             }
             _ => {
-                self.check_points.push(self.decoded.len());
+                self.builder.checkpoint();
             }
         }
         self.phase = Phase::CheckPoint;
@@ -162,15 +134,14 @@ impl<'source> Decoder<'source> {
             Phase::Data | Phase::FirstData => {
                 match self.state {
                     State::Normal | State::LastWasDifference(_) => {
-                        self.decoded.push(value);
+                        self.builder.push_decoded_value(value);
                     }
-                    State::IntegrityCheck(check) => {
-                        if value != check {
-                            self.errors.push(Error::integrity_check(
+                    State::IntegrityCheck => {
+                        if !self.builder.integrity_check(value).unwrap() {
+                            self.builder.push_error(Error::integrity_check(
                                 self.lexer.location(),
-                                self.decoded.len() - 1,
+                                self.builder.decoded_len() - 1,
                             ));
-                            *(self.decoded.last_mut().unwrap()) = value;
                         }
                     }
                 }
@@ -178,7 +149,7 @@ impl<'source> Decoder<'source> {
                 self.state = State::Normal;
             }
             Phase::CheckPoint => {
-                self.check_point_values.push(value);
+                self.builder.push_checkpoint_value(value as f64);
                 self.phase = Phase::FirstData;
             }
         }
@@ -187,8 +158,7 @@ impl<'source> Decoder<'source> {
     fn difference(&mut self, diff: i64) -> Result<()> {
         match self.phase {
             Phase::Data => {
-                let result = *(self.decoded.last().unwrap()) + diff;
-                self.decoded.push(result);
+                self.builder.push_difference(diff);
                 self.state = State::LastWasDifference(diff);
 
                 Ok(())
@@ -202,16 +172,9 @@ impl<'source> Decoder<'source> {
     fn duplicate(&mut self, num: usize) -> Result<()> {
         match self.phase {
             Phase::Data => {
-                let previous = *(self.decoded.last().unwrap());
                 match self.state {
-                    State::LastWasDifference(diff) => {
-                        let values = (1..num).map(|i| previous + (diff * i as i64));
-                        self.decoded.extend(values);
-                    }
-                    State::Normal => {
-                        self.decoded
-                            .extend(std::iter::repeat(previous).take(num));
-                    }
+                    State::LastWasDifference(diff) => self.builder.push_duplicate(num, Some(diff)),
+                    State::Normal => self.builder.push_duplicate(num, None),
                     _ => {}
                 }
 
@@ -226,15 +189,15 @@ impl<'source> Decoder<'source> {
     fn overflow(&mut self) {
         match self.phase {
             Phase::Data | Phase::FirstData => {
-                self.errors.push(Error::overflow_with_index(
+                self.builder.push_error(Error::overflow_with_index(
                     self.lexer.location(),
-                    self.decoded.len(),
+                    self.builder.decoded_len(),
                 ));
                 self.numeric(i64::MIN);
             }
             Phase::CheckPoint => {
-                self.errors
-                    .push(Error::overflow(self.lexer.location()));
+                self.builder
+                    .push_error(Error::overflow(self.lexer.location()));
                 self.numeric(i64::MIN);
             }
         }
@@ -244,16 +207,33 @@ impl<'source> Decoder<'source> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::jcampdx::{RawColumn, Table};
     use crate::Position;
+    use std::sync::LazyLock;
+
+    static EXPECTED: LazyLock<DecodedBlock> = LazyLock::new(|| {
+        let mut table = Table::new();
+        table.push(RawColumn {
+            id: "Unknown".to_string(),
+            values: vec![
+                482, -763, 215, -632, -924, 357, -678, 841, 512, -194, 321, -467, -689, 278, 505,
+                732, 835, -619, 247, -193,
+            ],
+        });
+
+        DecodedBlock {
+            table,
+            errors: Vec::new(),
+        }
+    });
 
     macro_rules! decoder_test {
-        ($name:ident, $data:expr, $expected:expr) => {
+        ($name:ident, $data:expr) => {
             #[test]
             fn $name() {
                 let data = $data;
-                let expected = $expected;
                 let decoded = Decoder::from(data).decode_source().unwrap();
-                assert_eq!(*(decoded.block()), expected);
+                assert_eq!(decoded, *EXPECTED);
             }
         };
     }
@@ -265,88 +245,33 @@ mod tests {
             15       -924        357       -678        841\n\
             11        512       -194        321       -467\n\
             7        -689        278        505        732\n\
-            3         835       -619        247       -193",
-        DecodedBlock::new(
-            vec![
-                482, -763, 215, -632, -924, 357, -678, 841, 512, -194, 321, -467, -689, 278, 505,
-                732, 835, -619, 247, -193,
-            ],
-            [(0, 19), (4, 15), (8, 11), (12, 7), (16, 3)]
-                .into_iter()
-                .map(|(index, value)| CheckPoint::new(index, value))
-                .collect(),
-            Vec::new(),
-        )
+            3         835       -619        247       -193"
     );
     decoder_test!(
         pac,
         "\
             19 +482-763+215-632-924+357-678+841+512-194\n\
-            9  +321-467-689+278+505+732+835-619+247-193",
-        DecodedBlock::new(
-            vec![
-                482, -763, 215, -632, -924, 357, -678, 841, 512, -194, 321, -467, -689, 278, 505,
-                732, 835, -619, 247, -193,
-            ],
-            [(0, 19), (10, 9)]
-                .into_iter()
-                .map(|(index, value)| CheckPoint::new(index, value))
-                .collect(),
-            Vec::new(),
-        )
+            9  +321-467-689+278+505+732+835-619+247-193"
     );
     decoder_test!(
         sqz,
         "\
             19 D82g63B15f32i24C57f78H41E12a94\n\
-            9  C21d67f89B78E05G32H35f19B47a93",
-        DecodedBlock::new(
-            vec![
-                482, -763, 215, -632, -924, 357, -678, 841, 512, -194, 321, -467, -689, 278, 505,
-                732, 835, -619, 247, -193,
-            ],
-            [(0, 19), (10, 9)]
-                .into_iter()
-                .map(|(index, value)| CheckPoint::new(index, value))
-                .collect(),
-            Vec::new(),
-        )
+            9  C21d67f89B78E05G32H35f19B47a93"
     );
     decoder_test!(
         dif,
         "\
             19 D82j245R78q47k92J281j035J519l29p06\n\
             10 a94N15p88k22R67K27K27J03j454Q66m40\n\
-            0  a93",
-        DecodedBlock::new(
-            vec![
-                482, -763, 215, -632, -924, 357, -678, 841, 512, -194, 321, -467, -689, 278, 505,
-                732, 835, -619, 247, -193,
-            ],
-            [(0, 19), (9, 10), (19, 0)]
-                .into_iter()
-                .map(|(index, value)| CheckPoint::new(index, value))
-                .collect(),
-            Vec::new(),
-        )
+            0  a93"
     );
     decoder_test!(
         difdup,
         "\
             19 D82j245R78q47k92J281j035J519l29p06\n\
             10 a94N15p88k22R67K27TJ03j454Q66m40\n\
-            0  a93",
-        DecodedBlock::new(
-            vec![
-                482, -763, 215, -632, -924, 357, -678, 841, 512, -194, 321, -467, -689, 278, 505,
-                732, 835, -619, 247, -193,
-            ],
-            [(0, 19), (9, 10), (19, 0)]
-                .into_iter()
-                .map(|(index, value)| CheckPoint::new(index, value))
-                .collect(),
-            Vec::new(),
-        )
+            0  a93"
     );
 
     macro_rules! fatal_error_test {
@@ -389,7 +314,7 @@ mod tests {
                 let data = $data;
                 let errors = $errors;
                 let decoded = Decoder::from(data).decode_source().unwrap();
-                assert_eq!(decoded.block().errors(), errors);
+                assert_eq!(decoded.errors, errors);
             }
         };
     }

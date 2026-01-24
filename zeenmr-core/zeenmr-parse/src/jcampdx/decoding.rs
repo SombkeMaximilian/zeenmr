@@ -1,7 +1,7 @@
 pub mod error;
 
 mod decoded_data;
-pub(crate) use decoded_data::{CheckPoint, DecodeExit, DecodedBlock};
+pub(crate) use decoded_data::{DecodedBlock, DecodedBlockBuilder};
 
 mod decoder;
 pub(crate) use decoder::Decoder;
