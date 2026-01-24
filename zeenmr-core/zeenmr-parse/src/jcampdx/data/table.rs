@@ -20,7 +20,7 @@ impl Table {
         self.id = id.into();
     }
 
-    pub(crate) fn push(&mut self, column: Column) {
-        self.columns.push(column);
+    pub(crate) fn push<T: Into<Column>>(&mut self, column: T) {
+        self.columns.push(column.into());
     }
 }
