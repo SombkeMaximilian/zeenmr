@@ -69,6 +69,11 @@ where
 }
 
 impl<'source> FormatParser<'source> {
+    /// Recovers the [`Lexer`] from the `FormatParser`.
+    pub(crate) fn into_lexer(mut self) -> Lexer<'source, FormatToken> {
+        self.lexer
+    }
+
     pub(crate) fn parse_format(&mut self) -> Result<BlockFormat> {
         while let Some(token) = self.lexer.next().transpose()? {
             match token {

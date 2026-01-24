@@ -98,6 +98,11 @@ where
 }
 
 impl<'source> Decoder<'source> {
+    /// Recovers the [`Lexer`] from the `Decoder`.
+    pub(crate) fn into_lexer(mut self) -> Lexer<'source, EncodedToken> {
+        self.lexer
+    }
+
     pub(crate) fn decode_source(&mut self) -> Result<DecodeExit<'source, i64>> {
         while let Some(token) = self.lexer.next() {
             match token {
