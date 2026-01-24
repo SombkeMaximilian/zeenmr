@@ -1,25 +1,7 @@
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub(crate) struct Identifier {
-    name: Box<str>,
+    name: String,
     offset: Option<usize>,
-}
-
-impl From<String> for Identifier {
-    fn from(value: String) -> Self {
-        Self {
-            name: value.into(),
-            offset: None,
-        }
-    }
-}
-
-impl From<Box<str>> for Identifier {
-    fn from(value: Box<str>) -> Self {
-        Self {
-            name: value,
-            offset: None,
-        }
-    }
 }
 
 impl From<&str> for Identifier {
@@ -31,17 +13,13 @@ impl From<&str> for Identifier {
     }
 }
 
-impl Identifier {
-    pub(crate) fn new<T>(name: T, offset: usize) -> Self
-    where
-        T: AsRef<str>,
-    {
-        Self {
-            name: name.as_ref().into(),
-            offset: Some(offset),
-        }
+impl From<Identifier> for String {
+    fn from(value: Identifier) -> Self {
+        value.name
     }
+}
 
+impl Identifier {
     pub(crate) fn name(&self) -> &str {
         &self.name
     }
