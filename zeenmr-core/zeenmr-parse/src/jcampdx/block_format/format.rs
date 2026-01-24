@@ -28,21 +28,13 @@ pub(crate) enum LineLayout {
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub(crate) struct BlockFormat<'source> {
     /// Layout of the lines.
-    line_layout: LineLayout,
+    pub(crate) line_layout: LineLayout,
     /// Optional kind descriptor.
-    kind: Option<&'source str>,
+    pub(crate) kind: Option<&'source str>,
 }
 
 impl<'source> BlockFormat<'source> {
     pub(crate) fn new(line_layout: LineLayout, kind: Option<&'source str>) -> Self {
         Self { line_layout, kind }
-    }
-
-    pub(crate) fn line_layout(&self) -> &LineLayout {
-        &self.line_layout
-    }
-
-    pub(crate) fn kind(&self) -> Option<&'source str> {
-        self.kind
     }
 }
