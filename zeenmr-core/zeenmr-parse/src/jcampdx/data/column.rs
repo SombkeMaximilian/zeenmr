@@ -13,6 +13,31 @@ pub enum Column {
     Mixed(RawColumn<Value>),
 }
 
+
+impl From<RawColumn<i64>> for Column {
+    fn from(value: RawColumn<i64>) -> Self {
+        Self::Integer(value)
+    }
+}
+
+impl From<RawColumn<f64>> for Column {
+    fn from(value: RawColumn<f64>) -> Self {
+        Self::Float(value)
+    }
+}
+
+impl From<RawColumn<String>> for Column {
+    fn from(value: RawColumn<String>) -> Self {
+        Self::String(value)
+    }
+}
+
+impl From<RawColumn<Value>> for Column {
+    fn from(value: RawColumn<Value>) -> Self {
+        Self::Mixed(value)
+    }
+}
+
 impl Column {
     /// Returns the id of the inner [`RawColumn`].
     pub fn id(&self) -> &str {
