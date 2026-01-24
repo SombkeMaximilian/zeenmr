@@ -13,7 +13,6 @@ pub enum Column {
     Mixed(RawColumn<Value>),
 }
 
-
 impl From<RawColumn<i64>> for Column {
     fn from(value: RawColumn<i64>) -> Self {
         Self::Integer(value)
