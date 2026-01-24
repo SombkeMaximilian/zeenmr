@@ -98,7 +98,7 @@ where
 }
 
 impl<'source> Decoder<'source> {
-    pub(crate) fn decode_source(mut self) -> Result<DecodeExit<'source, i64>> {
+    pub(crate) fn decode_source(&mut self) -> Result<DecodeExit<'source, i64>> {
         while let Some(token) = self.lexer.next() {
             match token {
                 Ok(EncodedToken::CheckPoint) => self.check_point(),
@@ -127,15 +127,15 @@ impl<'source> Decoder<'source> {
         Ok(DecodeExit::EndOfInput(self.finalize()))
     }
 
-    fn finalize(self) -> DecodedBlock<i64> {
+    fn finalize(&mut self) -> DecodedBlock<i64> {
         DecodedBlock::new(
-            self.decoded,
-            self.check_points
+            std::mem::take(&mut self.decoded),
+            std::mem::take(&mut self.check_points)
                 .into_iter()
-                .zip(self.check_point_values.into_iter())
+                .zip(std::mem::take(&mut self.check_point_values).into_iter())
                 .map(|(index, value)| CheckPoint::new(index, value))
                 .collect(),
-            self.errors,
+            std::mem::take(&mut self.errors),
         )
     }
 
