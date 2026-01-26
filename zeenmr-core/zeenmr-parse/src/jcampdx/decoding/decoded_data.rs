@@ -66,28 +66,15 @@ impl DecodedBlockBuilder {
         self.decoded.len()
     }
 
-    /// Performs an integrity check against the most recently decoded value.
-    ///
-    /// If the check fails, the top value of the stack is overwritten with
-    /// `check`.
-    ///
-    /// Returns
-    /// - `Some(true)` if the stack is non-empty and `check` is equal to the top
-    ///   value.
-    /// - `Some(false)` if the stack is non-empty and `check` differs from the
-    ///   top value. In this case, the top value is replaced with `check`.
-    /// - `None` if the stack is empty.
-    pub(crate) fn integrity_check(&mut self, check: i64) -> Option<bool> {
-        let result = self.decoded.last().map(|value| *value == check);
+    /// Returns the top of the decoded value stack, or `None` if it is empty.
+    pub(crate) fn decoded_top(&self) -> Option<&i64> {
+        self.decoded.last()
+    }
 
-        match result {
-            Some(false) => {
-                *(self.decoded.last_mut().unwrap()) = check;
-
-                Some(false)
-            }
-            _ => result,
-        }
+    /// Returns a mutable reference to the top of the decoded value stack, or
+    /// `None` if it is empty.
+    pub(crate) fn decoded_top_mut(&mut self) -> Option<&mut i64> {
+        self.decoded.last_mut()
     }
 
     /// Sets the identifier of the incrementing variable.
@@ -116,38 +103,9 @@ impl DecodedBlockBuilder {
         self.decoded.push(value);
     }
 
-    /// Computes the next value as a difference to the most recent decoded value
-    /// and pushes it onto the stack.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the decoded values stack is empty.
-    pub(crate) fn push_difference(&mut self, difference: i64) {
-        self.decoded
-            .push(*(self.decoded.last().unwrap()) + difference);
-    }
-
-    /// Extends the duplicate stack with a number of repetitions of the most
-    /// recent decoded value.
-    ///
-    /// If difference is not `None`, the contained difference is repeatedly
-    /// applied.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the decoded values stack is empty.
-    pub(crate) fn push_duplicate(&mut self, num: usize, difference: Option<i64>) {
-        let previous = *(self.decoded.last().unwrap());
-        match difference {
-            Some(difference) => {
-                let values = (1..num).map(|i| previous + (difference * i as i64));
-                self.decoded.extend(values);
-            }
-            None => {
-                self.decoded
-                    .extend(std::iter::repeat(previous).take(num - 1));
-            }
-        }
+    /// Extends the decoded value stack with the contents of an iterator.
+    pub(crate) fn extend_decoded<I: IntoIterator<Item = i64>>(&mut self, iter: I) {
+        self.decoded.extend(iter);
     }
 
     /// Pushes a checkpoint value onto the stack.

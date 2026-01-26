@@ -137,11 +137,18 @@ impl<'source> Decoder<'source> {
                         self.builder.push_decoded_value(value);
                     }
                     State::IntegrityCheck => {
-                        if !self.builder.integrity_check(value).unwrap() {
+                        let integrity_check_result = self
+                            .builder
+                            .decoded_top()
+                            .map(|top| *top == value)
+                            .expect("integrity checks only after at least one value");
+
+                        if !integrity_check_result {
                             self.builder.push_error(Error::integrity_check(
                                 self.lexer.location(),
                                 self.builder.decoded_len() - 1,
                             ));
+                            *(self.builder.decoded_top_mut().unwrap()) = value;
                         }
                     }
                 }
@@ -158,7 +165,12 @@ impl<'source> Decoder<'source> {
     fn difference(&mut self, diff: i64) -> Result<()> {
         match self.phase {
             Phase::Data => {
-                self.builder.push_difference(diff);
+                let value = self
+                    .builder
+                    .decoded_top()
+                    .map(|top| *top + diff)
+                    .ok_or_else(|| Error::dif_dup_after_check_point(self.lexer.location()))?;
+                self.builder.push_decoded_value(value);
                 self.state = State::LastWasDifference(diff);
 
                 Ok(())
@@ -172,10 +184,19 @@ impl<'source> Decoder<'source> {
     fn duplicate(&mut self, num: usize) -> Result<()> {
         match self.phase {
             Phase::Data => {
+                let previous = self
+                    .builder
+                    .decoded_top()
+                    .copied()
+                    .ok_or_else(|| Error::dif_dup_after_check_point(self.lexer.location()))?;
                 match self.state {
-                    State::LastWasDifference(diff) => self.builder.push_duplicate(num, Some(diff)),
-                    State::Normal => self.builder.push_duplicate(num, None),
-                    _ => {}
+                    State::LastWasDifference(diff) => self
+                        .builder
+                        .extend_decoded((1..num as i64).map(|i| previous + (diff * i))),
+                    State::Normal => self
+                        .builder
+                        .extend_decoded(std::iter::repeat(previous).take(num - 1)),
+                    _ => unreachable!(),
                 }
 
                 Ok(())
@@ -189,10 +210,11 @@ impl<'source> Decoder<'source> {
     fn overflow(&mut self) {
         match self.phase {
             Phase::Data | Phase::FirstData => {
-                self.builder.push_error(Error::overflow_with_index(
-                    self.lexer.location(),
-                    self.builder.decoded_len(),
-                ));
+                self.builder
+                    .push_error(Error::overflow_with_index(
+                        self.lexer.location(),
+                        self.builder.decoded_len(),
+                    ));
                 self.numeric(i64::MIN);
             }
             Phase::CheckPoint => {
@@ -207,8 +229,8 @@ impl<'source> Decoder<'source> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::jcampdx::{RawColumn, Table};
     use crate::Position;
+    use crate::jcampdx::{RawColumn, Table};
     use std::sync::LazyLock;
 
     static EXPECTED: LazyLock<DecodedBlock> = LazyLock::new(|| {
