@@ -134,7 +134,7 @@ impl<'source> Decoder<'source> {
             Phase::Data | Phase::FirstData => {
                 match self.state {
                     State::Normal | State::LastWasDifference(_) => {
-                        self.builder.push_decoded_value(value);
+                        self.builder.push_decoded_i64(value);
                     }
                     State::IntegrityCheck => {
                         let integrity_check_result = self
@@ -170,7 +170,7 @@ impl<'source> Decoder<'source> {
                     .decoded_top()
                     .map(|top| *top + diff)
                     .ok_or_else(|| Error::dif_dup_after_check_point(self.lexer.location()))?;
-                self.builder.push_decoded_value(value);
+                self.builder.push_decoded_i64(value);
                 self.state = State::LastWasDifference(diff);
 
                 Ok(())
