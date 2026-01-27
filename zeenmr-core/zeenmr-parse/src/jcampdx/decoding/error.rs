@@ -38,6 +38,12 @@ pub enum Kind {
     /// This occurs if a value can't fit in an [`i64`] and usually means that
     /// the file is corrupted.
     Overflow,
+    /// A `DIF` or `DUP` value caused an overflow error.
+    ///
+    /// Since these affect not only their own data but also surrounding values,
+    /// this error is guaranteed to corrupt the rest of the data, making the
+    /// input impossible to decode.
+    DifDupOverflow,
     /// An integrity check failed.
     ///
     /// In `XYDATA` mode, if the final value in the previous line is `DIF`
@@ -55,11 +61,12 @@ pub enum Kind {
     /// line. If they're the first value in a line, they can't be resolved. This
     /// applies to the checkpoint value itself and the first actual data value.
     DifDupAfterCheckPoint,
-    /// Input contains an unsupported format.
+    /// A `DIF` was encountered after or before floating point values.
     ///
-    /// This currently includes using floating point values in `XYDATA` blocks,
-    /// which practically never gets used over `ASDF` encoding.
-    UnsupportedFormat,
+    /// `DIF` encodes the next value as a difference to the previous value. This
+    /// accumulates errors with floating point values and was therefore not
+    /// intended for the standard.
+    DifWithFloat,
 }
 
 impl std::error::Error for Error {}
@@ -69,10 +76,11 @@ impl std::fmt::Display for Error {
         let description = match self.kind() {
             Kind::InvalidLiteral => "invalid literal encountered",
             Kind::Overflow => "overflow",
+            Kind::DifDupOverflow => "dif overflow",
             Kind::IntegrityCheck => "integrity check failed",
             Kind::InvalidValue => "invalid value",
             Kind::DifDupAfterCheckPoint => "DIF or DUP after checkpoint",
-            Kind::UnsupportedFormat => "unsupported format",
+            Kind::DifWithFloat => "DIF with float",
         };
 
         write!(f, "{description}")
@@ -97,6 +105,17 @@ impl Error {
     pub(crate) fn overflow(position: Position) -> Self {
         Self {
             kind: Kind::Overflow,
+            position,
+            index: None,
+        }
+    }
+
+    /// Creates a [`DifDupOverflow`] error.
+    ///
+    /// [`DifDupOverflow`]: Kind::DifDupOverflow
+    pub(crate) fn dif_dup_overflow(position: Position) -> Self {
+        Self {
+            kind: Kind::DifDupOverflow,
             position,
             index: None,
         }
@@ -127,7 +146,18 @@ impl Error {
     /// Creates an [`InvalidValue`] error.
     ///
     /// [`InvalidValue`]: Kind::InvalidValue
-    pub(crate) fn invalid_value(position: Position, index: usize) -> Self {
+    pub(crate) fn invalid_value(position: Position) -> Self {
+        Self {
+            kind: Kind::InvalidValue,
+            position,
+            index: None,
+        }
+    }
+
+    /// Creates an [`InvalidValue`] error with an index.
+    ///
+    /// [`InvalidValue`]: Kind::InvalidValue
+    pub(crate) fn invalid_value_with_index(position: Position, index: usize) -> Self {
         Self {
             kind: Kind::InvalidValue,
             position,
@@ -146,12 +176,12 @@ impl Error {
         }
     }
 
-    /// Creates an [`UnsupportedFormat`] error.
+    /// Creates a [`DifWithFloat`] error.
     ///
-    /// [`UnsupportedFormat`]: Kind::UnsupportedFormat
-    pub(crate) fn unsupported_format(position: Position) -> Self {
+    /// [`DifWithFloat`]: Kind::DifWithFloat
+    pub(crate) fn dif_with_float(position: Position) -> Self {
         Self {
-            kind: Kind::UnsupportedFormat,
+            kind: Kind::DifWithFloat,
             position,
             index: None,
         }

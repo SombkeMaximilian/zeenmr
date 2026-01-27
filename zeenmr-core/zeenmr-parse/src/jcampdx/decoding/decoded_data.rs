@@ -168,6 +168,11 @@ impl DecodedBlockBuilder {
         }
     }
 
+    /// Returns `true` if the stack is in the [`DecodedStack::I64`] variant.
+    pub(crate) fn decoded_is_i64(&self) -> bool {
+        self.decoded.is_i64()
+    }
+
     /// Returns the number of elements in the decoded values stack.
     pub(crate) fn decoded_len(&self) -> usize {
         self.decoded.len()

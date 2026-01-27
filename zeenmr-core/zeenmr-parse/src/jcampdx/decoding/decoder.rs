@@ -1,8 +1,18 @@
 use crate::Location;
-use crate::jcampdx::decoding::error::{Error, Kind, Result};
+use crate::jcampdx::decoding::error::{Error, Result};
 use crate::jcampdx::decoding::{DecodedBlock, DecodedBlockBuilder, EncodedToken};
 use crate::location::Cursor;
 use logos::{Lexer, Logos};
+use std::num::{IntErrorKind, ParseIntError};
+
+/// `AFFN` numeric values.
+#[derive(Copy, Clone, PartialEq, Debug)]
+enum Affn {
+    /// Matches `[+-]?(0|[1-9]\d*)([eE][+-]\d+)?`.
+    I64(i64),
+    /// Matches `[+-]?(0|[1-9]\d*)(\.\d+)?([eE][+-]\d+)?`.
+    F64(f64),
+}
 
 /// Decoding phase relative to checkpoints.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -92,24 +102,15 @@ impl<'source> Decoder<'source> {
     }
 
     pub(crate) fn decode_source(&mut self) -> Result<DecodedBlock> {
-        while let Some(token) = self.lexer.next() {
+        while let Some(token) = self.lexer.next().transpose()? {
             match token {
-                Ok(EncodedToken::CheckPoint) => self.check_point(),
-                Ok(EncodedToken::Numeric(value)) => self.numeric(value),
-                Ok(EncodedToken::Compressed(value)) => self.numeric(value),
-                Ok(EncodedToken::Difference(diff)) => self.difference(diff)?,
-                Ok(EncodedToken::Duplicate(num)) => self.duplicate(num as usize)?,
-                Ok(EncodedToken::Invalid(position)) => {
-                    self.builder
-                        .push_error(Error::invalid_value(position, self.builder.decoded_len()));
-                    self.numeric(i64::MIN);
-                }
-                Ok(EncodedToken::End) => break,
-                Err(e) => match e.kind() {
-                    Kind::Overflow => self.overflow(),
-                    Kind::InvalidLiteral | Kind::UnsupportedFormat => return Err(e),
-                    _ => unreachable!(),
-                },
+                EncodedToken::CheckPoint => self.check_point(),
+                EncodedToken::Numeric => self.numeric()?,
+                EncodedToken::Compressed => self.compressed()?,
+                EncodedToken::Difference => self.difference()?,
+                EncodedToken::Duplicate => self.duplicate()?,
+                EncodedToken::Invalid => self.invalid(),
+                EncodedToken::End => break,
             }
         }
 
@@ -129,40 +130,178 @@ impl<'source> Decoder<'source> {
         self.phase = Phase::CheckPoint;
     }
 
-    fn numeric(&mut self, value: i64) {
+    fn numeric(&mut self) -> Result<()> {
         match self.phase {
             Phase::Data | Phase::FirstData => {
                 match self.state {
                     State::Normal | State::LastWasDifference(_) => {
-                        self.builder.push_decoded_i64(value);
+                        match self.parse_affn() {
+                            Ok(Affn::I64(value)) => self.builder.push_decoded_i64(value),
+                            Ok(Affn::F64(value)) => self.builder.push_decoded_f64(value),
+                            Err(e) => match e.kind() {
+                                IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
+                                    self.builder.push_error(Error::overflow_with_index(
+                                        self.lexer.location(),
+                                        self.builder.decoded_len(),
+                                    ));
+                                    self.builder.push_decoded_i64(i64::MIN);
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
                     }
                     State::IntegrityCheck => {
-                        let integrity_check_result = self
-                            .builder
-                            .decoded_top()
-                            .map(|top| *top == value)
-                            .expect("integrity checks only after at least one value");
+                        match self.parse_affn() {
+                            Ok(Affn::I64(value)) => {
+                                if !self.builder.decoded_is_i64() {
+                                    return Err(Error::dif_with_float(self.lexer.location()));
+                                }
 
-                        if !integrity_check_result {
-                            self.builder.push_error(Error::integrity_check(
-                                self.lexer.location(),
-                                self.builder.decoded_len() - 1,
-                            ));
-                            *(self.builder.decoded_top_mut().unwrap()) = value;
+                                let integrity_check_result = self
+                                    .builder
+                                    .decoded_top()
+                                    .map(|top| *top == value)
+                                    .expect("integrity checks only after at least one value");
+
+                                if !integrity_check_result {
+                                    self.builder.push_error(Error::integrity_check(
+                                        self.lexer.location(),
+                                        self.builder.decoded_len() - 1,
+                                    ));
+                                    *(self.builder.decoded_top_mut().unwrap()) = value;
+                                }
+                            }
+                            Ok(Affn::F64(_)) => {
+                                return Err(Error::dif_with_float(self.lexer.location()));
+                            }
+                            Err(e) => match e.kind() {
+                                IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
+                                    self.builder.push_error(Error::integrity_check(
+                                        self.lexer.location(),
+                                        self.builder.decoded_len() - 1,
+                                    ));
+                                }
+                                _ => unreachable!(),
+                            }
                         }
                     }
                 }
                 self.phase = Phase::Data;
                 self.state = State::Normal;
+
+                Ok(())
             }
             Phase::CheckPoint => {
-                self.builder.push_checkpoint_value(value as f64);
+                match self.parse_affn() {
+                    Ok(Affn::I64(value)) => {
+                        self.builder.push_checkpoint_value(value as f64);
+                    }
+                    Ok(Affn::F64(value)) => {
+                        self.builder.push_checkpoint_value(value);
+                    }
+                    Err(e) => match e.kind() {
+                        IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
+                            self.builder.push_checkpoint_value(
+                                self
+                                    .lexer
+                                    .slice()
+                                    .parse::<f64>()
+                                    .expect("lexer (regex) should not match unparsable numerics")
+                            );
+                        }
+                        _ => unreachable!(),
+                    }
+                }
                 self.phase = Phase::FirstData;
+
+                Ok(())
             }
         }
     }
 
-    fn difference(&mut self, diff: i64) -> Result<()> {
+    fn compressed(&mut self) -> Result<()> {
+        match self.phase {
+            Phase::Data | Phase::FirstData => {
+                match self.state {
+                    State::Normal | State::LastWasDifference(_) => {
+                        match self.parse_asdf() {
+                            Ok(value) => self.builder.push_decoded_i64(value),
+                            Err(e) => match e.kind() {
+                                IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
+                                    self.builder.push_error(Error::overflow_with_index(
+                                        self.lexer.location(),
+                                        self.builder.decoded_len(),
+                                    ));
+                                    self.builder.push_decoded_i64(i64::MIN);
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
+                    }
+                    State::IntegrityCheck => {
+                        match self.parse_asdf() {
+                            Ok(value) => {
+                                if !self.builder.decoded_is_i64() {
+                                    return Err(Error::dif_with_float(self.lexer.location()));
+                                }
+
+                                let integrity_check_result = self
+                                    .builder
+                                    .decoded_top()
+                                    .map(|top| *top == value)
+                                    .expect("integrity checks only after at least one value");
+
+                                if !integrity_check_result {
+                                    self.builder.push_error(Error::integrity_check(
+                                        self.lexer.location(),
+                                        self.builder.decoded_len() - 1,
+                                    ));
+                                    *(self.builder.decoded_top_mut().unwrap()) = value;
+                                }
+                            }
+                            Err(e) => match e.kind() {
+                                IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
+                                    self.builder.push_error(Error::integrity_check(
+                                        self.lexer.location(),
+                                        self.builder.decoded_len() - 1,
+                                    ));
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
+                    }
+                }
+
+                self.phase = Phase::Data;
+                self.state = State::Normal;
+
+                Ok(())
+            }
+            Phase::CheckPoint => {
+                match self.parse_asdf() {
+                    Ok(value) => {
+                        self.builder.push_checkpoint_value(value as f64);
+                    }
+                    Err(e) => match e.kind() {
+                        IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
+                            self.builder.push_error(Error::overflow(self.lexer.location()));
+                            self.builder.push_checkpoint_value(f64::NAN);
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+                self.phase = Phase::FirstData;
+
+                Ok(())
+            }
+        }
+    }
+
+    fn difference(&mut self) -> Result<()> {
+        let diff = self
+            .parse_asdf()
+            .map_err(|_| Error::dif_dup_overflow(self.lexer.location()))?;
+
         match self.phase {
             Phase::Data => {
                 let value = self
@@ -181,7 +320,11 @@ impl<'source> Decoder<'source> {
         }
     }
 
-    fn duplicate(&mut self, num: usize) -> Result<()> {
+    fn duplicate(&mut self) -> Result<()> {
+        let num = self
+            .parse_asdf()
+            .map_err(|_| Error::dif_dup_overflow(self.lexer.location()))?;
+
         match self.phase {
             Phase::Data => {
                 let previous = self
@@ -192,10 +335,10 @@ impl<'source> Decoder<'source> {
                 match self.state {
                     State::LastWasDifference(diff) => self
                         .builder
-                        .extend_decoded((1..num as i64).map(|i| previous + (diff * i))),
+                        .extend_decoded((1..num).map(|i| previous + (diff * i))),
                     State::Normal => self
                         .builder
-                        .extend_decoded(std::iter::repeat(previous).take(num - 1)),
+                        .extend_decoded(std::iter::repeat(previous).take((num - 1) as usize)),
                     _ => unreachable!(),
                 }
 
@@ -207,20 +350,122 @@ impl<'source> Decoder<'source> {
         }
     }
 
-    fn overflow(&mut self) {
+    /// Handles [`Invalid`] tokens.
+    ///
+    /// Inserts [`i64::MIN`] and [`f64::NAN`] as sentinel values.
+    ///
+    /// [`Invalid`]: EncodedToken::Invalid
+    fn invalid(&mut self) {
         match self.phase {
             Phase::Data | Phase::FirstData => {
-                self.builder
-                    .push_error(Error::overflow_with_index(
-                        self.lexer.location(),
-                        self.builder.decoded_len(),
-                    ));
-                self.numeric(i64::MIN);
+                self.builder.push_error(Error::invalid_value_with_index(
+                    self.lexer.location(),
+                    self.builder.decoded_len()
+                ));
+                match self.state {
+                    State::Normal | State::LastWasDifference(_) => {
+                        self.builder.push_decoded_i64(i64::MIN);
+                    }
+                    State::IntegrityCheck => {
+                        self.builder.push_error(Error::integrity_check(
+                            self.lexer.location(),
+                            self.builder.decoded_len() - 1,
+                        ));
+                    }
+                }
+                self.phase = Phase::Data;
+                self.state = State::Normal;
             }
             Phase::CheckPoint => {
-                self.builder
-                    .push_error(Error::overflow(self.lexer.location()));
-                self.numeric(i64::MIN);
+                self.builder.push_error(Error::invalid_value(self.lexer.location()));
+                self.builder.push_checkpoint_value(f64::NAN);
+                self.phase = Phase::FirstData;
+            }
+        }
+    }
+
+    /// Parse an `AFFN` numeric value.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if parsing the value as an `i64` overflows.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `lexer.slice()` cannot be parsed as an `i64` or `f64`.
+    fn parse_affn(&self) -> std::result::Result<Affn, ParseIntError> {
+        match self.lexer.slice().parse::<i64>() {
+            Ok(int) => Ok(Affn::I64(int)),
+            Err(e) => match e.kind() {
+                IntErrorKind::InvalidDigit => {
+                    let float = self
+                        .lexer
+                        .slice()
+                        .parse::<f64>()
+                        .expect("lexer (regex) should not match unparsable numerics");
+
+                    // don't upgrade to float if it can be represented as i64
+                    if float.fract() == 0.0 {
+                        Ok(Affn::I64(float as i64))
+                    } else {
+                        Ok(Affn::F64(float))
+                    }
+                }
+                IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => Err(e),
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    /// Parse an `ASDF` compressed, difference, or duplicate value.
+    ///
+    /// # Encoding
+    ///
+    /// An `ASDF` encoded value is composed of a leading character
+    /// (@, %, A-Z, a-s), which determines the type of encoding, and a trailing
+    /// numeric sequence.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if parsing the value as an `i64` overflows.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `lexer.slice()` is not of the `ASDF` form.
+    fn parse_asdf(&self) -> std::result::Result<i64, ParseIntError> {
+        let encoded = self
+            .lexer
+            .slice()
+            .chars()
+            .next()
+            .expect("lexer (regex) should have no empty ASDF tokens");
+        let decoded = match encoded {
+            '@' | '%' => 0,
+            'A' | 'a' | 'J' | 'j' | 'S' => 1,
+            'B' | 'b' | 'K' | 'k' | 'T' => 2,
+            'C' | 'c' | 'L' | 'l' | 'U' => 3,
+            'D' | 'd' | 'M' | 'm' | 'V' => 4,
+            'E' | 'e' | 'N' | 'n' | 'W' => 5,
+            'F' | 'f' | 'O' | 'o' | 'X' => 6,
+            'G' | 'g' | 'P' | 'p' | 'Y' => 7,
+            'H' | 'h' | 'Q' | 'q' | 'Z' => 8,
+            'I' | 'i' | 'R' | 'r' | 's' => 9,
+            _ => unreachable!("invalid ASDF character: {}", encoded),
+        };
+        let sign = match encoded {
+            '@' | '%' | 'A'..='Z' | 's' => 1,
+            'a'..='r' => -1,
+            _ => unreachable!("invalid ASDF character: {}", encoded),
+        };
+        let numeric = &self.lexer.slice()[1..];
+        let order = numeric.len() as u32;
+
+        match numeric.parse::<i64>() {
+            Ok(numeric) => Ok(sign * (decoded * 10_i64.pow(order) + numeric)),
+            Err(e) => match e.kind() {
+                IntErrorKind::Empty => Ok(sign * (decoded * 10_i64.pow(order))),
+                IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => Err(e),
+                _ => unreachable!(),
             }
         }
     }
@@ -365,9 +610,9 @@ mod tests {
         "7 1 1 ? 1\n\
          3 0 ? 1 ?",
         [
-            Error::invalid_value(Position { line: 0, column: 6 }, 2),
-            Error::invalid_value(Position { line: 1, column: 4 }, 5),
-            Error::invalid_value(Position { line: 1, column: 8 }, 7),
+            Error::invalid_value_with_index(Position { line: 0, column: 6 }, 2),
+            Error::invalid_value_with_index(Position { line: 1, column: 4 }, 5),
+            Error::invalid_value_with_index(Position { line: 1, column: 8 }, 7),
         ]
     );
 }
