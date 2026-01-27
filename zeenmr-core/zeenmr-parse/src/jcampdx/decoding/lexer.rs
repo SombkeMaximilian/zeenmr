@@ -9,7 +9,7 @@ use std::num::IntErrorKind;
 #[logos(subpattern newline = r"\n|\r\n|\r")]
 #[logos(subpattern space = r"[ \t]")]
 #[logos(skip r"(?&space)")]
-#[logos(subpattern comment = r"\$\$[^\r\n]+(?&newline)")]
+#[logos(subpattern comment = r"\$\$[^\r\n]+")]
 #[logos(skip r"(?&comment)")]
 pub(crate) enum EncodedToken {
     /// Every new line is a checkpoint.
