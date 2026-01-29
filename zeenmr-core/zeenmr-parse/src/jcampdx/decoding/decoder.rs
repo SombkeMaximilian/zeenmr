@@ -152,25 +152,7 @@ impl<'source> Decoder<'source> {
                     }
                     State::IntegrityCheck => {
                         match self.parse_affn() {
-                            Ok(Affn::I64(value)) => {
-                                if !self.builder.decoded_is_i64() {
-                                    return Err(Error::dif_with_float(self.lexer.location()));
-                                }
-
-                                let integrity_check_result = self
-                                    .builder
-                                    .decoded_top()
-                                    .map(|top| *top == value)
-                                    .expect("integrity checks only after at least one value");
-
-                                if !integrity_check_result {
-                                    self.builder.push_error(Error::integrity_check(
-                                        self.lexer.location(),
-                                        self.builder.decoded_len() - 1,
-                                    ));
-                                    *(self.builder.decoded_top_mut().unwrap()) = value;
-                                }
-                            }
+                            Ok(Affn::I64(value)) => self.integrity_check(value)?,
                             Ok(Affn::F64(_)) => {
                                 return Err(Error::dif_with_float(self.lexer.location()));
                             }
@@ -240,25 +222,7 @@ impl<'source> Decoder<'source> {
                     }
                     State::IntegrityCheck => {
                         match self.parse_asdf() {
-                            Ok(value) => {
-                                if !self.builder.decoded_is_i64() {
-                                    return Err(Error::dif_with_float(self.lexer.location()));
-                                }
-
-                                let integrity_check_result = self
-                                    .builder
-                                    .decoded_top()
-                                    .map(|top| *top == value)
-                                    .expect("integrity checks only after at least one value");
-
-                                if !integrity_check_result {
-                                    self.builder.push_error(Error::integrity_check(
-                                        self.lexer.location(),
-                                        self.builder.decoded_len() - 1,
-                                    ));
-                                    *(self.builder.decoded_top_mut().unwrap()) = value;
-                                }
-                            }
+                            Ok(value) => self.integrity_check(value)?,
                             Err(e) => match e.kind() {
                                 IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
                                     self.builder.push_error(Error::integrity_check(
@@ -381,6 +345,40 @@ impl<'source> Decoder<'source> {
                 self.builder.push_checkpoint_value(f64::NAN);
                 self.phase = Phase::FirstData;
             }
+        }
+    }
+
+    /// Handles integrity checks.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the decoded values already contained `f64` values.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the decoded stack is empty.
+    fn integrity_check(&mut self, value: i64) -> Result<()> {
+        if self.builder.decoded_is_i64() {
+            let matches = self
+                .builder
+                .decoded_top()
+                .map(|top| *top == value)
+                .expect("integrity checks only after at least one value");
+            if !matches {
+                self.builder.push_error(Error::integrity_check(
+                    self.lexer.location(),
+                    self.builder.decoded_len() - 1,
+                ));
+                let top = self
+                    .builder
+                    .decoded_top_mut()
+                    .expect("integrity checks only after at least one value");
+                *top = value;
+            }
+
+            Ok(())
+        } else {
+            Err(Error::dif_with_float(self.lexer.location()))
         }
     }
 
