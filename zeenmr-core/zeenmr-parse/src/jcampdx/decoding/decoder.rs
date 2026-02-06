@@ -117,6 +117,12 @@ impl<'source> Decoder<'source> {
         Ok(std::mem::take(&mut self.builder).finalize())
     }
 
+    /// Handles [`CheckPoint`] tokens.
+    ///
+    /// [`CheckPoint`]: EncodedToken::CheckPoint
+    ///
+    /// Switches phase to [`Phase::CheckPoint`]. If the last token was a
+    /// [`Difference`], transitions to [`State::IntegrityCheck`].
     fn check_point(&mut self) {
         match self.state {
             State::LastWasDifference(_) => {
@@ -130,6 +136,20 @@ impl<'source> Decoder<'source> {
         self.phase = Phase::CheckPoint;
     }
 
+    /// Handles [`Numeric`] tokens.
+    ///
+    /// [`Numeric`]: EncodedToken::Numeric
+    ///
+    /// In [`Phase::CheckPoint`], sets the checkpoint value and transitions to
+    /// [`Phase::FirstData`]. In [`Phase::FirstData`] or [`Phase::Data`],
+    /// appends a value, or performs integrity check if in
+    /// [`State::IntegrityCheck`], and sets phase to [`Phase::Data`] and state to
+    /// [`State::Normal`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if an integrity check is attempted while the decoded
+    /// values stack is in its `f64` variant.
     fn numeric(&mut self) -> Result<()> {
         match self.phase {
             Phase::CheckPoint => {
@@ -197,6 +217,20 @@ impl<'source> Decoder<'source> {
         }
     }
 
+    /// Handles [`Compressed`] tokens.
+    ///
+    /// [`Compressed`]: EncodedToken::Compressed
+    ///
+    /// In [`Phase::CheckPoint`], sets the checkpoint value and transitions to
+    /// [`Phase::FirstData`]. In [`Phase::FirstData`] or [`Phase::Data`],
+    /// appends a value, or performs integrity check if in
+    /// [`State::IntegrityCheck`], and sets phase to [`Phase::Data`] and state to
+    /// [`State::Normal`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if an integrity check is attempted while the decoded
+    /// values stack is in its `f64` variant.
     fn compressed(&mut self) -> Result<()> {
         match self.phase {
             Phase::CheckPoint => {
@@ -253,6 +287,21 @@ impl<'source> Decoder<'source> {
         }
     }
 
+    /// Handles [`Difference`] tokens.
+    ///
+    /// [`Difference`]: EncodedToken::Difference
+    ///
+    /// Only in [`Phase::Data`]. Adds difference to previous decoded value,
+    /// pushes it, and sets state to [`State::LastWasDifference`]. Phase stays
+    /// [`Phase::Data`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the decoded values stack is in its `f64` variant, or
+    /// if parsing the difference overflows, or if the [`Difference`] token
+    /// would be the checkpoint value or the first data value in a line.
+    ///
+    /// [`Difference`]: EncodedToken::Difference
     fn difference(&mut self) -> Result<()> {
         if !self.builder.decoded_is_i64() {
             return Err(Error::asdf_with_float(self.lexer.location()));
@@ -280,6 +329,21 @@ impl<'source> Decoder<'source> {
         }
     }
 
+    /// Handles [`Duplicate`] tokens.
+    ///
+    /// [`Duplicate`]: EncodedToken::Duplicate
+    ///
+    /// Only in [`Phase::Data`]. Repeats previous value, or repeats previous
+    /// difference if in [`State::LastWasDifference`]. Phase stays
+    /// [`Phase::Data`], and state remains unchanged.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the decoded values stack is in its `f64` variant, or
+    /// if parsing the number of duplications overflows, or if the [`Duplicate`]
+    /// token would be the checkpoint value or the first data value in a line.
+    ///
+    /// [`Duplicate`]: EncodedToken::Duplicate
     fn duplicate(&mut self) -> Result<()> {
         if !self.builder.decoded_is_i64() {
             return Err(Error::asdf_with_float(self.lexer.location()));
@@ -316,7 +380,11 @@ impl<'source> Decoder<'source> {
 
     /// Handles [`Invalid`] tokens.
     ///
-    /// Inserts [`i64::MIN`] and [`f64::NAN`] as sentinel values.
+    /// In [`Phase::CheckPoint`], sets the checkpoint value to `f64::NAN` and
+    /// transitions to [`Phase::FirstData`]. In [`Phase::FirstData`] or
+    /// [`Phase::Data`], appends `i64::MIN`, or pushes a failed integrity check
+    /// error if in [`State::IntegrityCheck`], and sets phase to [`Phase::Data`]
+    /// and state to [`State::Normal`].
     ///
     /// [`Invalid`]: EncodedToken::Invalid
     fn invalid(&mut self) {
