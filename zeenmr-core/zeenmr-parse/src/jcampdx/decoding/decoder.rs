@@ -132,47 +132,6 @@ impl<'source> Decoder<'source> {
 
     fn numeric(&mut self) -> Result<()> {
         match self.phase {
-            Phase::Data | Phase::FirstData => {
-                match self.state {
-                    State::Normal | State::LastWasDifference(_) => {
-                        match self.parse_affn() {
-                            Ok(Affn::I64(value)) => self.builder.push_decoded_i64(value),
-                            Ok(Affn::F64(value)) => self.builder.push_decoded_f64(value),
-                            Err(e) => match e.kind() {
-                                IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
-                                    self.builder.push_error(Error::overflow_with_index(
-                                        self.lexer.location(),
-                                        self.builder.decoded_len(),
-                                    ));
-                                    self.builder.push_decoded_i64(i64::MIN);
-                                }
-                                _ => unreachable!(),
-                            }
-                        }
-                    }
-                    State::IntegrityCheck => {
-                        match self.parse_affn() {
-                            Ok(Affn::I64(value)) => self.integrity_check(value)?,
-                            Ok(Affn::F64(_)) => {
-                                return Err(Error::dif_with_float(self.lexer.location()));
-                            }
-                            Err(e) => match e.kind() {
-                                IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
-                                    self.builder.push_error(Error::integrity_check(
-                                        self.lexer.location(),
-                                        self.builder.decoded_len() - 1,
-                                    ));
-                                }
-                                _ => unreachable!(),
-                            }
-                        }
-                    }
-                }
-                self.phase = Phase::Data;
-                self.state = State::Normal;
-
-                Ok(())
-            }
             Phase::CheckPoint => {
                 match self.parse_affn() {
                     Ok(Affn::I64(value)) => {
@@ -198,49 +157,48 @@ impl<'source> Decoder<'source> {
 
                 Ok(())
             }
-        }
-    }
-
-    fn compressed(&mut self) -> Result<()> {
-        match self.phase {
             Phase::Data | Phase::FirstData => {
                 match self.state {
-                    State::Normal | State::LastWasDifference(_) => {
-                        match self.parse_asdf() {
-                            Ok(value) => self.builder.push_decoded_i64(value),
-                            Err(e) => match e.kind() {
-                                IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
-                                    self.builder.push_error(Error::overflow_with_index(
-                                        self.lexer.location(),
-                                        self.builder.decoded_len(),
-                                    ));
-                                    self.builder.push_decoded_i64(i64::MIN);
-                                }
-                                _ => unreachable!(),
+                    State::Normal | State::LastWasDifference(_) => match self.parse_affn() {
+                        Ok(Affn::I64(value)) => self.builder.push_decoded_i64(value),
+                        Ok(Affn::F64(value)) => self.builder.push_decoded_f64(value),
+                        Err(e) => match e.kind() {
+                            IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
+                                self.builder.push_error(Error::overflow_with_index(
+                                    self.lexer.location(),
+                                    self.builder.decoded_len(),
+                                ));
+                                self.builder.push_decoded_i64(i64::MIN);
                             }
+                            _ => unreachable!(),
                         }
                     }
-                    State::IntegrityCheck => {
-                        match self.parse_asdf() {
-                            Ok(value) => self.integrity_check(value)?,
-                            Err(e) => match e.kind() {
-                                IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
-                                    self.builder.push_error(Error::integrity_check(
-                                        self.lexer.location(),
-                                        self.builder.decoded_len() - 1,
-                                    ));
-                                }
-                                _ => unreachable!(),
+                    State::IntegrityCheck => match self.parse_affn() {
+                        Ok(Affn::I64(value)) => self.integrity_check(value)?,
+                        Ok(Affn::F64(_)) => {
+                            return Err(Error::dif_with_float(self.lexer.location()));
+                        }
+                        Err(e) => match e.kind() {
+                            IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
+                                self.builder.push_error(Error::integrity_check(
+                                    self.lexer.location(),
+                                    self.builder.decoded_len() - 1,
+                                ));
                             }
+                            _ => unreachable!(),
                         }
                     }
                 }
-
                 self.phase = Phase::Data;
                 self.state = State::Normal;
 
                 Ok(())
             }
+        }
+    }
+
+    fn compressed(&mut self) -> Result<()> {
+        match self.phase {
             Phase::CheckPoint => {
                 match self.parse_asdf() {
                     Ok(value) => {
@@ -255,6 +213,40 @@ impl<'source> Decoder<'source> {
                     }
                 }
                 self.phase = Phase::FirstData;
+
+                Ok(())
+            }
+            Phase::Data | Phase::FirstData => {
+                match self.state {
+                    State::Normal | State::LastWasDifference(_) => match self.parse_asdf() {
+                        Ok(value) => self.builder.push_decoded_i64(value),
+                        Err(e) => match e.kind() {
+                            IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
+                                self.builder.push_error(Error::overflow_with_index(
+                                    self.lexer.location(),
+                                    self.builder.decoded_len(),
+                                ));
+                                self.builder.push_decoded_i64(i64::MIN);
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
+                    State::IntegrityCheck => match self.parse_asdf() {
+                        Ok(value) => self.integrity_check(value)?,
+                        Err(e) => match e.kind() {
+                            IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
+                                self.builder.push_error(Error::integrity_check(
+                                    self.lexer.location(),
+                                    self.builder.decoded_len() - 1,
+                                ));
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
+                }
+
+                self.phase = Phase::Data;
+                self.state = State::Normal;
 
                 Ok(())
             }
