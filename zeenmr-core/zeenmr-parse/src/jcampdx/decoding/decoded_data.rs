@@ -40,7 +40,7 @@ impl DecodedStack {
         }
     }
 
-    /// Returns the number of elements in the decoded values stack.
+    /// Returns the number of elements in the `DecodedStack`.
     fn len(&self) -> usize {
         match self {
             Self::I64(buffer) => buffer.len(),
