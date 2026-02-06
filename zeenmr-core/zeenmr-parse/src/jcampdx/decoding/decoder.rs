@@ -328,14 +328,14 @@ impl<'source> Decoder<'source> {
                     .builder
                     .decoded_top()
                     .map(|top| *top + diff)
-                    .ok_or_else(|| Error::asdf_after_check_point(self.lexer.location()))?;
+                    .ok_or_else(|| Error::asdf_after_checkpoint(self.lexer.location()))?;
                 self.builder.push_decoded_i64(value);
                 self.state = State::LastWasDifference(diff);
 
                 Ok(())
             }
             Phase::CheckPoint | Phase::FirstData => {
-                Err(Error::asdf_after_check_point(self.lexer.location()))
+                Err(Error::asdf_after_checkpoint(self.lexer.location()))
             }
         }
     }
@@ -370,7 +370,7 @@ impl<'source> Decoder<'source> {
                     .builder
                     .decoded_top()
                     .copied()
-                    .ok_or_else(|| Error::asdf_after_check_point(self.lexer.location()))?;
+                    .ok_or_else(|| Error::asdf_after_checkpoint(self.lexer.location()))?;
                 match self.state {
                     State::LastWasDifference(diff) => self
                         .builder
@@ -384,7 +384,7 @@ impl<'source> Decoder<'source> {
                 Ok(())
             }
             Phase::CheckPoint | Phase::FirstData => {
-                Err(Error::asdf_after_check_point(self.lexer.location()))
+                Err(Error::asdf_after_checkpoint(self.lexer.location()))
             }
         }
     }
@@ -642,13 +642,13 @@ mod tests {
         dif_dup_check_point_value,
         "7 1 2 3 4\n\
          J 5 6 7 8",
-        Error::asdf_after_check_point(Position { line: 1, column: 0 })
+        Error::asdf_after_checkpoint(Position { line: 1, column: 0 })
     );
     fatal_error_test!(
         dif_dup_value_after_check_point,
         "7 1 2 3 4\n\
          3 J 6 7 8",
-        Error::asdf_after_check_point(Position { line: 1, column: 2 })
+        Error::asdf_after_checkpoint(Position { line: 1, column: 2 })
     );
 
     macro_rules! recoverable_error_test {

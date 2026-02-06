@@ -171,7 +171,7 @@ impl Error {
     /// Creates a [`AsdfAfterCheckPoint`] error.
     ///
     /// [`AsdfAfterCheckPoint`]: Kind::AsdfAfterCheckPoint
-    pub(crate) fn asdf_after_check_point(position: Position) -> Self {
+    pub(crate) fn asdf_after_checkpoint(position: Position) -> Self {
         Self {
             kind: Kind::AsdfAfterCheckPoint,
             position,
