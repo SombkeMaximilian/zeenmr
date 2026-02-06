@@ -154,8 +154,8 @@ impl<'source> Decoder<'source> {
     /// In [`Phase::CheckPoint`], sets the checkpoint value and transitions to
     /// [`Phase::FirstData`]. In [`Phase::FirstData`] or [`Phase::Data`],
     /// appends a value, or performs integrity check if in
-    /// [`State::IntegrityCheck`], and sets phase to [`Phase::Data`] and state to
-    /// [`State::Normal`].
+    /// [`State::IntegrityCheck`], and sets phase to [`Phase::Data`] and state
+    /// to [`State::Normal`].
     ///
     /// # Errors
     ///
@@ -174,15 +174,14 @@ impl<'source> Decoder<'source> {
                     Err(e) => match e.kind() {
                         IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
                             self.builder.push_checkpoint_value(
-                                self
-                                    .lexer
+                                self.lexer
                                     .slice()
                                     .parse::<f64>()
-                                    .expect("lexer (regex) should not match unparsable numerics")
+                                    .expect("lexer (regex) should not match unparsable numerics"),
                             );
                         }
                         _ => unreachable!(),
-                    }
+                    },
                 }
                 self.phase = Phase::FirstData;
 
@@ -195,15 +194,16 @@ impl<'source> Decoder<'source> {
                         Ok(Affn::F64(value)) => self.builder.push_decoded_f64(value),
                         Err(e) => match e.kind() {
                             IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
-                                self.builder.push_error(Error::overflow_with_index(
-                                    self.lexer.location(),
-                                    self.builder.decoded_len(),
-                                ));
+                                self.builder
+                                    .push_error(Error::overflow_with_index(
+                                        self.lexer.location(),
+                                        self.builder.decoded_len(),
+                                    ));
                                 self.builder.push_decoded_i64(i64::MIN);
                             }
                             _ => unreachable!(),
-                        }
-                    }
+                        },
+                    },
                     State::IntegrityCheck => match self.parse_affn() {
                         Ok(Affn::I64(value)) => self.integrity_check(value)?,
                         Ok(Affn::F64(_)) => {
@@ -217,8 +217,8 @@ impl<'source> Decoder<'source> {
                                 ));
                             }
                             _ => unreachable!(),
-                        }
-                    }
+                        },
+                    },
                 }
                 self.phase = Phase::Data;
                 self.state = State::Normal;
@@ -235,8 +235,8 @@ impl<'source> Decoder<'source> {
     /// In [`Phase::CheckPoint`], sets the checkpoint value and transitions to
     /// [`Phase::FirstData`]. In [`Phase::FirstData`] or [`Phase::Data`],
     /// appends a value, or performs integrity check if in
-    /// [`State::IntegrityCheck`], and sets phase to [`Phase::Data`] and state to
-    /// [`State::Normal`].
+    /// [`State::IntegrityCheck`], and sets phase to [`Phase::Data`] and state
+    /// to [`State::Normal`].
     ///
     /// # Errors
     ///
@@ -251,11 +251,12 @@ impl<'source> Decoder<'source> {
                     }
                     Err(e) => match e.kind() {
                         IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
-                            self.builder.push_error(Error::overflow(self.lexer.location()));
+                            self.builder
+                                .push_error(Error::overflow(self.lexer.location()));
                             self.builder.push_checkpoint_value(f64::NAN);
                         }
                         _ => unreachable!(),
-                    }
+                    },
                 }
                 self.phase = Phase::FirstData;
 
@@ -267,15 +268,16 @@ impl<'source> Decoder<'source> {
                         Ok(value) => self.builder.push_decoded_i64(value),
                         Err(e) => match e.kind() {
                             IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
-                                self.builder.push_error(Error::overflow_with_index(
-                                    self.lexer.location(),
-                                    self.builder.decoded_len(),
-                                ));
+                                self.builder
+                                    .push_error(Error::overflow_with_index(
+                                        self.lexer.location(),
+                                        self.builder.decoded_len(),
+                                    ));
                                 self.builder.push_decoded_i64(i64::MIN);
                             }
                             _ => unreachable!(),
-                        }
-                    }
+                        },
+                    },
                     State::IntegrityCheck => match self.parse_asdf() {
                         Ok(value) => self.integrity_check(value)?,
                         Err(e) => match e.kind() {
@@ -286,8 +288,8 @@ impl<'source> Decoder<'source> {
                                 ));
                             }
                             _ => unreachable!(),
-                        }
-                    }
+                        },
+                    },
                 }
 
                 self.phase = Phase::Data;
@@ -401,10 +403,11 @@ impl<'source> Decoder<'source> {
     fn invalid(&mut self) {
         match self.phase {
             Phase::Data | Phase::FirstData => {
-                self.builder.push_error(Error::invalid_value_with_index(
-                    self.lexer.location(),
-                    self.builder.decoded_len()
-                ));
+                self.builder
+                    .push_error(Error::invalid_value_with_index(
+                        self.lexer.location(),
+                        self.builder.decoded_len(),
+                    ));
                 match self.state {
                     State::Normal | State::LastWasDifference(_) => {
                         self.builder.push_decoded_i64(i64::MIN);
@@ -420,7 +423,8 @@ impl<'source> Decoder<'source> {
                 self.state = State::Normal;
             }
             Phase::CheckPoint => {
-                self.builder.push_error(Error::invalid_value(self.lexer.location()));
+                self.builder
+                    .push_error(Error::invalid_value(self.lexer.location()));
                 self.builder.push_checkpoint_value(f64::NAN);
                 self.phase = Phase::FirstData;
             }
@@ -490,7 +494,7 @@ impl<'source> Decoder<'source> {
                 }
                 IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => Err(e),
                 _ => unreachable!(),
-            }
+            },
         }
     }
 
@@ -543,7 +547,7 @@ impl<'source> Decoder<'source> {
                 IntErrorKind::Empty => Ok(sign * (decoded * 10_i64.pow(order))),
                 IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => Err(e),
                 _ => unreachable!(),
-            }
+            },
         }
     }
 }
