@@ -70,6 +70,22 @@ pub enum Kind {
     /// and these encodings should not be mixed with floating point values as
     /// per the standard.
     AsdfWithFloat,
+    /// A checkpoint value is non-finite.
+    ///
+    /// Computing steps between data points from non-finite checkpoint values
+    /// corrupts the remainder of the calculations.
+    CheckPointValue,
+    /// The step size between check points does not match.
+    ///
+    /// The expected step size between checkpoints is
+    /// ```text
+    /// x_b - x_a / (n_b - n_a),
+    /// ```
+    /// where `x_b` and `x_a` are the checkpoint values and `n_b` and `n_a` are
+    /// the number of decoded data points at checkpoints `b` and `a`. If the
+    /// decoded points in that segment are not spaced by this constant step, the
+    /// spacing or count is inconsistent.
+    CheckPointStepMismatch,
 }
 
 impl std::error::Error for Error {}
@@ -84,6 +100,8 @@ impl std::fmt::Display for Error {
             Kind::InvalidValue => "invalid value",
             Kind::AsdfAfterCheckPoint => "DIF or DUP after checkpoint",
             Kind::AsdfWithFloat => "DIF or DUP with float",
+            Kind::CheckPointValue => "checkpoint value encountered",
+            Kind::CheckPointStepMismatch => "checkpoint step mismatch",
         };
 
         write!(f, "{description}")
@@ -185,6 +203,28 @@ impl Error {
     pub(crate) fn asdf_with_float(position: Position) -> Self {
         Self {
             kind: Kind::AsdfWithFloat,
+            position,
+            index: None,
+        }
+    }
+
+    /// Creates a [`CheckPointValue`] error.
+    ///
+    /// [`CheckPointValue`]: Kind::CheckPointValue
+    pub(crate) fn checkpoint_value(position: Position) -> Self {
+        Self {
+            kind: Kind::CheckPointValue,
+            position,
+            index: None,
+        }
+    }
+
+    /// Creates a [`CheckPointStepMismatch`] error.
+    ///
+    /// [`CheckPointStepMismatch`]: Kind::CheckPointStepMismatch
+    pub(crate) fn checkpoint_step_mismatch(position: Position) -> Self {
+        Self {
+            kind: Kind::CheckPointStepMismatch,
             position,
             index: None,
         }
