@@ -148,18 +148,14 @@ impl DecodedBlockBuilder {
     pub(crate) fn finalize(mut self) -> DecodedBlock {
         let mut table = Table::new();
         match self.decoded {
-            DecodedStack::I64(buffer) => {
-                table.push(RawColumn::<i64> {
-                    id: self.repeating,
-                    values: buffer,
-                });
-            }
-            DecodedStack::F64(buffer) => {
-                table.push(RawColumn::<f64> {
-                    id: self.repeating,
-                    values: buffer,
-                })
-            }
+            DecodedStack::I64(buffer) => table.push(RawColumn::<i64> {
+                id: self.repeating,
+                values: buffer,
+            }),
+            DecodedStack::F64(buffer) => table.push(RawColumn::<f64> {
+                id: self.repeating,
+                values: buffer,
+            }),
         }
 
         DecodedBlock {
