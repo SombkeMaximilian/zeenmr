@@ -176,7 +176,7 @@ impl<'source> Decoder<'source> {
                     State::IntegrityCheck => match self.parse_affn() {
                         Ok(Affn::I64(value)) => self.integrity_check(value)?,
                         Ok(Affn::F64(_)) => {
-                            return Err(Error::dif_with_float(self.lexer.location()));
+                            return Err(Error::asdf_with_float(self.lexer.location()));
                         }
                         Err(e) => match e.kind() {
                             IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
@@ -264,14 +264,14 @@ impl<'source> Decoder<'source> {
                     .builder
                     .decoded_top()
                     .map(|top| *top + diff)
-                    .ok_or_else(|| Error::dif_dup_after_check_point(self.lexer.location()))?;
+                    .ok_or_else(|| Error::asdf_after_check_point(self.lexer.location()))?;
                 self.builder.push_decoded_i64(value);
                 self.state = State::LastWasDifference(diff);
 
                 Ok(())
             }
             Phase::CheckPoint | Phase::FirstData => {
-                Err(Error::dif_dup_after_check_point(self.lexer.location()))
+                Err(Error::asdf_after_check_point(self.lexer.location()))
             }
         }
     }
@@ -287,7 +287,7 @@ impl<'source> Decoder<'source> {
                     .builder
                     .decoded_top()
                     .copied()
-                    .ok_or_else(|| Error::dif_dup_after_check_point(self.lexer.location()))?;
+                    .ok_or_else(|| Error::asdf_after_check_point(self.lexer.location()))?;
                 match self.state {
                     State::LastWasDifference(diff) => self
                         .builder
@@ -301,7 +301,7 @@ impl<'source> Decoder<'source> {
                 Ok(())
             }
             Phase::CheckPoint | Phase::FirstData => {
-                Err(Error::dif_dup_after_check_point(self.lexer.location()))
+                Err(Error::asdf_after_check_point(self.lexer.location()))
             }
         }
     }
@@ -370,7 +370,7 @@ impl<'source> Decoder<'source> {
 
             Ok(())
         } else {
-            Err(Error::dif_with_float(self.lexer.location()))
+            Err(Error::asdf_with_float(self.lexer.location()))
         }
     }
 
@@ -555,13 +555,13 @@ mod tests {
         dif_dup_check_point_value,
         "7 1 2 3 4\n\
          J 5 6 7 8",
-        Error::dif_dup_after_check_point(Position { line: 1, column: 0 })
+        Error::asdf_after_check_point(Position { line: 1, column: 0 })
     );
     fatal_error_test!(
         dif_dup_value_after_check_point,
         "7 1 2 3 4\n\
          3 J 6 7 8",
-        Error::dif_dup_after_check_point(Position { line: 1, column: 2 })
+        Error::asdf_after_check_point(Position { line: 1, column: 2 })
     );
 
     macro_rules! recoverable_error_test {

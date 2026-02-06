@@ -60,13 +60,16 @@ pub enum Kind {
     /// `DIF` and `DUP` values apply to the directly preceding value in the same
     /// line. If they're the first value in a line, they can't be resolved. This
     /// applies to the checkpoint value itself and the first actual data value.
-    DifDupAfterCheckPoint,
-    /// A `DIF` was encountered after or before floating point values.
+    AsdfAfterCheckPoint,
+    /// A `DIF` or `DUP` was encountered after or before floating point values.
     ///
     /// `DIF` encodes the next value as a difference to the previous value. This
     /// accumulates errors with floating point values and was therefore not
-    /// intended for the standard.
-    DifWithFloat,
+    /// intended for the standard. In principle `DUP` could be resolved with
+    /// floating point values. However, a `DUP` can also apply to a prior `DIF`
+    /// and these encodings should not be mixed with floating point values as
+    /// per the standard.
+    AsdfWithFloat,
 }
 
 impl std::error::Error for Error {}
@@ -79,8 +82,8 @@ impl std::fmt::Display for Error {
             Kind::DifDupOverflow => "dif overflow",
             Kind::IntegrityCheck => "integrity check failed",
             Kind::InvalidValue => "invalid value",
-            Kind::DifDupAfterCheckPoint => "DIF or DUP after checkpoint",
-            Kind::DifWithFloat => "DIF with float",
+            Kind::AsdfAfterCheckPoint => "DIF or DUP after checkpoint",
+            Kind::AsdfWithFloat => "DIF or DUP with float",
         };
 
         write!(f, "{description}")
@@ -165,23 +168,23 @@ impl Error {
         }
     }
 
-    /// Creates a [`DifDupAfterCheckPoint`] error.
+    /// Creates a [`AsdfAfterCheckPoint`] error.
     ///
-    /// [`DifDupAfterCheckPoint`]: Kind::DifDupAfterCheckPoint
-    pub(crate) fn dif_dup_after_check_point(position: Position) -> Self {
+    /// [`AsdfAfterCheckPoint`]: Kind::AsdfAfterCheckPoint
+    pub(crate) fn asdf_after_check_point(position: Position) -> Self {
         Self {
-            kind: Kind::DifDupAfterCheckPoint,
+            kind: Kind::AsdfAfterCheckPoint,
             position,
             index: None,
         }
     }
 
-    /// Creates a [`DifWithFloat`] error.
+    /// Creates a [`AsdfWithFloat`] error.
     ///
-    /// [`DifWithFloat`]: Kind::DifWithFloat
-    pub(crate) fn dif_with_float(position: Position) -> Self {
+    /// [`AsdfWithFloat`]: Kind::AsdfWithFloat
+    pub(crate) fn asdf_with_float(position: Position) -> Self {
         Self {
-            kind: Kind::DifWithFloat,
+            kind: Kind::AsdfWithFloat,
             position,
             index: None,
         }
