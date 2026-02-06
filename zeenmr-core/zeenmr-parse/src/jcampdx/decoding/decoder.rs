@@ -101,6 +101,17 @@ impl<'source> Decoder<'source> {
         self.lexer
     }
 
+    /// Decodes the source into a `DecodedBlock`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for fatal decoding failures, such as invalid literals,
+    /// encoding errors or overflows that would corrupt the remaining data.
+    ///
+    /// # Panics
+    ///
+    /// Panics only if internal decoder invariants are violated, which should be
+    /// unreachable under correct decoding logic.
     pub(crate) fn decode_source(&mut self) -> Result<DecodedBlock> {
         while let Some(token) = self.lexer.next().transpose()? {
             match token {
