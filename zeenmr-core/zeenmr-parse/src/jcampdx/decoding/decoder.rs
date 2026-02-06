@@ -254,6 +254,10 @@ impl<'source> Decoder<'source> {
     }
 
     fn difference(&mut self) -> Result<()> {
+        if !self.builder.decoded_is_i64() {
+            return Err(Error::asdf_with_float(self.lexer.location()));
+        }
+
         let diff = self
             .parse_asdf()
             .map_err(|_| Error::dif_dup_overflow(self.lexer.location()))?;
@@ -277,6 +281,10 @@ impl<'source> Decoder<'source> {
     }
 
     fn duplicate(&mut self) -> Result<()> {
+        if !self.builder.decoded_is_i64() {
+            return Err(Error::asdf_with_float(self.lexer.location()));
+        }
+
         let num = self
             .parse_asdf()
             .map_err(|_| Error::dif_dup_overflow(self.lexer.location()))?;
