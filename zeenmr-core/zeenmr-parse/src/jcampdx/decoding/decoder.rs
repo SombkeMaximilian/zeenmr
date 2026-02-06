@@ -358,28 +358,28 @@ impl<'source> Decoder<'source> {
     ///
     /// Panics if the decoded stack is empty.
     fn integrity_check(&mut self, value: i64) -> Result<()> {
-        if self.builder.decoded_is_i64() {
-            let matches = self
-                .builder
-                .decoded_top()
-                .map(|top| *top == value)
-                .expect("integrity checks only after at least one value");
-            if !matches {
-                self.builder.push_error(Error::integrity_check(
-                    self.lexer.location(),
-                    self.builder.decoded_len() - 1,
-                ));
-                let top = self
-                    .builder
-                    .decoded_top_mut()
-                    .expect("integrity checks only after at least one value");
-                *top = value;
-            }
-
-            Ok(())
-        } else {
-            Err(Error::asdf_with_float(self.lexer.location()))
+        if !self.builder.decoded_is_i64() {
+            return Err(Error::asdf_with_float(self.lexer.location()));
         }
+
+        let matches = self
+            .builder
+            .decoded_top()
+            .map(|top| *top == value)
+            .expect("integrity checks only after at least one value");
+        if !matches {
+            self.builder.push_error(Error::integrity_check(
+                self.lexer.location(),
+                self.builder.decoded_len() - 1,
+            ));
+            let top = self
+                .builder
+                .decoded_top_mut()
+                .expect("integrity checks only after at least one value");
+            *top = value;
+        }
+
+        Ok(())
     }
 
     /// Parse an `AFFN` numeric value.
