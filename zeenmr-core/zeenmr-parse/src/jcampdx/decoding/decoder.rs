@@ -166,10 +166,34 @@ impl<'source> Decoder<'source> {
             Phase::CheckPoint => {
                 match self.parse_affn() {
                     Ok(Affn::I64(value)) => {
+                        let previous_step = self.builder.checkpoint_step();
                         self.builder.push_checkpoint_value(value as f64);
+                        match (previous_step, self.builder.checkpoint_step()) {
+                            (Some(previous), Some(current))
+                                if (previous - current).abs() > crate::CHECK_PRECISION =>
+                            {
+                                self.builder
+                                    .push_error(Error::checkpoint_step_mismatch(
+                                        self.lexer.location(),
+                                    ));
+                            }
+                            _ => {}
+                        }
                     }
                     Ok(Affn::F64(value)) => {
+                        let previous_step = self.builder.checkpoint_step();
                         self.builder.push_checkpoint_value(value);
+                        match (previous_step, self.builder.checkpoint_step()) {
+                            (Some(previous), Some(current))
+                                if (previous - current).abs() > crate::CHECK_PRECISION =>
+                            {
+                                self.builder
+                                    .push_error(Error::checkpoint_step_mismatch(
+                                        self.lexer.location(),
+                                    ));
+                            }
+                            _ => {}
+                        }
                     }
                     Err(e) => match e.kind() {
                         IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
@@ -247,12 +271,24 @@ impl<'source> Decoder<'source> {
             Phase::CheckPoint => {
                 match self.parse_asdf() {
                     Ok(value) => {
+                        let previous_step = self.builder.checkpoint_step();
                         self.builder.push_checkpoint_value(value as f64);
+                        match (previous_step, self.builder.checkpoint_step()) {
+                            (Some(previous), Some(current))
+                                if (previous - current).abs() > crate::CHECK_PRECISION =>
+                            {
+                                self.builder
+                                    .push_error(Error::checkpoint_step_mismatch(
+                                        self.lexer.location(),
+                                    ));
+                            }
+                            _ => {}
+                        }
                     }
                     Err(e) => match e.kind() {
                         IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
                             self.builder
-                                .push_error(Error::overflow(self.lexer.location()));
+                                .push_error(Error::checkpoint_value(self.lexer.location()));
                             self.builder.push_checkpoint_value(f64::NAN);
                         }
                         _ => unreachable!(),
@@ -561,6 +597,10 @@ mod tests {
 
     static EXPECTED: LazyLock<DecodedBlock> = LazyLock::new(|| {
         let mut table = Table::new();
+        table.push(RawColumn {
+            id: "Unknown".to_string(),
+            values: (0..20).map(|i| i as f64).rev().collect(),
+        });
         table.push(RawColumn {
             id: "Unknown".to_string(),
             values: vec![

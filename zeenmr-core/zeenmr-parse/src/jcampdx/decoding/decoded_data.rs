@@ -1,20 +1,13 @@
-use crate::jcampdx::decoding::error::Error;
+use crate::jcampdx::decoding::error::{Error, Kind};
 use crate::jcampdx::{RawColumn, Table};
 
-/// Decoded data block
+/// Decoded data block.
 #[derive(Clone, PartialEq, Debug)]
 pub(crate) struct DecodedBlock {
     /// Decoded data.
     pub(crate) table: Table,
     /// Non-fatal errors during decoding.
     pub(crate) errors: Vec<Error>,
-}
-
-impl DecodedBlock {
-    /// Builder pattern for a new `DecodedBlock`.
-    pub(crate) fn builder() -> DecodedBlockBuilder {
-        DecodedBlockBuilder::default()
-    }
 }
 
 /// Stack for processing decoded values.
@@ -113,6 +106,57 @@ impl DecodedStack {
     }
 }
 
+/// Sequence of checkpoints consisting of count and value pairs.
+#[derive(Clone, PartialEq, Debug)]
+struct CheckPointSequence {
+    /// Number of decoded values before the checkpoint.
+    counts: Vec<usize>,
+    /// Value of the checkpoints.
+    values: Vec<f64>,
+}
+
+impl CheckPointSequence {
+    /// Creates a new `CheckPointSequence`.
+    fn new() -> Self {
+        Self {
+            counts: vec![0],
+            values: Vec::new(),
+        }
+    }
+
+    /// Returns the inferred step size from the last two complete checkpoints,
+    /// or `None` if there are fewer than two.
+    fn step(&self) -> Option<f64> {
+        if self.counts.len() < 2 || self.values.len() < 2 {
+            return None;
+        }
+
+        let last_index = self.counts.len().min(self.values.len()) - 1;
+        let curr_value = self.values[last_index];
+        let prev_value = self.values[last_index - 1];
+        let curr_count = self.counts[last_index];
+        let prev_count = self.counts[last_index - 1];
+
+        Some((curr_value - prev_value) / ((curr_count - prev_count) as f64))
+    }
+
+    /// Returns the step size calculated from the first and last checkpoints,
+    /// or `None` if there are fewer than two.
+    fn max_precision_step(&self) -> Option<f64> {
+        if self.counts.len() < 2 || self.values.len() < 2 {
+            return None;
+        }
+
+        let last_index = self.counts.len().min(self.values.len() - 1);
+        let first_value = self.values[0];
+        let last_value = self.values[last_index];
+        let first_count = self.counts[0];
+        let last_count = self.counts[last_index];
+
+        Some((last_value - first_value) / ((last_count - first_count) as f64))
+    }
+}
+
 /// Builder pattern for [`DecodedBlock`].
 #[derive(Clone, PartialEq, Debug)]
 pub(crate) struct DecodedBlockBuilder {
@@ -122,10 +166,8 @@ pub(crate) struct DecodedBlockBuilder {
     repeating: String,
     /// Decoded data points.
     decoded: DecodedStack,
-    /// Checkpoint indices.
-    check_points: Vec<usize>,
-    /// Checkpoint values
-    check_point_values: Vec<f64>,
+    /// Recorded checkpoints.
+    check_points: CheckPointSequence,
     /// Non-fatal errors encountered.
     errors: Vec<Error>,
 }
@@ -136,8 +178,7 @@ impl Default for DecodedBlockBuilder {
             incrementing: "Unknown".to_string(),
             repeating: "Unknown".to_string(),
             decoded: DecodedStack::new(),
-            check_points: vec![0],
-            check_point_values: Vec::new(),
+            check_points: CheckPointSequence::new(),
             errors: Vec::new(),
         }
     }
@@ -147,6 +188,19 @@ impl DecodedBlockBuilder {
     /// Finalizes the `DecodedBlock`.
     pub(crate) fn finalize(mut self) -> DecodedBlock {
         let mut table = Table::new();
+        let is_valid = !self.errors.iter().any(|e| {
+            *e.kind() == Kind::CheckPointValue || *e.kind() == Kind::CheckPointStepMismatch
+        });
+        if is_valid && let Some(step) = self.check_points.max_precision_step() {
+            let first = *(self.check_points.values.first().unwrap());
+            let count = self.decoded.len();
+            table.push(RawColumn::<f64> {
+                id: self.incrementing,
+                values: (0_usize..count)
+                    .map(|i| first + step * i as f64)
+                    .collect(),
+            })
+        }
         match self.decoded {
             DecodedStack::I64(buffer) => table.push(RawColumn::<i64> {
                 id: self.repeating,
@@ -194,6 +248,12 @@ impl DecodedBlockBuilder {
         self.decoded.unwrap_i64_top_mut()
     }
 
+    /// Returns the inferred step size from the last two complete checkpoints,
+    /// or `None` if there are fewer than two.
+    pub(crate) fn checkpoint_step(&self) -> Option<f64> {
+        self.check_points.step()
+    }
+
     /// Sets the identifier of the incrementing variable.
     pub(crate) fn set_incrementing<T: Into<String>>(&mut self, incrementing: T) {
         self.incrementing = incrementing.into();
@@ -206,13 +266,15 @@ impl DecodedBlockBuilder {
 
     /// Pushes a checkpoint onto the stack.
     pub(crate) fn checkpoint(&mut self) {
-        self.check_points.push(self.decoded.len());
+        self.check_points.counts.push(self.decoded.len());
     }
 
     /// Pushes a checkpoint onto the stack, accounting for an upcoming integrity
     /// check.
     pub(crate) fn checkpoint_integrity_check(&mut self) {
-        self.check_points.push(self.decoded.len() - 1);
+        self.check_points
+            .counts
+            .push(self.decoded.len() - 1);
     }
 
     /// Pushes a decoded `i64` value onto the stack.
@@ -232,7 +294,7 @@ impl DecodedBlockBuilder {
 
     /// Pushes a checkpoint value onto the stack.
     pub(crate) fn push_checkpoint_value(&mut self, value: f64) {
-        self.check_point_values.push(value);
+        self.check_points.values.push(value);
     }
 
     /// Pushes an error onto the stack.
