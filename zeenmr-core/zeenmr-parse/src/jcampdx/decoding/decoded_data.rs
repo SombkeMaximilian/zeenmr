@@ -1,9 +1,23 @@
 use crate::jcampdx::decoding::error::{Error, Kind};
 use crate::jcampdx::{RawColumn, Table};
 
+/// Exit status of the [`Decoder`].
+///
+/// [`Decoder`]: crate::jcampdx::decoding::Decoder
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
+pub(crate) enum ExitStatus {
+    /// Decoding terminated after the input ended.
+    #[default]
+    EndOfInput,
+    /// Decoding terminated after encountering a header key.
+    HeaderKey,
+}
+
 /// Decoded data block.
 #[derive(Clone, PartialEq, Debug)]
 pub(crate) struct DecodedBlock {
+    /// Exit status (end of input or header key encountered).
+    pub(crate) exit: ExitStatus,
     /// Decoded data.
     pub(crate) table: Table,
     /// Non-fatal errors during decoding.
@@ -160,6 +174,8 @@ impl CheckPointSequence {
 /// Builder pattern for [`DecodedBlock`].
 #[derive(Clone, PartialEq, Debug)]
 pub(crate) struct DecodedBlockBuilder {
+    /// Exit status of the decoder (end of input or header key).
+    exit: ExitStatus,
     /// Identifier of the incrementing variable.
     incrementing: String,
     /// Identifier of the repeating variable.
@@ -175,6 +191,7 @@ pub(crate) struct DecodedBlockBuilder {
 impl Default for DecodedBlockBuilder {
     fn default() -> Self {
         Self {
+            exit: ExitStatus::default(),
             incrementing: "Unknown".to_string(),
             repeating: "Unknown".to_string(),
             decoded: DecodedStack::new(),
@@ -213,6 +230,7 @@ impl DecodedBlockBuilder {
         }
 
         DecodedBlock {
+            exit: self.exit,
             table,
             errors: self.errors,
         }
@@ -252,6 +270,13 @@ impl DecodedBlockBuilder {
     /// or `None` if there are fewer than two.
     pub(crate) fn checkpoint_step(&self) -> Option<f64> {
         self.check_points.step()
+    }
+
+    /// Updates the exit status to [`HeaderKey`].
+    ///
+    /// [`HeaderKey`]: ExitStatus::HeaderKey
+    pub(crate) fn header_key_exit(&mut self) {
+        self.exit = ExitStatus::HeaderKey;
     }
 
     /// Sets the identifier of the incrementing variable.

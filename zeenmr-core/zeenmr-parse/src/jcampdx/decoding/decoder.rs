@@ -121,7 +121,10 @@ impl<'source> Decoder<'source> {
                 EncodedToken::Difference => self.difference()?,
                 EncodedToken::Duplicate => self.duplicate()?,
                 EncodedToken::Invalid => self.invalid(),
-                EncodedToken::End => break,
+                EncodedToken::End => {
+                    self.builder.header_key_exit();
+                    break;
+                },
             }
         }
 
@@ -593,6 +596,7 @@ mod tests {
     use super::*;
     use crate::Position;
     use crate::jcampdx::{RawColumn, Table};
+    use crate::jcampdx::decoding::ExitStatus;
     use std::sync::LazyLock;
 
     static EXPECTED: LazyLock<DecodedBlock> = LazyLock::new(|| {
@@ -610,6 +614,7 @@ mod tests {
         });
 
         DecodedBlock {
+            exit: ExitStatus::EndOfInput,
             table,
             errors: Vec::new(),
         }

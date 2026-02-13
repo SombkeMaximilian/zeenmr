@@ -1,7 +1,7 @@
 pub mod error;
 
 mod decoded_data;
-pub(crate) use decoded_data::{DecodedBlock, DecodedBlockBuilder};
+pub(crate) use decoded_data::{DecodedBlock, DecodedBlockBuilder, ExitStatus};
 
 mod decoder;
 pub(crate) use decoder::Decoder;
