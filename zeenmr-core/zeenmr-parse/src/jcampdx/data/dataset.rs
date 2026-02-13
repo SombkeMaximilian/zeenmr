@@ -19,10 +19,14 @@ impl Dataset {
     }
 }
 
+/// Builder pattern for [`Dataset`].
 #[derive(Clone, PartialEq, Debug, Default)]
 pub(crate) struct DatasetBuilder {
+    /// General parameters.
     parameters: HashMap<String, Value>,
+    /// Tables in the dataset.
     tables: Vec<Table>,
+    /// Nested structures.
     children: Vec<Dataset>,
 }
 
