@@ -118,7 +118,7 @@ impl<'source> FormatParser<'source> {
 
                 Ok(BlockFormat::new(
                     LineLayout::RepeatingValue {
-                        increment,
+                        incrementing: increment,
                         repeating,
                     },
                     self.block_kind,
@@ -146,7 +146,7 @@ impl<'source> FormatParser<'source> {
 
                     Ok(BlockFormat::new(
                         LineLayout::RepeatingValue {
-                            increment,
+                            incrementing: increment,
                             repeating,
                         },
                         self.block_kind,
@@ -245,7 +245,7 @@ mod tests {
         "(X++(Y..Y))\n",
         BlockFormat::new(
             LineLayout::RepeatingValue {
-                increment: "X".into(),
+                incrementing: "X".into(),
                 repeating: "Y".into(),
             },
             None
@@ -256,7 +256,7 @@ mod tests {
         "(X++(R..R)), XYDATA\n",
         BlockFormat::new(
             LineLayout::RepeatingValue {
-                increment: "X".into(),
+                incrementing: "X".into(),
                 repeating: "R".into(),
             },
             Some("XYDATA")

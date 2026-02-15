@@ -1,5 +1,3 @@
-use crate::jcampdx::block_format::Identifier;
-
 /// Layout of the lines in a data block.
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub(crate) enum LineLayout {
@@ -9,19 +7,19 @@ pub(crate) enum LineLayout {
     /// and then repeats values for the second identifier, typically `Y`, `R` or
     /// `I`, until the line ends.
     RepeatingValue {
-        increment: Identifier,
-        repeating: Identifier,
+        incrementing: String,
+        repeating: String,
     },
     /// Grouped values enclosed by parentheses or separated by semicolons.
     ///
     /// Each line contains groups of values for the identifiers until the line
     /// ends. Typically, groups are not meant to extend beyond a linebreak, but
     /// they may.
-    MultiGroup(Vec<Identifier>),
+    MultiGroup(Vec<String>),
     /// Grouped values separated by line breaks.
     ///
     /// Each line contains one group of values for the identifiers.
-    SingleGroup(Vec<Identifier>),
+    SingleGroup(Vec<String>),
 }
 
 /// Format of a data block.
