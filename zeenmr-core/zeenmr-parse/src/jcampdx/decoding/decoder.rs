@@ -101,6 +101,16 @@ impl<'source> Decoder<'source> {
         self.lexer
     }
 
+    /// Sets the identifier of the incrementing variable.
+    pub(crate) fn set_incrementing<T: Into<String>>(&mut self, incrementing: T) {
+        self.builder.set_incrementing(incrementing);
+    }
+
+    /// Sets the identifier of the repeating variable.
+    pub(crate) fn set_repeating<T: Into<String>>(&mut self, repeating: T) {
+        self.builder.set_repeating(repeating);
+    }
+
     /// Decodes the source into a `DecodedBlock`.
     ///
     /// # Errors

@@ -1,10 +1,23 @@
 use crate::jcampdx::data::DatasetBuilder;
+use crate::jcampdx::decoding::{Decoder, ExitStatus};
+use crate::jcampdx::block_format::{FormatParser, LineLayout};
 use crate::jcampdx::error::{Error, Result};
 use crate::jcampdx::{Dataset, Token, Value};
 use crate::{Location, Stack};
 use logos::{Lexer, Logos};
 use std::num::IntErrorKind;
-use std::ops::ControlFlow;
+
+/// Exit status of the key handler.
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+enum KeyExit {
+    /// A key was successfully parsed, what follows is its value.
+    Success,
+    /// The input ended, either the value was empty or a special handler found
+    /// the end.
+    EndOfInput,
+    /// A special handler terminated by encountering the next key token.
+    NextKey,
+}
 
 /// Delimiters of bounded values.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -82,8 +95,17 @@ impl<'source> Parser<'source> {
             let reset_auto_concatenate = token != Token::Comma;
             match token {
                 Token::Key => {
-                    if let ControlFlow::Break(_) = self.key()? {
-                        break;
+                    let exit_status = loop {
+                        match self.key()? {
+                            KeyExit::NextKey => continue,
+                            other => break other,
+                        }
+                    };
+
+                    match exit_status {
+                        KeyExit::Success => continue,
+                        KeyExit::EndOfInput => break,
+                        KeyExit::NextKey => unreachable!(),
                     }
                 }
                 Token::Comma => self.comma(),
@@ -111,11 +133,6 @@ impl<'source> Parser<'source> {
         }
 
         Ok(std::mem::take(&mut self.builder).finalize())
-    }
-
-    /// Returns `true` if not inside a bounded value.
-    fn is_bounded(&self) -> bool {
-        !self.bounded_stack.is_empty()
     }
 
     /// Takes the current value and replaces it with [`Empty`]
@@ -166,7 +183,7 @@ impl<'source> Parser<'source> {
     ///
     /// [`Key`]: Token::Key
     /// [`Equals`]: Token::Equals
-    fn key(&mut self) -> Result<ControlFlow<()>> {
+    fn key(&mut self) -> Result<KeyExit> {
         let current_value = self.take_current_value();
         self.builder
             .insert_parameter(self.current_key, current_value);
@@ -206,10 +223,13 @@ impl<'source> Parser<'source> {
             Some(Token::Title) => self.title()?,
             Some(Token::Tuples) => self.tuples(),
             Some(Token::Page) => self.page(),
-            Some(Token::EncodedBlock) => self.encoded_block(),
+            Some(Token::EncodedBlock) => return match self.encoded_block()? {
+                ExitStatus::EndOfInput => Ok(KeyExit::EndOfInput),
+                ExitStatus::HeaderKey => Ok(KeyExit::NextKey),
+            },
             Some(Token::GroupedBlock) => self.grouped_block(),
             Some(Token::AmbiguousBlock) => self.ambiguous_block(),
-            Some(Token::End) => return Ok(ControlFlow::Break(())),
+            Some(Token::End) => return Ok(KeyExit::EndOfInput),
             Some(Token::Comma)
             | Some(Token::OpenParenthesis)
             | Some(Token::CloseParenthesis)
@@ -223,7 +243,7 @@ impl<'source> Parser<'source> {
             }
         }
 
-        Ok(ControlFlow::Continue(()))
+        Ok(KeyExit::Success)
     }
 
     /// Handles comma separators.
@@ -402,7 +422,23 @@ impl<'source> Parser<'source> {
 
     fn page(&mut self) {}
 
-    fn encoded_block(&mut self) {}
+    fn encoded_block(&mut self) -> Result<ExitStatus> {
+        let mut format_parser = FormatParser::from(self.lexer.clone());
+        let format = format_parser.parse_format()?;
+        let (increment, repeating) = match format.line_layout {
+            LineLayout::RepeatingValue { incrementing, repeating } => (incrementing, repeating),
+            _ => ("Unknown".into(), "Unknown".into()),
+        };
+        let mut decoder = Decoder::from(format_parser.into_lexer());
+        decoder.set_incrementing(increment);
+        decoder.set_repeating(repeating);
+        let decoded_block = decoder.decode_source()?;
+        self.lexer = decoder.into_lexer().morph();
+        self.errors.extend(decoded_block.errors.into_iter().map(|e| e.into()));
+        self.builder.push_table(decoded_block.table);
+
+        Ok(decoded_block.exit)
+    }
 
     fn grouped_block(&mut self) {}
 
