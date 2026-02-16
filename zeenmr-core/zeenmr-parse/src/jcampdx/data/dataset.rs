@@ -1,3 +1,4 @@
+use crate::jcampdx::error::Error;
 use crate::jcampdx::{Table, Value};
 use std::collections::HashMap;
 
@@ -10,6 +11,8 @@ pub struct Dataset {
     tables: Vec<Table>,
     /// Nested structures.
     children: Vec<Self>,
+    /// Non-fatal errors during parsing.
+    errors: Vec<Error>,
 }
 
 impl Dataset {
@@ -28,6 +31,8 @@ pub(crate) struct DatasetBuilder {
     tables: Vec<Table>,
     /// Nested structures.
     children: Vec<Dataset>,
+    /// Non-fatal errors during parsing.
+    errors: Vec<Error>,
 }
 
 impl DatasetBuilder {
@@ -37,6 +42,7 @@ impl DatasetBuilder {
             parameters: self.parameters,
             tables: self.tables,
             children: self.children,
+            errors: self.errors,
         }
     }
 
@@ -53,5 +59,15 @@ impl DatasetBuilder {
     /// Pushes a nested `Dataset` onto the stack.
     pub(crate) fn push_child(&mut self, child: Dataset) {
         self.children.push(child);
+    }
+
+    /// Pushes an error onto the stack.
+    pub(crate) fn push_error(&mut self, error: Error) {
+        self.errors.push(error);
+    }
+
+    /// Extends the error stack with the contents of an iterator.
+    pub(crate) fn extend_errors<I: IntoIterator<Item = Error>>(&mut self, iter: I) {
+        self.errors.extend(iter);
     }
 }

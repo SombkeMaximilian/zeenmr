@@ -1,6 +1,6 @@
+use crate::jcampdx::block_format::{FormatParser, LineLayout};
 use crate::jcampdx::data::DatasetBuilder;
 use crate::jcampdx::decoding::{Decoder, ExitStatus};
-use crate::jcampdx::block_format::{FormatParser, LineLayout};
 use crate::jcampdx::error::{Error, Result};
 use crate::jcampdx::{Dataset, Token, Value};
 use crate::{Location, Stack};
@@ -43,8 +43,6 @@ pub(crate) struct Parser<'source> {
     bounded_stack: Stack<Delimiter, Value>,
     /// Concatenate consecutive strings.
     auto_concatenate: bool,
-    /// Non-fatal errors during parsing.
-    errors: Vec<Error>,
 }
 
 impl<'source> From<&'source str> for Parser<'source> {
@@ -56,7 +54,6 @@ impl<'source> From<&'source str> for Parser<'source> {
             current_value: Value::Empty,
             bounded_stack: Stack::new(),
             auto_concatenate: false,
-            errors: Vec::new(),
         }
     }
 }
@@ -70,7 +67,6 @@ impl<'source> From<Lexer<'source, Token>> for Parser<'source> {
             current_value: Value::Empty,
             bounded_stack: Stack::new(),
             auto_concatenate: false,
-            errors: Vec::new(),
         }
     }
 }
@@ -223,10 +219,12 @@ impl<'source> Parser<'source> {
             Some(Token::Title) => self.title()?,
             Some(Token::Tuples) => self.tuples(),
             Some(Token::Page) => self.page(),
-            Some(Token::EncodedBlock) => return match self.encoded_block()? {
-                ExitStatus::EndOfInput => Ok(KeyExit::EndOfInput),
-                ExitStatus::HeaderKey => Ok(KeyExit::NextKey),
-            },
+            Some(Token::EncodedBlock) => {
+                return match self.encoded_block()? {
+                    ExitStatus::EndOfInput => Ok(KeyExit::EndOfInput),
+                    ExitStatus::HeaderKey => Ok(KeyExit::NextKey),
+                };
+            }
             Some(Token::GroupedBlock) => self.grouped_block(),
             Some(Token::AmbiguousBlock) => self.ambiguous_block(),
             Some(Token::End) => return Ok(KeyExit::EndOfInput),
@@ -336,8 +334,8 @@ impl<'source> Parser<'source> {
             Ok(int) => Value::Integer(int),
             Err(e) => match e.kind() {
                 IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
-                    self.errors
-                        .push(Error::overflow(self.lexer.location(), e));
+                    self.builder
+                        .push_error(Error::overflow(self.lexer.location(), e));
 
                     Value::Integer(i64::MIN)
                 }
@@ -426,7 +424,10 @@ impl<'source> Parser<'source> {
         let mut format_parser = FormatParser::from(self.lexer.clone());
         let format = format_parser.parse_format()?;
         let (increment, repeating) = match format.line_layout {
-            LineLayout::RepeatingValue { incrementing, repeating } => (incrementing, repeating),
+            LineLayout::RepeatingValue {
+                incrementing,
+                repeating,
+            } => (incrementing, repeating),
             _ => ("Unknown".into(), "Unknown".into()),
         };
         let mut decoder = Decoder::from(format_parser.into_lexer());
@@ -434,7 +435,8 @@ impl<'source> Parser<'source> {
         decoder.set_repeating(repeating);
         let decoded_block = decoder.decode_source()?;
         self.lexer = decoder.into_lexer().morph();
-        self.errors.extend(decoded_block.errors.into_iter().map(|e| e.into()));
+        self.builder
+            .extend_errors(decoded_block.errors.into_iter().map(|e| e.into()));
         self.builder.push_table(decoded_block.table);
 
         Ok(decoded_block.exit)

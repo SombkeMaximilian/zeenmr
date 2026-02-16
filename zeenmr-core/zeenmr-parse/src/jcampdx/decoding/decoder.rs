@@ -134,7 +134,7 @@ impl<'source> Decoder<'source> {
                 EncodedToken::End => {
                     self.builder.header_key_exit();
                     break;
-                },
+                }
             }
         }
 
@@ -605,8 +605,8 @@ impl<'source> Decoder<'source> {
 mod tests {
     use super::*;
     use crate::Position;
-    use crate::jcampdx::{RawColumn, Table};
     use crate::jcampdx::decoding::ExitStatus;
+    use crate::jcampdx::{RawColumn, Table};
     use std::sync::LazyLock;
 
     static EXPECTED: LazyLock<DecodedBlock> = LazyLock::new(|| {
