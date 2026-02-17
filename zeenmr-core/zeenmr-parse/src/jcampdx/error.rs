@@ -28,6 +28,7 @@ pub enum Kind {
     EmptyKey,
     MultipleKeyTokens,
     MismatchedDelimiter,
+    MismatchedBlockFormat,
     Overflow,
     BlockFormat,
     Decode,
@@ -76,6 +77,7 @@ impl std::fmt::Display for Error {
             Kind::EmptyKey => "empty key",
             Kind::MultipleKeyTokens => "multiple key tokens",
             Kind::MismatchedDelimiter => "mismatched delimiter",
+            Kind::MismatchedBlockFormat => "mismatched block format",
             Kind::Overflow => "overflow",
             Kind::BlockFormat => "block format",
             Kind::Decode => "decode error",
@@ -137,6 +139,17 @@ impl Error {
     pub(crate) fn mismatched_delimiter(position: Position) -> Self {
         Self {
             kind: Kind::MismatchedDelimiter,
+            position,
+            source: None,
+        }
+    }
+
+    /// Creates a [`MismatchedBlockFormat`] error.
+    ///
+    /// [`MismatchedBlockFormat`]: Kind::MismatchedBlockFormat
+    pub(crate) fn mismatched_block_format(position: Position) -> Self {
+        Self {
+            kind: Kind::MismatchedBlockFormat,
             position,
             source: None,
         }

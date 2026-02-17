@@ -422,17 +422,30 @@ impl<'source> Parser<'source> {
 
     fn encoded_block(&mut self) -> Result<ExitStatus> {
         let mut format_parser = FormatParser::from(self.lexer.clone());
-        let format = format_parser.parse_format()?;
-        let (increment, repeating) = match format.line_layout {
-            LineLayout::RepeatingValue {
-                incrementing,
-                repeating,
-            } => (incrementing, repeating),
-            _ => ("Unknown".into(), "Unknown".into()),
+        let identifiers = match format_parser.parse_format() {
+            Ok(format) => match format.line_layout {
+                LineLayout::RepeatingValue {
+                    incrementing,
+                    repeating,
+                } => Some((incrementing, repeating)),
+                _ => {
+                    self.builder
+                        .push_error(Error::mismatched_block_format(self.lexer.location()));
+
+                    None
+                }
+            },
+            Err(e) => {
+                self.builder.push_error(e.into());
+
+                None
+            }
         };
         let mut decoder = Decoder::from(format_parser.into_lexer());
-        decoder.set_incrementing(increment);
-        decoder.set_repeating(repeating);
+        if let Some((incrementing, repeating)) = identifiers {
+            decoder.set_incrementing(incrementing);
+            decoder.set_repeating(repeating);
+        }
         let decoded_block = decoder.decode_source()?;
         self.lexer = decoder.into_lexer().morph();
         self.builder
