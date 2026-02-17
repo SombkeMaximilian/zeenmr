@@ -402,11 +402,20 @@ impl<'source> Parser<'source> {
         }
     }
 
-    /// Starts a `Parser` child.
+    /// Handles a [`Title`] token by starting a `Parser` child.
+    ///
+    /// [`Title`]: Token::Title
     ///
     /// JCAMP-DX files can recursively contain child datasets, which are
     /// [`Title`] and [`End`] token pairs within another [`Title`] and [`End`]
     /// token pair.
+    ///
+    /// [`Title`]: Token::Title
+    /// [`End`]: Token::End
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the child `Parser` encounters a fatal error.
     fn title(&mut self) -> Result<()> {
         let mut sub_parser = Self::from(self.lexer.clone());
         let child_dataset = sub_parser.parse_values()?;
@@ -420,6 +429,30 @@ impl<'source> Parser<'source> {
 
     fn page(&mut self) {}
 
+    /// Handles [`EncodedBlock`] tokens.
+    ///
+    /// [`EncodedBlock`]: Token::EncodedBlock
+    ///
+    /// Blocks of encoded data require context switches, once to extract the
+    /// identifiers of the data and once for the decoding itself.
+    ///
+    /// # Identifiers
+    ///
+    /// Encoded blocks use the `XYDATA` format, which is followed by a string
+    /// of the form `X++(Y..Y)`, where `X` is the positional or independent
+    /// variable, while `Y` is the intensity or dependent variable. Common
+    /// examples include `X` and `F1` for the independent variable, and `Y`, `R`
+    /// and `I` for the dependent variable. See [`FormatParser`] for more
+    /// information.
+    ///
+    /// # Encoding
+    ///
+    /// See the [official standard](http://jcamp-dx.org/protocols/dxir01.pdf)
+    /// for information about the JCAMP-DX `ASDF` encoding.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the [`Decoder`] encounters a fatal error.
     fn encoded_block(&mut self) -> Result<ExitStatus> {
         let mut format_parser = FormatParser::from(self.lexer.clone());
         let identifiers = match format_parser.parse_format() {
