@@ -75,9 +75,22 @@ impl<'source> FormatParser<'source> {
     }
 
     pub(crate) fn parse_format(&mut self) -> Result<BlockFormat> {
+        if let Err(e) = self.parse_tokens() {
+            // if this fails the other error is unrecoverable anyway
+            self.synchronize_end_of_line()?;
+            return Err(e);
+        }
+
+        match self.termination {
+            Termination::EndToken => self.finalize(),
+            Termination::EndOfInput => Err(Error::end_of_input(self.lexer.location())),
+        }
+    }
+
+    fn parse_tokens(&mut self) -> Result<()> {
         while let Some(token) = self.lexer.next().transpose()? {
             match token {
-                FormatToken::Identifier => self.identifier()?,
+                FormatToken::Identifier => self.identifier(),
                 FormatToken::Increment => self.increment()?,
                 FormatToken::Repeat => self.repeat()?,
                 FormatToken::DataBlockKind => {
@@ -92,8 +105,19 @@ impl<'source> FormatParser<'source> {
             }
         }
 
+        Ok(())
+    }
+
+    fn synchronize_end_of_line(&mut self) -> Result<()> {
+        while let Some(token) = self.lexer.next().transpose()? {
+            if token == FormatToken::End {
+                self.termination = Termination::EndToken;
+                break;
+            }
+        }
+
         match self.termination {
-            Termination::EndToken => self.finalize(),
+            Termination::EndToken => Ok(()),
             Termination::EndOfInput => Err(Error::end_of_input(self.lexer.location())),
         }
     }
@@ -126,7 +150,7 @@ impl<'source> FormatParser<'source> {
             }
             State::Suffix => {
                 if self.prefix != self.suffix {
-                    return Err(Error::mismatched_repeat(self.lexer.location()));
+                    return Err(Error::mismatched_repeat(self.start));
                 }
 
                 if self.increment.is_empty() {
@@ -156,18 +180,10 @@ impl<'source> FormatParser<'source> {
         }
     }
 
-    fn identifier(&mut self) -> Result<()> {
+    fn identifier(&mut self) {
         match self.state {
-            State::Prefix | State::AfterIncrement => {
-                self.prefix.push(self.lexer.slice());
-
-                Ok(())
-            }
-            State::Suffix => {
-                self.suffix.push(self.lexer.slice());
-
-                Ok(())
-            }
+            State::Prefix | State::AfterIncrement => self.prefix.push(self.lexer.slice()),
+            State::Suffix => self.suffix.push(self.lexer.slice()),
         }
     }
 
@@ -183,9 +199,8 @@ impl<'source> FormatParser<'source> {
                     Err(Error::multiple_identifier_increment(self.lexer.location()))
                 }
             }
-            State::AfterIncrement | State::Suffix => {
-                Err(Error::increment_after_repeat(self.lexer.location()))
-            }
+            State::AfterIncrement => Err(Error::multiple_increment(self.lexer.location())),
+            State::Suffix => Err(Error::increment_after_repeat(self.lexer.location())),
         }
     }
 
@@ -210,11 +225,8 @@ impl<'source> FormatParser<'source> {
             None => {
                 self.block_kind = Some(&self.lexer.slice()[1..].trim());
 
-                if let Some(next) = self.lexer.next().transpose()? {
-                    match next {
-                        FormatToken::End => Ok(()),
-                        _ => Err(Error::token_after_block_kind(self.lexer.location())),
-                    }
+                if self.lexer.next().transpose()?.is_some() {
+                    Ok(())
                 } else {
                     Err(Error::end_of_input(self.lexer.location()))
                 }
@@ -234,8 +246,9 @@ mod tests {
                 let data = $data;
                 let expected = $expected;
                 let mut parser = FormatParser::from(data);
-                let parsed = parser.parse_format().unwrap();
+                let parsed = parser.parse_format();
                 assert_eq!(parsed, expected);
+                assert_eq!(parser.lexer.slice(), "\n");
             }
         };
     }
@@ -243,52 +256,87 @@ mod tests {
     parser_test!(
         repeating,
         "(X++(Y..Y))\n",
-        BlockFormat::new(
+        Ok(BlockFormat::new(
             LineLayout::RepeatingValue {
                 incrementing: "X".into(),
                 repeating: "Y".into(),
             },
             None
-        )
+        ))
     );
     parser_test!(
         repeating_block_kind,
         "(X++(R..R)), XYDATA\n",
-        BlockFormat::new(
+        Ok(BlockFormat::new(
             LineLayout::RepeatingValue {
                 incrementing: "X".into(),
                 repeating: "R".into(),
             },
             Some("XYDATA")
-        )
+        ))
     );
     parser_test!(
         multi_group,
         "(XY..XY)\n",
-        BlockFormat::new(LineLayout::MultiGroup(vec!["X".into(), "Y".into()]), None)
+        Ok(BlockFormat::new(LineLayout::MultiGroup(vec!["X".into(), "Y".into()]), None))
     );
     parser_test!(
         multi_group_block_kind,
         "(XY..XY), PEAKS\n",
-        BlockFormat::new(
+        Ok(BlockFormat::new(
             LineLayout::MultiGroup(vec!["X".into(), "Y".into()]),
             Some("PEAKS")
-        )
+        ))
     );
     parser_test!(
         single_group,
         "(XYWA)\n",
-        BlockFormat::new(
+        Ok(BlockFormat::new(
             LineLayout::SingleGroup(vec!["X".into(), "Y".into(), "W".into(), "A".into()]),
             None
-        )
+        ))
     );
     parser_test!(
         single_group_block_kind,
         "(XYWA), PEAK ASSIGNMENTS\n",
-        BlockFormat::new(
+        Ok(BlockFormat::new(
             LineLayout::SingleGroup(vec!["X".into(), "Y".into(), "W".into(), "A".into()]),
             Some("PEAK ASSIGNMENTS")
-        )
+        ))
+    );
+    parser_test!(
+        invalid_literal,
+        "(X.Y)\n",
+        Err(Error::invalid_literal(Position { line: 0, column: 2 }))
+    );
+    parser_test!(
+        empty_repeat,
+        "(..X)\n",
+        Err(Error::empty_repeat(Position { line: 0, column: 1 }))
+    );
+    parser_test!(
+        mismatched_repeat,
+        "(X..)\n",
+        Err(Error::mismatched_repeat(Position { line: 0, column: 0 }))
+    );
+    parser_test!(
+        multiple_increment,
+        "(X++X++(Y..Y)\n",
+        Err(Error::multiple_increment(Position { line: 0, column: 5 }))
+    );
+    parser_test!(
+        multiple_repeat,
+        "(X++(Y..Y..Y)\n",
+        Err(Error::multiple_repeat(Position { line: 0, column: 9 }))
+    );
+    parser_test!(
+        increment_after_repeat,
+        "(Y..Y)X++\n",
+        Err(Error::increment_after_repeat(Position { line: 0, column: 7 }))
+    );
+    parser_test!(
+        multiple_identifier_increment,
+        "XF1++(Y..Y)\n",
+        Err(Error::multiple_identifier_increment(Position { line: 0, column: 3 }))
     );
 }

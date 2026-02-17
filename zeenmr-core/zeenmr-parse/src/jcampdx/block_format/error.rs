@@ -22,7 +22,6 @@ pub enum Kind {
     MultipleRepeat,
     IncrementAfterRepeat,
     MultipleIdentifierIncrement,
-    TokenAfterBlockKind,
 }
 
 impl std::error::Error for Error {}
@@ -38,7 +37,6 @@ impl std::fmt::Display for Error {
             Kind::MultipleRepeat => "multiple block kind",
             Kind::IncrementAfterRepeat => "increment after repeat",
             Kind::MultipleIdentifierIncrement => "multiple identifier increment",
-            Kind::TokenAfterBlockKind => "token after block kind",
         };
 
         write!(f, "{description}")
@@ -122,16 +120,6 @@ impl Error {
     pub(crate) fn multiple_identifier_increment(position: Position) -> Self {
         Self {
             kind: Kind::MultipleIdentifierIncrement,
-            position,
-        }
-    }
-
-    /// Creates a [`TokenAfterBlockKind`] error.
-    ///
-    /// [`TokenAfterBlockKind`]: Kind::TokenAfterBlockKind
-    pub(crate) fn token_after_block_kind(position: Position) -> Self {
-        Self {
-            kind: Kind::TokenAfterBlockKind,
             position,
         }
     }
