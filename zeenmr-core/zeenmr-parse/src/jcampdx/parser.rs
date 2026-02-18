@@ -72,6 +72,8 @@ impl<'source> From<Lexer<'source, Token>> for Parser<'source> {
 }
 
 impl<'source> Parser<'source> {
+    /// Parses the source until the last matching [`End`] token or the end of
+    /// the source.
     pub(crate) fn parse_source(&mut self) -> Result<Dataset> {
         self.initialize()?;
 
@@ -80,7 +82,7 @@ impl<'source> Parser<'source> {
 
     /// Main loop for parsing values.
     ///
-    /// Advances the lexer until an [`End`] token is encountered. The caller
+    /// Advances the [`Lexer`] until an [`End`] token is encountered. The caller
     /// must ensure that the `Parser` is properly initialized to an entry point
     /// ([`Title`] token).
     ///
@@ -244,11 +246,13 @@ impl<'source> Parser<'source> {
         Ok(KeyExit::Success)
     }
 
-    /// Handles comma separators.
+    /// Handles [`Comma`] tokens.
+    ///
+    /// [`Comma`]: Token::Comma
     ///
     /// A comma disables automatic concatenation. If concatenation is already
-    /// disabled, i.e., consecutive commas are encountered, inserts an empty
-    /// value into the current context.
+    /// disabled, i.e., consecutive [`Comma`]s are encountered, inserts an
+    /// [`Empty`] value into the current context.
     ///
     /// [`Empty`]: Value::Empty
     /// [`Comma`]: Token::Comma

@@ -1,5 +1,5 @@
 use crate::jcampdx::block_format::error::{Error, Result};
-use crate::jcampdx::block_format::{BlockFormat, FormatToken, LineLayout};
+use crate::jcampdx::block_format::{BlockFormat, BlockFormatBuilder, FormatToken, LineLayout};
 use crate::{Cursor, Location, Position};
 use logos::{Lexer, Logos};
 
@@ -24,16 +24,6 @@ enum State {
     Suffix,
 }
 
-/// Exit status of the [`FormatParser`].
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
-enum ExitStatus {
-    /// Parsing was terminated by the end of the input.
-    #[default]
-    EndOfInput,
-    /// Parsing was terminated by encountering a newline.
-    EndToken,
-}
-
 /// Parser for the data block format specifiers of JCAMP-DX datablocks.
 #[derive(Debug)]
 pub(crate) struct FormatParser<'source> {
@@ -41,18 +31,10 @@ pub(crate) struct FormatParser<'source> {
     lexer: Lexer<'source, FormatToken>,
     /// State of the parser.
     state: State,
-    /// Exit status (newline or end of the source encountered).
-    exit: ExitStatus,
     /// Start position for potential error reporting.
     start: Position,
-    /// Prefix identifiers.
-    prefix: Vec<&'source str>,
-    /// Suffix identifiers.
-    suffix: Vec<&'source str>,
-    /// Incrementing variable, if any.
-    increment: Vec<&'source str>,
-    /// Block kind of `DATA TABLE` data block.
-    block_kind: Option<&'source str>,
+    /// `BlockFormat` being constructed.
+    builder: BlockFormatBuilder<'source>,
 }
 
 impl<'source> From<&'source str> for FormatParser<'source> {
@@ -62,13 +44,9 @@ impl<'source> From<&'source str> for FormatParser<'source> {
 
         Self {
             lexer,
-            start,
             state: State::Prefix,
-            prefix: Vec::new(),
-            suffix: Vec::new(),
-            increment: Vec::new(),
-            block_kind: None,
-            exit: ExitStatus::default(),
+            start,
+            builder: BlockFormatBuilder::default(),
         }
     }
 }
@@ -84,13 +62,9 @@ where
 
         Self {
             lexer,
-            start,
             state: State::Prefix,
-            prefix: Vec::new(),
-            suffix: Vec::new(),
-            increment: Vec::new(),
-            block_kind: None,
-            exit: ExitStatus::EndOfInput,
+            start,
+            builder: BlockFormatBuilder::default(),
         }
     }
 }
@@ -119,9 +93,10 @@ impl<'source> FormatParser<'source> {
             return Err(e);
         }
 
-        match self.exit {
-            ExitStatus::EndToken => self.finalize(),
-            ExitStatus::EndOfInput => Err(Error::end_of_input(self.lexer.location())),
+        if self.builder.is_newline_exit() {
+            self.finalize()
+        } else {
+            Err(Error::end_of_input(self.lexer.location()))
         }
     }
 
@@ -139,11 +114,11 @@ impl<'source> FormatParser<'source> {
                 FormatToken::Repeat => self.repeat()?,
                 FormatToken::DataBlockKind => {
                     self.data_block_kind()?;
-                    self.exit = ExitStatus::EndToken;
+                    self.builder.newline_exit();
                     break;
                 }
                 FormatToken::End => {
-                    self.exit = ExitStatus::EndToken;
+                    self.builder.newline_exit();
                     break;
                 }
             }
@@ -169,70 +144,57 @@ impl<'source> FormatParser<'source> {
     fn synchronize_end_of_line(&mut self) -> Result<()> {
         while let Some(token) = self.lexer.next().transpose()? {
             if token == FormatToken::End {
-                self.exit = ExitStatus::EndToken;
+                self.builder.newline_exit();
                 break;
             }
         }
 
-        match self.exit {
-            ExitStatus::EndToken => Ok(()),
-            ExitStatus::EndOfInput => Err(Error::end_of_input(self.lexer.location())),
+        if self.builder.is_newline_exit() {
+            Ok(())
+        } else {
+            Err(Error::end_of_input(self.lexer.location()))
         }
     }
 
+    /// Finalizes the `BlockFormat` based on the state.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the corresponding `BlockFormat` cannot be
+    /// constructed.
     fn finalize(&mut self) -> Result<BlockFormat> {
         match self.state {
             State::Prefix => {
-                let identifiers = self
-                    .prefix
-                    .iter()
-                    .map(|identifier| (*identifier).into())
-                    .collect();
-
-                Ok(BlockFormat::new(
-                    LineLayout::SingleGroup(identifiers),
-                    self.block_kind,
-                ))
+                if self.builder.prefix_is_empty() {
+                    Err(Error::empty_format(self.start))
+                } else {
+                    Ok(std::mem::take(&mut self.builder).finalize_single_group())
+                }
             }
             State::AfterIncrement => {
-                let increment = self.increment[0].into();
-                let repeating = self.prefix[0].into();
-
-                Ok(BlockFormat::new(
-                    LineLayout::RepeatingValue {
-                        incrementing: increment,
-                        repeating,
-                    },
-                    self.block_kind,
-                ))
+                if !self.builder.incrementing_is_some() {
+                    Err(Error::empty_increment(self.start))
+                } else if self.builder.prefix_is_empty() {
+                    Err(Error::empty_repeat(self.start))
+                } else if !self.builder.prefix_matches_suffix() {
+                    Err(Error::mismatched_repeat(self.start))
+                } else {
+                    Ok(std::mem::take(&mut self.builder)
+                        .finalize_repeating()
+                        .expect("succeeds with checked conditions"))
+                }
             }
             State::Suffix => {
-                if self.prefix != self.suffix {
-                    return Err(Error::mismatched_repeat(self.start));
-                }
-
-                if self.increment.is_empty() {
-                    let identifiers = self
-                        .suffix
-                        .iter()
-                        .map(|identifier| (*identifier).into())
-                        .collect();
-
-                    Ok(BlockFormat::new(
-                        LineLayout::MultiGroup(identifiers),
-                        self.block_kind,
-                    ))
+                if !self.builder.prefix_matches_suffix() {
+                    Err(Error::mismatched_repeat(self.start))
+                } else if self.builder.prefix_is_empty() {
+                    Err(Error::empty_repeat(self.start))
+                } else if self.builder.incrementing_is_some() {
+                    Ok(std::mem::take(&mut self.builder)
+                        .finalize_repeating()
+                        .expect("succeeds with checked conditions"))
                 } else {
-                    let increment = self.increment[0].into();
-                    let repeating = self.prefix[0].into();
-
-                    Ok(BlockFormat::new(
-                        LineLayout::RepeatingValue {
-                            incrementing: increment,
-                            repeating,
-                        },
-                        self.block_kind,
-                    ))
+                    Ok(std::mem::take(&mut self.builder).finalize_multi_group())
                 }
             }
         }
@@ -249,8 +211,8 @@ impl<'source> FormatParser<'source> {
     /// [`Repeat`]: FormatToken::Repeat
     fn identifier(&mut self) {
         match self.state {
-            State::Prefix | State::AfterIncrement => self.prefix.push(self.lexer.slice()),
-            State::Suffix => self.suffix.push(self.lexer.slice()),
+            State::Prefix | State::AfterIncrement => self.builder.push_prefix(self.lexer.slice()),
+            State::Suffix => self.builder.push_suffix(self.lexer.slice()),
         }
     }
 
@@ -272,9 +234,13 @@ impl<'source> FormatParser<'source> {
     fn increment(&mut self) -> Result<()> {
         match self.state {
             State::Prefix => {
-                if self.prefix.len() == 1 {
+                if self.builder.prefix_len() == 1 {
                     self.state = State::AfterIncrement;
-                    std::mem::swap(&mut self.prefix, &mut self.increment);
+                    let incrementing = self
+                        .builder
+                        .pop_prefix()
+                        .expect("prefix len must be 1 to reach this");
+                    self.builder.set_incrementing(incrementing);
 
                     Ok(())
                 } else {
@@ -303,7 +269,7 @@ impl<'source> FormatParser<'source> {
     fn repeat(&mut self) -> Result<()> {
         match self.state {
             State::Prefix | State::AfterIncrement => {
-                if self.prefix.is_empty() {
+                if self.builder.prefix_is_empty() {
                     Err(Error::empty_repeat(self.lexer.location()))
                 } else {
                     self.state = State::Suffix;
@@ -331,17 +297,13 @@ impl<'source> FormatParser<'source> {
     /// [`DataBlockKind`]: FormatToken::DataBlockKind
     /// [`End`]: FormatToken::End
     fn data_block_kind(&mut self) -> Result<()> {
-        match self.block_kind {
-            Some(_) => unreachable!(),
-            None => {
-                self.block_kind = Some(&self.lexer.slice()[1..].trim());
+        let block_kind = self.lexer.slice()[1..].trim();
+        self.builder.set_block_kind(block_kind);
 
-                if self.lexer.next().transpose()?.is_some() {
-                    Ok(())
-                } else {
-                    Err(Error::end_of_input(self.lexer.location()))
-                }
-            }
+        if self.lexer.next().transpose()?.is_some() {
+            Ok(())
+        } else {
+            Err(Error::end_of_input(self.lexer.location()))
         }
     }
 }
@@ -349,6 +311,7 @@ impl<'source> FormatParser<'source> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::jcampdx::block_format::ExitStatus;
 
     macro_rules! parser_test {
         ($name:ident, $data:expr, $expected:expr) => {
@@ -367,53 +330,72 @@ mod tests {
     parser_test!(
         repeating,
         "(X++(Y..Y))\n",
-        Ok(BlockFormat::new(
-            LineLayout::RepeatingValue {
+        Ok(BlockFormat {
+            exit: ExitStatus::EndToken,
+            line_layout: LineLayout::RepeatingValue {
                 incrementing: "X".into(),
                 repeating: "Y".into(),
             },
-            None
-        ))
+            kind: None,
+        })
     );
     parser_test!(
         repeating_block_kind,
         "(X++(R..R)), XYDATA\n",
-        Ok(BlockFormat::new(
-            LineLayout::RepeatingValue {
+        Ok(BlockFormat {
+            exit: ExitStatus::EndToken,
+            line_layout: LineLayout::RepeatingValue {
                 incrementing: "X".into(),
                 repeating: "R".into(),
             },
-            Some("XYDATA")
-        ))
+            kind: Some("XYDATA"),
+        })
     );
     parser_test!(
         multi_group,
         "(XY..XY)\n",
-        Ok(BlockFormat::new(LineLayout::MultiGroup(vec!["X".into(), "Y".into()]), None))
+        Ok(BlockFormat {
+            exit: ExitStatus::EndToken,
+            line_layout: LineLayout::MultiGroup(vec!["X".into(), "Y".into()]),
+            kind: None
+        })
     );
     parser_test!(
         multi_group_block_kind,
         "(XY..XY), PEAKS\n",
-        Ok(BlockFormat::new(
-            LineLayout::MultiGroup(vec!["X".into(), "Y".into()]),
-            Some("PEAKS")
-        ))
+        Ok(BlockFormat {
+            exit: ExitStatus::EndToken,
+            line_layout: LineLayout::MultiGroup(vec!["X".into(), "Y".into()]),
+            kind: Some("PEAKS")
+        })
     );
     parser_test!(
         single_group,
         "(XYWA)\n",
-        Ok(BlockFormat::new(
-            LineLayout::SingleGroup(vec!["X".into(), "Y".into(), "W".into(), "A".into()]),
-            None
-        ))
+        Ok(BlockFormat {
+            exit: ExitStatus::EndToken,
+            line_layout: LineLayout::SingleGroup(vec![
+                "X".into(),
+                "Y".into(),
+                "W".into(),
+                "A".into()
+            ]),
+            kind: None
+        })
     );
     parser_test!(
         single_group_block_kind,
         "(XYWA), PEAK ASSIGNMENTS\n",
-        Ok(BlockFormat::new(
-            LineLayout::SingleGroup(vec!["X".into(), "Y".into(), "W".into(), "A".into()]),
-            Some("PEAK ASSIGNMENTS")
-        ))
+        Ok(BlockFormat {
+            exit: ExitStatus::EndToken,
+            line_layout: LineLayout::SingleGroup(vec![
+                "X".into(),
+                "Y".into(),
+                "W".into(),
+                "A".into()
+            ]),
+            kind: Some("PEAK ASSIGNMENTS")
+        })
     );
     parser_test!(
         invalid_literal,
@@ -421,13 +403,18 @@ mod tests {
         Err(Error::invalid_literal(Position { line: 0, column: 2 }))
     );
     parser_test!(
+        empty_repeat2,
+        "X++\n",
+        Err(Error::empty_repeat(Position { line: 0, column: 0 }))
+    );
+    parser_test!(
         empty_repeat,
-        "(..X)\n",
-        Err(Error::empty_repeat(Position { line: 0, column: 1 }))
+        "X++(..Y)\n",
+        Err(Error::empty_repeat(Position { line: 0, column: 4 }))
     );
     parser_test!(
         mismatched_repeat,
-        "(X..)\n",
+        "X++(Y..)\n",
         Err(Error::mismatched_repeat(Position { line: 0, column: 0 }))
     );
     parser_test!(
@@ -443,11 +430,17 @@ mod tests {
     parser_test!(
         increment_after_repeat,
         "(Y..Y)X++\n",
-        Err(Error::increment_after_repeat(Position { line: 0, column: 7 }))
+        Err(Error::increment_after_repeat(Position {
+            line: 0,
+            column: 7
+        }))
     );
     parser_test!(
         multiple_identifier_increment,
         "XF1++(Y..Y)\n",
-        Err(Error::multiple_identifier_increment(Position { line: 0, column: 3 }))
+        Err(Error::multiple_identifier_increment(Position {
+            line: 0,
+            column: 3
+        }))
     );
 }
