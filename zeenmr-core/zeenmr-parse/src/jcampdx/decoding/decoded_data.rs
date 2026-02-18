@@ -203,7 +203,7 @@ impl Default for DecodedBlockBuilder {
 
 impl DecodedBlockBuilder {
     /// Finalizes the `DecodedBlock`.
-    pub(crate) fn finalize(mut self) -> DecodedBlock {
+    pub(crate) fn finalize(self) -> DecodedBlock {
         let mut table = Table::new();
         let is_valid = !self.errors.iter().any(|e| {
             *e.kind() == Kind::CheckPointValue || *e.kind() == Kind::CheckPointStepMismatch

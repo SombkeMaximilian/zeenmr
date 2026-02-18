@@ -97,7 +97,7 @@ where
 
 impl<'source> Decoder<'source> {
     /// Recovers the [`Lexer`] from the `Decoder`.
-    pub(crate) fn into_lexer(mut self) -> Lexer<'source, EncodedToken> {
+    pub(crate) fn into_lexer(self) -> Lexer<'source, EncodedToken> {
         self.lexer
     }
 

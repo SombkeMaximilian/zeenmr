@@ -372,7 +372,7 @@ impl<'source> Parser<'source> {
     /// [`String`]: Token::String
     fn string(&mut self) {
         let value = self.lexer.slice();
-        let mut push_string = |values: &mut Vec<Value>| {
+        let push_string = |values: &mut Vec<Value>| {
             if let Some(Value::String(previous)) = values.last_mut()
                 && self.auto_concatenate
             {

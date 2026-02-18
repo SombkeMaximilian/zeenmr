@@ -71,7 +71,7 @@ where
 
 impl<'source> FormatParser<'source> {
     /// Recovers the [`Lexer`] from the `FormatParser`.
-    pub(crate) fn into_lexer(mut self) -> Lexer<'source, FormatToken> {
+    pub(crate) fn into_lexer(self) -> Lexer<'source, FormatToken> {
         self.lexer
     }
 
