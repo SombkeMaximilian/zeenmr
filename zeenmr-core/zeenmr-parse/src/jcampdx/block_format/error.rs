@@ -16,6 +16,8 @@ pub enum Kind {
     #[default]
     InvalidLiteral,
     EndOfInput,
+    EmptyFormat,
+    EmptyIncrement,
     EmptyRepeat,
     MismatchedRepeat,
     MultipleIncrement,
@@ -31,6 +33,8 @@ impl std::fmt::Display for Error {
         let description = match self.kind() {
             Kind::InvalidLiteral => "invalid literal",
             Kind::EndOfInput => "end of input",
+            Kind::EmptyFormat => "empty format",
+            Kind::EmptyIncrement => "empty input",
             Kind::EmptyRepeat => "empty group",
             Kind::MismatchedRepeat => "mismatched repeat",
             Kind::MultipleIncrement => "multiple increment",
@@ -60,6 +64,26 @@ impl Error {
     pub(crate) fn end_of_input(position: Position) -> Self {
         Self {
             kind: Kind::EndOfInput,
+            position,
+        }
+    }
+
+    /// Creates an [`EmptyFormat`] error.
+    ///
+    /// [`EmptyFormat`]: Kind::EmptyFormat
+    pub(crate) fn empty_format(position: Position) -> Self {
+        Self {
+            kind: Kind::EmptyFormat,
+            position,
+        }
+    }
+
+    /// Creates an [`EmptyIncrement`] error.
+    ///
+    /// [`EmptyIncrement`]: Kind::EmptyIncrement
+    pub(crate) fn empty_increment(position: Position) -> Self {
+        Self {
+            kind: Kind::EmptyIncrement,
             position,
         }
     }
