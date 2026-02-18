@@ -59,7 +59,7 @@ where
 
     match data_type {
         DataType::I32 => {
-            let mut data = vec![0_32; size];
+            let mut data = vec![0_i32; size];
             match endian {
                 Endian::Little => buffer
                     .as_slice()
