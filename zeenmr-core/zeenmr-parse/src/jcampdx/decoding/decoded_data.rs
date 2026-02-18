@@ -6,10 +6,10 @@ use crate::jcampdx::{RawColumn, Table};
 /// [`Decoder`]: crate::jcampdx::decoding::Decoder
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub(crate) enum ExitStatus {
-    /// Decoding terminated after the input ended.
+    /// Decoding was terminated by the end of the input.
     #[default]
     EndOfInput,
-    /// Decoding terminated after encountering a header key.
+    /// Decoding was terminated by encountering a header key.
     HeaderKey,
 }
 

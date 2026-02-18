@@ -3,28 +3,55 @@ use crate::jcampdx::block_format::{BlockFormat, FormatToken, LineLayout};
 use crate::{Cursor, Location, Position};
 use logos::{Lexer, Logos};
 
+/// State of the [`FormatParser`].
+///
+/// Tracks which part of the sequence is being parsed currently.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 enum State {
+    /// Encountered identifiers are before a [`Repeat`] token.
+    ///
+    /// [`Repeat`]: FormatToken::Repeat
     Prefix,
+    /// Encountered identifiers are after an [`Increment`] token but before any
+    /// [`Repeat`] token.
+    ///
+    /// [`Increment`]: FormatToken::Increment
+    /// [`Repeat`]: FormatToken::Repeat
     AfterIncrement,
+    /// Encountered identifiers are after a [`Repeat`] token.
+    ///
+    /// [`Repeat`]: FormatToken::Repeat
     Suffix,
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
-enum Termination {
-    EndToken,
+/// Exit status of the [`FormatParser`].
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
+enum ExitStatus {
+    /// Parsing was terminated by the end of the input.
+    #[default]
     EndOfInput,
+    /// Parsing was terminated by encountering a newline.
+    EndToken,
 }
 
+/// Parser for the data block format specifiers of JCAMP-DX datablocks.
 #[derive(Debug)]
 pub(crate) struct FormatParser<'source> {
+    /// Lexer for the data block format specifiers.
     lexer: Lexer<'source, FormatToken>,
+    /// State of the parser.
     state: State,
-    termination: Termination,
+    /// Exit status (newline or end of the source encountered).
+    exit: ExitStatus,
+    /// Start position for potential error reporting.
     start: Position,
+    /// Prefix identifiers.
     prefix: Vec<&'source str>,
+    /// Suffix identifiers.
     suffix: Vec<&'source str>,
+    /// Incrementing variable, if any.
     increment: Vec<&'source str>,
+    /// Block kind of `DATA TABLE` data block.
     block_kind: Option<&'source str>,
 }
 
@@ -41,7 +68,7 @@ impl<'source> From<&'source str> for FormatParser<'source> {
             suffix: Vec::new(),
             increment: Vec::new(),
             block_kind: None,
-            termination: Termination::EndOfInput,
+            exit: ExitStatus::default(),
         }
     }
 }
@@ -63,7 +90,7 @@ where
             suffix: Vec::new(),
             increment: Vec::new(),
             block_kind: None,
-            termination: Termination::EndOfInput,
+            exit: ExitStatus::EndOfInput,
         }
     }
 }
@@ -74,6 +101,17 @@ impl<'source> FormatParser<'source> {
         self.lexer
     }
 
+    /// Parses the data block format specifier.
+    ///
+    /// The caller must ensure that the [`Lexer`] is at the start of a block
+    /// format specifier string.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the format specifier contains errors or the end of
+    /// the input is reached during parsing. Unless the end of the input is
+    /// reached, the [`Lexer`] will be synchronized to the end of the current
+    /// line.
     pub(crate) fn parse_format(&mut self) -> Result<BlockFormat> {
         if let Err(e) = self.parse_tokens() {
             // if this fails the other error is unrecoverable anyway
@@ -81,12 +119,18 @@ impl<'source> FormatParser<'source> {
             return Err(e);
         }
 
-        match self.termination {
-            Termination::EndToken => self.finalize(),
-            Termination::EndOfInput => Err(Error::end_of_input(self.lexer.location())),
+        match self.exit {
+            ExitStatus::EndToken => self.finalize(),
+            ExitStatus::EndOfInput => Err(Error::end_of_input(self.lexer.location())),
         }
     }
 
+    /// Main loop for parsing tokens.
+    ///
+    /// Advances the [`Lexer`] until an [`End`] token is encountered or the
+    /// input ends.
+    ///
+    /// [`End`]: FormatToken::End
     fn parse_tokens(&mut self) -> Result<()> {
         while let Some(token) = self.lexer.next().transpose()? {
             match token {
@@ -95,11 +139,11 @@ impl<'source> FormatParser<'source> {
                 FormatToken::Repeat => self.repeat()?,
                 FormatToken::DataBlockKind => {
                     self.data_block_kind()?;
-                    self.termination = Termination::EndToken;
+                    self.exit = ExitStatus::EndToken;
                     break;
                 }
                 FormatToken::End => {
-                    self.termination = Termination::EndToken;
+                    self.exit = ExitStatus::EndToken;
                     break;
                 }
             }
@@ -108,17 +152,31 @@ impl<'source> FormatParser<'source> {
         Ok(())
     }
 
+    /// Advances the [`Lexer`] until the next [`End`] token is encountered.
+    ///
+    /// [`End`]: FormatToken::End
+    ///
+    /// This method is used for recovering from errors in a way that allows the
+    /// higher-level parser to continue even after parsing the format specifier
+    /// failed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the source ends before an [`End`] token is
+    /// encountered
+    ///
+    /// [`End`]: FormatToken::End
     fn synchronize_end_of_line(&mut self) -> Result<()> {
         while let Some(token) = self.lexer.next().transpose()? {
             if token == FormatToken::End {
-                self.termination = Termination::EndToken;
+                self.exit = ExitStatus::EndToken;
                 break;
             }
         }
 
-        match self.termination {
-            Termination::EndToken => Ok(()),
-            Termination::EndOfInput => Err(Error::end_of_input(self.lexer.location())),
+        match self.exit {
+            ExitStatus::EndToken => Ok(()),
+            ExitStatus::EndOfInput => Err(Error::end_of_input(self.lexer.location())),
         }
     }
 
@@ -180,6 +238,15 @@ impl<'source> FormatParser<'source> {
         }
     }
 
+    /// Handles [`Identifier`] tokens.
+    ///
+    /// [`Identifier`]: FormatToken::Identifier
+    ///
+    /// [`Identifier`]s before a [`Repeat`] token are inserted into the prefix,
+    /// while those after a [`Repeat`] are inserted into the suffix.
+    ///
+    /// [`Identifier`]: FormatToken::Identifier
+    /// [`Repeat`]: FormatToken::Repeat
     fn identifier(&mut self) {
         match self.state {
             State::Prefix | State::AfterIncrement => self.prefix.push(self.lexer.slice()),
@@ -187,6 +254,21 @@ impl<'source> FormatParser<'source> {
         }
     }
 
+    /// Handles [`Increment`] tokens.
+    ///
+    /// [`Increment`]: FormatToken::Increment
+    ///
+    /// Switches into the [`AfterIncrement`] state and moves the prefix into the
+    /// increment variable.
+    ///
+    /// [`AfterIncrement`]: State::AfterIncrement
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the prefix isn't exactly one identifier, or if the
+    /// parser is not in the [`Prefix`] state.
+    ///
+    /// [`Prefix`]: State::Prefix
     fn increment(&mut self) -> Result<()> {
         match self.state {
             State::Prefix => {
@@ -204,6 +286,20 @@ impl<'source> FormatParser<'source> {
         }
     }
 
+    /// Handles [`Repeat`] tokens.
+    ///
+    /// [`Repeat`]: FormatToken::Repeat
+    ///
+    /// Switches into the [`Suffix`] state.
+    ///
+    /// [`Suffix`]: State::Suffix
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the prefix is empty, or if the parser is already in
+    /// the [`Suffix`] state.
+    ///
+    /// [`Suffix`]: State::Suffix
     fn repeat(&mut self) -> Result<()> {
         match self.state {
             State::Prefix | State::AfterIncrement => {
@@ -219,6 +315,21 @@ impl<'source> FormatParser<'source> {
         }
     }
 
+    /// Handles [`DataBlockKind`] tokens and checks for a subsequent [`End`]
+    /// token.
+    ///
+    /// [`DataBlockKind`]: FormatToken::DataBlockKind
+    /// [`End`]: FormatToken::End
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the input ends after the [`DataBlockKind`] token.
+    /// Note that due to how this token is matched, the input will always end
+    /// after it, unless it's followed by a newline character, and therefore an
+    /// [`End`] token.
+    ///
+    /// [`DataBlockKind`]: FormatToken::DataBlockKind
+    /// [`End`]: FormatToken::End
     fn data_block_kind(&mut self) -> Result<()> {
         match self.block_kind {
             Some(_) => unreachable!(),
