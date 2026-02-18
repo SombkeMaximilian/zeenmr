@@ -16,7 +16,7 @@ pub(crate) enum ExitStatus {
 /// Decoded data block.
 #[derive(Clone, PartialEq, Debug)]
 pub(crate) struct DecodedBlock {
-    /// Exit status (end of input or header key encountered).
+    /// Exit status of the decoder (end of input or header key).
     pub(crate) exit: ExitStatus,
     /// Decoded data.
     pub(crate) table: Table,
