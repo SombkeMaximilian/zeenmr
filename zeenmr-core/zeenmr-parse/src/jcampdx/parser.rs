@@ -139,9 +139,13 @@ impl<'source> Parser<'source> {
                 self.auto_concatenate = true;
             }
         }
-        if !self.builder.parameters_contain_key(self.current_key) {
+        if !self
+            .builder
+            .parameters_contain_key(self.current_key)
+        {
             let current_value = self.take_current_value();
-            self.builder.insert_parameter(self.current_key, current_value);
+            self.builder
+                .insert_parameter(self.current_key, current_value);
         }
 
         Ok(std::mem::take(&mut self.builder).finalize())
@@ -197,7 +201,8 @@ impl<'source> Parser<'source> {
     /// [`Equals`]: Token::Equals
     fn key(&mut self) -> Result<KeyExit> {
         while let Some(top) = self.bounded_stack.top() {
-            self.builder.push_error(Error::unclosed_delimiter(top.start));
+            self.builder
+                .push_error(Error::unclosed_delimiter(top.start));
             self.end_bounded(top.delimiter)
                 .expect("should always get the right delimiter");
         }
@@ -479,29 +484,30 @@ impl<'source> Parser<'source> {
     /// Returns an error if the [`Decoder`] encounters a fatal error.
     fn encoded_block(&mut self) -> Result<ChildParserExit> {
         let mut format_parser = FormatParser::from(self.lexer.clone());
-        let identifiers = match format_parser.parse_format() {
-            Ok(format) => match format.line_layout {
-                LineLayout::RepeatingValue {
-                    incrementing,
-                    repeating,
-                } => Some((incrementing, repeating)),
-                _ => {
-                    self.builder
-                        .push_error(Error::mismatched_block_format(self.lexer.location()));
-
-                    None
+        let format = format_parser.parse_format();
+        let mut decoder = Decoder::from(format_parser.into_lexer());
+        match format {
+            Ok(format) => {
+                if let Some(kind) = format.kind {
+                    decoder.set_title(kind)
                 }
-            },
+                match format.line_layout {
+                    LineLayout::RepeatingValue {
+                        incrementing,
+                        repeating,
+                    } => {
+                        decoder.set_incrementing(incrementing);
+                        decoder.set_repeating(repeating);
+                    }
+                    _ => {
+                        self.builder
+                            .push_error(Error::mismatched_block_format(self.lexer.location()));
+                    }
+                }
+            }
             Err(e) => {
                 self.builder.push_error(e.into());
-
-                None
             }
-        };
-        let mut decoder = Decoder::from(format_parser.into_lexer());
-        if let Some((incrementing, repeating)) = identifiers {
-            decoder.set_incrementing(incrementing);
-            decoder.set_repeating(repeating);
         }
         let decoded_block = decoder.decode_source()?;
         self.lexer = decoder.into_lexer().morph();

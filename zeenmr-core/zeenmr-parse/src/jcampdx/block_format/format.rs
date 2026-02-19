@@ -26,23 +26,13 @@ pub(crate) enum LineLayout {
 
 /// Format of a data block.
 #[derive(Clone, Eq, PartialEq, Debug)]
-pub(crate) struct BlockFormat<'source> {
+pub(crate) struct BlockFormat {
     /// Exit status of the parser (end of input or newline).
     pub(crate) exit: ChildParserExit,
     /// Layout of the lines.
     pub(crate) line_layout: LineLayout,
     /// Optional kind descriptor.
-    pub(crate) kind: Option<&'source str>,
-}
-
-impl<'source> BlockFormat<'source> {
-    pub(crate) fn new(line_layout: LineLayout, kind: Option<&'source str>) -> Self {
-        Self {
-            line_layout,
-            kind,
-            exit: ChildParserExit::default(),
-        }
-    }
+    pub(crate) kind: Option<String>,
 }
 
 /// Builder pattern for [`BlockFormat`].
@@ -67,7 +57,7 @@ impl<'source> BlockFormatBuilder<'source> {
     ///
     /// Returns `None` if the prefix length is not 1, or if the incrementing
     /// variable identifier is not set.
-    pub(crate) fn finalize_repeating(self) -> Option<BlockFormat<'source>> {
+    pub(crate) fn finalize_repeating(self) -> Option<BlockFormat> {
         if self.prefix.len() == 1 {
             self.incrementing.map(|incrementing| BlockFormat {
                 exit: self.exit,
@@ -75,7 +65,7 @@ impl<'source> BlockFormatBuilder<'source> {
                     incrementing: incrementing.to_string(),
                     repeating: self.prefix[0].to_string(),
                 },
-                kind: self.block_kind,
+                kind: self.block_kind.map(ToString::to_string),
             })
         } else {
             None
@@ -85,7 +75,7 @@ impl<'source> BlockFormatBuilder<'source> {
     /// Finalizes the `BlockFormat` using a [`SingleGroup`] line layout.
     ///
     /// [`SingleGroup`]: LineLayout::SingleGroup
-    pub(crate) fn finalize_single_group(self) -> BlockFormat<'source> {
+    pub(crate) fn finalize_single_group(self) -> BlockFormat {
         let identifiers = self
             .prefix
             .iter()
@@ -95,14 +85,14 @@ impl<'source> BlockFormatBuilder<'source> {
         BlockFormat {
             exit: self.exit,
             line_layout: LineLayout::SingleGroup(identifiers),
-            kind: self.block_kind,
+            kind: self.block_kind.map(ToString::to_string),
         }
     }
 
     /// Finalizes the `BlockFormat` using a [`MultiGroup`] line layout.
     ///
     /// [`MultiGroup()`]: LineLayout::MultiGroup
-    pub(crate) fn finalize_multi_group(self) -> BlockFormat<'source> {
+    pub(crate) fn finalize_multi_group(self) -> BlockFormat {
         let identifiers = self
             .suffix
             .iter()
@@ -112,7 +102,7 @@ impl<'source> BlockFormatBuilder<'source> {
         BlockFormat {
             exit: self.exit,
             line_layout: LineLayout::MultiGroup(identifiers),
-            kind: self.block_kind,
+            kind: self.block_kind.map(ToString::to_string),
         }
     }
 

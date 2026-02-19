@@ -348,7 +348,7 @@ mod tests {
                 incrementing: "X".into(),
                 repeating: "R".into(),
             },
-            kind: Some("XYDATA"),
+            kind: Some("XYDATA".to_string()),
         })
     );
     parser_test!(
@@ -366,7 +366,7 @@ mod tests {
         Ok(BlockFormat {
             exit: ChildParserExit::EndToken,
             line_layout: LineLayout::MultiGroup(vec!["X".into(), "Y".into()]),
-            kind: Some("PEAKS")
+            kind: Some("PEAKS".to_string())
         })
     );
     parser_test!(
@@ -394,7 +394,7 @@ mod tests {
                 "W".into(),
                 "A".into()
             ]),
-            kind: Some("PEAK ASSIGNMENTS")
+            kind: Some("PEAK ASSIGNMENTS".to_string())
         })
     );
     parser_test!(
