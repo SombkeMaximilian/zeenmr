@@ -1,5 +1,3 @@
-use crate::jcampdx::ChildParserExit;
-
 /// Layout of the lines in a data block.
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub(crate) enum LineLayout {
@@ -27,8 +25,6 @@ pub(crate) enum LineLayout {
 /// Format of a data block.
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub(crate) struct BlockFormat {
-    /// Exit status of the parser (end of input or newline).
-    pub(crate) exit: ChildParserExit,
     /// Layout of the lines.
     pub(crate) line_layout: LineLayout,
     /// Optional kind descriptor.
@@ -38,8 +34,6 @@ pub(crate) struct BlockFormat {
 /// Builder pattern for [`BlockFormat`].
 #[derive(Clone, PartialEq, Debug, Default)]
 pub(crate) struct BlockFormatBuilder<'source> {
-    /// Exit status of the parser (end of input or newline).
-    exit: ChildParserExit,
     /// Prefix identifiers.
     prefix: Vec<&'source str>,
     /// Suffix identifiers.
@@ -60,7 +54,6 @@ impl<'source> BlockFormatBuilder<'source> {
     pub(crate) fn finalize_repeating(self) -> Option<BlockFormat> {
         if self.prefix.len() == 1 {
             self.incrementing.map(|incrementing| BlockFormat {
-                exit: self.exit,
                 line_layout: LineLayout::RepeatingValue {
                     incrementing: incrementing.to_string(),
                     repeating: self.prefix[0].to_string(),
@@ -83,7 +76,6 @@ impl<'source> BlockFormatBuilder<'source> {
             .collect::<Vec<String>>();
 
         BlockFormat {
-            exit: self.exit,
             line_layout: LineLayout::SingleGroup(identifiers),
             kind: self.block_kind.map(ToString::to_string),
         }
@@ -100,17 +92,9 @@ impl<'source> BlockFormatBuilder<'source> {
             .collect::<Vec<String>>();
 
         BlockFormat {
-            exit: self.exit,
             line_layout: LineLayout::MultiGroup(identifiers),
             kind: self.block_kind.map(ToString::to_string),
         }
-    }
-
-    /// Returns `true` if the exit status is set to [`EndToken`].
-    ///
-    /// [`EndToken`]: ChildParserExit::EndToken
-    pub(crate) fn is_newline_exit(&self) -> bool {
-        self.exit == ChildParserExit::EndToken
     }
 
     /// Returns `true` if the incrementing variable identifier was set.
@@ -136,13 +120,6 @@ impl<'source> BlockFormatBuilder<'source> {
     /// Returns `true` if the prefix and suffix are equal.
     pub(crate) fn prefix_matches_suffix(&self) -> bool {
         self.prefix == self.suffix
-    }
-
-    /// Updates the exit status to [`EndToken`].
-    ///
-    /// [`EndToken`]: ChildParserExit::EndToken
-    pub(crate) fn newline_exit(&mut self) {
-        self.exit = ChildParserExit::EndToken;
     }
 
     /// Sets the incrementing variable identifier.
