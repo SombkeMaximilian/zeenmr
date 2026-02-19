@@ -101,6 +101,11 @@ impl<'source> Decoder<'source> {
         self.lexer
     }
 
+    /// Sets the title of the dataset.
+    pub(crate) fn set_title<T: Into<String>>(&mut self, title: T) {
+        self.builder.set_title(title);
+    }
+
     /// Sets the identifier of the incrementing variable.
     pub(crate) fn set_incrementing<T: Into<String>>(&mut self, incrementing: T) {
         self.builder.set_incrementing(incrementing);
@@ -611,6 +616,7 @@ mod tests {
 
     static EXPECTED: LazyLock<DecodedBlock> = LazyLock::new(|| {
         let mut table = Table::new();
+        table.set_id("XYDATA");
         table.push(RawColumn {
             id: "Unknown".to_string(),
             values: (0..20).map(|i| i as f64).rev().collect(),

@@ -164,6 +164,8 @@ impl CheckPointSequence {
 pub(crate) struct DecodedBlockBuilder {
     /// Exit status of the decoder (end of input or header key).
     exit: ChildParserExit,
+    /// Title of the dataset.
+    title: String,
     /// Identifier of the incrementing variable.
     incrementing: String,
     /// Identifier of the repeating variable.
@@ -180,6 +182,7 @@ impl Default for DecodedBlockBuilder {
     fn default() -> Self {
         Self {
             exit: ChildParserExit::default(),
+            title: "XYDATA".to_string(),
             incrementing: "Unknown".to_string(),
             repeating: "Unknown".to_string(),
             decoded: DecodedStack::new(),
@@ -193,6 +196,7 @@ impl DecodedBlockBuilder {
     /// Finalizes the `DecodedBlock`.
     pub(crate) fn finalize(self) -> DecodedBlock {
         let mut table = Table::new();
+        table.set_id(self.title);
         let is_valid = !self.errors.iter().any(|e| {
             *e.kind() == Kind::CheckPointValue || *e.kind() == Kind::CheckPointStepMismatch
         });
@@ -265,6 +269,11 @@ impl DecodedBlockBuilder {
     /// [`HeaderKey`]: crate::jcampdx::decoding::EncodedToken::End
     pub(crate) fn header_key_exit(&mut self) {
         self.exit = ChildParserExit::EndToken;
+    }
+
+    /// Sets the title of the dataset.
+    pub(crate) fn set_title<T: Into<String>>(&mut self, title: T) {
+        self.title = title.into();
     }
 
     /// Sets the identifier of the incrementing variable.
