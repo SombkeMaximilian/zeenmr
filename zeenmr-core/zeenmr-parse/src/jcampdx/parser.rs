@@ -196,6 +196,11 @@ impl<'source> Parser<'source> {
     /// [`Key`]: Token::Key
     /// [`Equals`]: Token::Equals
     fn key(&mut self) -> Result<KeyExit> {
+        while let Some(top) = self.bounded_stack.top() {
+            self.builder.push_error(Error::unclosed_delimiter(top.start));
+            self.end_bounded(top.delimiter)
+                .expect("should always get the right delimiter");
+        }
         let current_value = self.take_current_value();
         self.builder
             .insert_parameter(self.current_key, current_value);
@@ -319,7 +324,7 @@ impl<'source> Parser<'source> {
         let frame = self
             .bounded_stack
             .pop()
-            .ok_or_else(|| Error::mismatched_delimiter(self.lexer.location()))?;
+            .expect("should not be empty due to successful top delimiter check");
         let value = match frame.values.len() {
             0 => Value::Empty,
             1 => frame.values.into_iter().next().unwrap(),
