@@ -13,4 +13,4 @@ mod data;
 pub use data::{Column, Dataset, RawColumn, Table, Value};
 
 mod parser;
-pub(crate) use parser::Parser;
+pub(crate) use parser::{ChildParserExit, Parser};

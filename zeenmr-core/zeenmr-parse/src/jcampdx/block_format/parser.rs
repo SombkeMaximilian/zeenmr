@@ -311,7 +311,7 @@ impl<'source> FormatParser<'source> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::jcampdx::block_format::ExitStatus;
+    use crate::jcampdx::ChildParserExit;
 
     macro_rules! parser_test {
         ($name:ident, $data:expr, $expected:expr) => {
@@ -331,7 +331,7 @@ mod tests {
         repeating,
         "(X++(Y..Y))\n",
         Ok(BlockFormat {
-            exit: ExitStatus::EndToken,
+            exit: ChildParserExit::EndToken,
             line_layout: LineLayout::RepeatingValue {
                 incrementing: "X".into(),
                 repeating: "Y".into(),
@@ -343,7 +343,7 @@ mod tests {
         repeating_block_kind,
         "(X++(R..R)), XYDATA\n",
         Ok(BlockFormat {
-            exit: ExitStatus::EndToken,
+            exit: ChildParserExit::EndToken,
             line_layout: LineLayout::RepeatingValue {
                 incrementing: "X".into(),
                 repeating: "R".into(),
@@ -355,7 +355,7 @@ mod tests {
         multi_group,
         "(XY..XY)\n",
         Ok(BlockFormat {
-            exit: ExitStatus::EndToken,
+            exit: ChildParserExit::EndToken,
             line_layout: LineLayout::MultiGroup(vec!["X".into(), "Y".into()]),
             kind: None
         })
@@ -364,7 +364,7 @@ mod tests {
         multi_group_block_kind,
         "(XY..XY), PEAKS\n",
         Ok(BlockFormat {
-            exit: ExitStatus::EndToken,
+            exit: ChildParserExit::EndToken,
             line_layout: LineLayout::MultiGroup(vec!["X".into(), "Y".into()]),
             kind: Some("PEAKS")
         })
@@ -373,7 +373,7 @@ mod tests {
         single_group,
         "(XYWA)\n",
         Ok(BlockFormat {
-            exit: ExitStatus::EndToken,
+            exit: ChildParserExit::EndToken,
             line_layout: LineLayout::SingleGroup(vec![
                 "X".into(),
                 "Y".into(),
@@ -387,7 +387,7 @@ mod tests {
         single_group_block_kind,
         "(XYWA), PEAK ASSIGNMENTS\n",
         Ok(BlockFormat {
-            exit: ExitStatus::EndToken,
+            exit: ChildParserExit::EndToken,
             line_layout: LineLayout::SingleGroup(vec![
                 "X".into(),
                 "Y".into(),

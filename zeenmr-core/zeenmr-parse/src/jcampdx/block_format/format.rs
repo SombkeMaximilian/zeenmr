@@ -1,14 +1,4 @@
-/// Exit status of the [`FormatParser`].
-///
-/// [`FormatParser`]: crate::jcampdx::block_format::FormatParser
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
-pub(crate) enum ExitStatus {
-    /// Parsing was terminated by the end of the input.
-    #[default]
-    EndOfInput,
-    /// Parsing was terminated by encountering a newline.
-    EndToken,
-}
+use crate::jcampdx::ChildParserExit;
 
 /// Layout of the lines in a data block.
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -38,7 +28,7 @@ pub(crate) enum LineLayout {
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub(crate) struct BlockFormat<'source> {
     /// Exit status of the parser (end of input or newline).
-    pub(crate) exit: ExitStatus,
+    pub(crate) exit: ChildParserExit,
     /// Layout of the lines.
     pub(crate) line_layout: LineLayout,
     /// Optional kind descriptor.
@@ -50,7 +40,7 @@ impl<'source> BlockFormat<'source> {
         Self {
             line_layout,
             kind,
-            exit: ExitStatus::default(),
+            exit: ChildParserExit::default(),
         }
     }
 }
@@ -59,7 +49,7 @@ impl<'source> BlockFormat<'source> {
 #[derive(Clone, PartialEq, Debug, Default)]
 pub(crate) struct BlockFormatBuilder<'source> {
     /// Exit status of the parser (end of input or newline).
-    exit: ExitStatus,
+    exit: ChildParserExit,
     /// Prefix identifiers.
     prefix: Vec<&'source str>,
     /// Suffix identifiers.
@@ -128,9 +118,9 @@ impl<'source> BlockFormatBuilder<'source> {
 
     /// Returns `true` if the exit status is set to [`EndToken`].
     ///
-    /// [`EndToken`]: ExitStatus::EndToken
+    /// [`EndToken`]: ChildParserExit::EndToken
     pub(crate) fn is_newline_exit(&self) -> bool {
-        self.exit == ExitStatus::EndToken
+        self.exit == ChildParserExit::EndToken
     }
 
     /// Returns `true` if the incrementing variable identifier was set.
@@ -160,9 +150,9 @@ impl<'source> BlockFormatBuilder<'source> {
 
     /// Updates the exit status to [`EndToken`].
     ///
-    /// [`EndToken`]: ExitStatus::EndToken
+    /// [`EndToken`]: ChildParserExit::EndToken
     pub(crate) fn newline_exit(&mut self) {
-        self.exit = ExitStatus::EndToken;
+        self.exit = ChildParserExit::EndToken;
     }
 
     /// Sets the incrementing variable identifier.

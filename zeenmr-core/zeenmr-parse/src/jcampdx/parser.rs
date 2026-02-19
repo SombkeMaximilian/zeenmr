@@ -1,11 +1,20 @@
 use crate::jcampdx::block_format::{FormatParser, LineLayout};
 use crate::jcampdx::data::DatasetBuilder;
-use crate::jcampdx::decoding::{Decoder, ExitStatus};
+use crate::jcampdx::decoding::Decoder;
 use crate::jcampdx::error::{Error, Result};
 use crate::jcampdx::{Dataset, Token, Value};
 use crate::{Location, Stack};
 use logos::{Lexer, Logos};
 use std::num::IntErrorKind;
+
+/// Delimiters of bounded values.
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+enum Delimiter {
+    /// Values bounded by parentheses.
+    Parentheses,
+    /// Values bounded by angle brackets.
+    Angle,
+}
 
 /// Exit status of the key handler.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -19,13 +28,14 @@ enum KeyExit {
     NextKey,
 }
 
-/// Delimiters of bounded values.
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
-enum Delimiter {
-    /// Values bounded by parentheses.
-    Parentheses,
-    /// Values bounded by angle brackets.
-    Angle,
+/// Exit status of a child parser.
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
+pub(crate) enum ChildParserExit {
+    /// Child parser was terminated by the end of the input.
+    #[default]
+    EndOfInput,
+    /// Child parser was terminated by encountering its respective end token.
+    EndToken,
 }
 
 /// JCAMP-DX file parser.
@@ -223,8 +233,8 @@ impl<'source> Parser<'source> {
             Some(Token::Page) => self.page(),
             Some(Token::EncodedBlock) => {
                 return match self.encoded_block()? {
-                    ExitStatus::EndOfInput => Ok(KeyExit::EndOfInput),
-                    ExitStatus::HeaderKey => Ok(KeyExit::NextKey),
+                    ChildParserExit::EndOfInput => Ok(KeyExit::EndOfInput),
+                    ChildParserExit::EndToken => Ok(KeyExit::NextKey),
                 };
             }
             Some(Token::GroupedBlock) => self.grouped_block(),
@@ -457,7 +467,7 @@ impl<'source> Parser<'source> {
     /// # Errors
     ///
     /// Returns an error if the [`Decoder`] encounters a fatal error.
-    fn encoded_block(&mut self) -> Result<ExitStatus> {
+    fn encoded_block(&mut self) -> Result<ChildParserExit> {
         let mut format_parser = FormatParser::from(self.lexer.clone());
         let identifiers = match format_parser.parse_format() {
             Ok(format) => match format.line_layout {

@@ -1,23 +1,11 @@
 use crate::jcampdx::decoding::error::{Error, Kind};
-use crate::jcampdx::{RawColumn, Table};
-
-/// Exit status of the [`Decoder`].
-///
-/// [`Decoder`]: crate::jcampdx::decoding::Decoder
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
-pub(crate) enum ExitStatus {
-    /// Decoding was terminated by the end of the input.
-    #[default]
-    EndOfInput,
-    /// Decoding was terminated by encountering a header key.
-    HeaderKey,
-}
+use crate::jcampdx::{ChildParserExit, RawColumn, Table};
 
 /// Decoded data block.
 #[derive(Clone, PartialEq, Debug)]
 pub(crate) struct DecodedBlock {
     /// Exit status of the decoder (end of input or header key).
-    pub(crate) exit: ExitStatus,
+    pub(crate) exit: ChildParserExit,
     /// Decoded data.
     pub(crate) table: Table,
     /// Non-fatal errors during decoding.
@@ -175,7 +163,7 @@ impl CheckPointSequence {
 #[derive(Clone, PartialEq, Debug)]
 pub(crate) struct DecodedBlockBuilder {
     /// Exit status of the decoder (end of input or header key).
-    exit: ExitStatus,
+    exit: ChildParserExit,
     /// Identifier of the incrementing variable.
     incrementing: String,
     /// Identifier of the repeating variable.
@@ -191,7 +179,7 @@ pub(crate) struct DecodedBlockBuilder {
 impl Default for DecodedBlockBuilder {
     fn default() -> Self {
         Self {
-            exit: ExitStatus::default(),
+            exit: ChildParserExit::default(),
             incrementing: "Unknown".to_string(),
             repeating: "Unknown".to_string(),
             decoded: DecodedStack::new(),
@@ -272,11 +260,11 @@ impl DecodedBlockBuilder {
         self.check_points.step()
     }
 
-    /// Updates the exit status to [`HeaderKey`].
+    /// Updates the exit status to having encountered the [`End`] token.
     ///
-    /// [`HeaderKey`]: ExitStatus::HeaderKey
+    /// [`HeaderKey`]: crate::jcampdx::decoding::EncodedToken::End
     pub(crate) fn header_key_exit(&mut self) {
-        self.exit = ExitStatus::HeaderKey;
+        self.exit = ChildParserExit::EndToken;
     }
 
     /// Sets the identifier of the incrementing variable.

@@ -605,7 +605,7 @@ impl<'source> Decoder<'source> {
 mod tests {
     use super::*;
     use crate::Position;
-    use crate::jcampdx::decoding::ExitStatus;
+    use crate::jcampdx::ChildParserExit;
     use crate::jcampdx::{RawColumn, Table};
     use std::sync::LazyLock;
 
@@ -624,7 +624,7 @@ mod tests {
         });
 
         DecodedBlock {
-            exit: ExitStatus::EndOfInput,
+            exit: ChildParserExit::EndOfInput,
             table,
             errors: Vec::new(),
         }
