@@ -139,6 +139,10 @@ impl<'source> Parser<'source> {
                 self.auto_concatenate = true;
             }
         }
+        if !self.builder.parameters_contain_key(self.current_key) {
+            let current_value = self.take_current_value();
+            self.builder.insert_parameter(self.current_key, current_value);
+        }
 
         Ok(std::mem::take(&mut self.builder).finalize())
     }
@@ -422,7 +426,8 @@ impl<'source> Parser<'source> {
     ///
     /// JCAMP-DX files can recursively contain child datasets, which are
     /// [`Title`] and [`End`] token pairs within another [`Title`] and [`End`]
-    /// token pair.
+    /// token pair. This does not return an exit code because any main loop
+    /// would simply terminate regardless.
     ///
     /// [`Title`]: Token::Title
     /// [`End`]: Token::End

@@ -46,6 +46,11 @@ impl DatasetBuilder {
         }
     }
 
+    /// Returns `true` if the map contains a value for the specified key.
+    pub(crate) fn parameters_contain_key(&self, key: &str) -> bool {
+        self.parameters.contains_key(key)
+    }
+
     /// Inserts a new parameter.
     pub(crate) fn insert_parameter(&mut self, key: &str, value: Value) {
         self.parameters.insert(key.to_string(), value);
