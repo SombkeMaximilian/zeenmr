@@ -252,7 +252,12 @@ impl<'source> Parser<'source> {
                 };
             }
             Some(Token::GroupedBlock) => self.grouped_block(),
-            Some(Token::AmbiguousBlock) => self.ambiguous_block(),
+            Some(Token::AmbiguousBlock) => {
+                return match self.ambiguous_block()? {
+                    ChildParserExit::EndOfInput => Ok(KeyExit::EndOfInput),
+                    ChildParserExit::EndToken => Ok(KeyExit::NextKey),
+                };
+            },
             Some(Token::End) => return Ok(KeyExit::EndOfInput),
             Some(Token::Comma)
             | Some(Token::OpenParenthesis)
@@ -512,7 +517,7 @@ impl<'source> Parser<'source> {
         let decoded_block = decoder.decode_source()?;
         self.lexer = decoder.into_lexer().morph();
         self.builder
-            .extend_errors(decoded_block.errors.into_iter().map(|e| e.into()));
+            .extend_errors(decoded_block.errors.into_iter().map(Into::into));
         self.builder.push_table(decoded_block.table);
 
         Ok(decoded_block.exit)
@@ -520,7 +525,60 @@ impl<'source> Parser<'source> {
 
     fn grouped_block(&mut self) {}
 
-    fn ambiguous_block(&mut self) {}
+    /// Handles [`AmbiguousBlock`] tokens.
+    ///
+    /// [`AmbiguousBlock`]: Token::AmbiguousBlock
+    ///
+    /// Blocks of this kind may be either encoded or grouped, which can be
+    /// determined by the format specifier. Either kind requires context
+    /// switches, once to extract the format specifier itself, and once for
+    /// parsing the data.
+    ///
+    /// # Format Specifier
+    ///
+    /// Encoded blocks use the `XYDATA` format, which is of the form
+    /// `X++(Y..Y)`, where `X` is the positional or independent variable, while
+    /// `Y` is the intensity or dependent variable. Common examples include `X`
+    /// and `F1` for the independent variable, and `Y`, `R` and `I` for the
+    /// dependent variable.
+    ///
+    /// Grouped blocks use the other formats, which are of the form `(G)` or
+    /// `(G..G)`, where `G` may be any group of identifiers. Common examples
+    /// include `X`, `Y`, `R` and `I` as described above, as well as `W` for
+    /// peak width and `M` for multiplicity.
+    ///
+    /// See [`FormatParser`] for more information.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the format specifier cannot be parsed, or if the
+    /// child parser for the respective block kind returns a fatal error.
+    fn ambiguous_block(&mut self) -> Result<ChildParserExit> {
+        let mut format_parser = FormatParser::from(self.lexer.clone());
+        let format = format_parser.parse_format()?;
+
+        match format.line_layout {
+            LineLayout::RepeatingValue {
+                incrementing,
+                repeating,
+            } => {
+                let mut decoder = Decoder::from(format_parser.into_lexer());
+                if let Some(kind) = format.kind {
+                    decoder.set_title(kind);
+                }
+                decoder.set_incrementing(incrementing);
+                decoder.set_repeating(repeating);
+                let decoded_block = decoder.decode_source()?;
+                self.lexer = decoder.into_lexer().morph();
+                self.builder.extend_errors(decoded_block.errors.into_iter().map(Into::into));
+                self.builder.push_table(decoded_block.table);
+
+                Ok(decoded_block.exit)
+            }
+            LineLayout::SingleGroup(_) => todo!(),
+            LineLayout::MultiGroup(_) => todo!(),
+        }
+    }
 }
 
 #[cfg(test)]
