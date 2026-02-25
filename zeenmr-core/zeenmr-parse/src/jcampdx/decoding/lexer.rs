@@ -53,8 +53,8 @@ mod tests {
             fn $name() {
                 let data = $data;
                 let expected = $tokens;
-                let token = EncodedToken::lexer(data).collect::<Vec<Result<EncodedToken>>>();
-                assert_eq!(token, expected);
+                let tokens = EncodedToken::lexer(data).collect::<Vec<Result<EncodedToken>>>();
+                assert_eq!(tokens, expected);
             }
         };
     }
