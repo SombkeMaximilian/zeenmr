@@ -2,6 +2,7 @@ use crate::jcampdx::block_format::error::Error;
 use crate::{Cursor, Location, UpdateCursor};
 use logos::{Lexer, Logos};
 
+/// JCAMP-DX block format specifier lexer.
 #[derive(Clone, PartialEq, Debug, Logos)]
 #[logos(extras = Cursor)]
 #[logos(error(Error, invalid_literal))]
