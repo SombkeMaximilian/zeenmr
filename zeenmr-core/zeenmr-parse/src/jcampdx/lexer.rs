@@ -10,7 +10,7 @@ use logos::{Lexer, Logos};
 #[logos(skip(r"(?&newline)", UpdateCursor::newline))]
 #[logos(subpattern space = r"[ \t]")]
 #[logos(skip r"(?&space)")]
-#[logos(subpattern comment = r"\$\$[^\r\n]+(?&newline)?")]
+#[logos(subpattern comment = r"\$\$[^\r\n]+")]
 #[logos(skip r"(?&comment)")]
 pub(crate) enum Token {
     /// JCAMP-DX header keys start with `##` or `##.`. Bruker-specific keys
