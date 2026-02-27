@@ -257,7 +257,7 @@ impl<'source> Parser<'source> {
                     ChildParserExit::EndOfInput => Ok(KeyExit::EndOfInput),
                     ChildParserExit::EndToken => Ok(KeyExit::NextKey),
                 };
-            },
+            }
             Some(Token::End) => return Ok(KeyExit::EndOfInput),
             Some(Token::Comma)
             | Some(Token::OpenParenthesis)
@@ -570,7 +570,8 @@ impl<'source> Parser<'source> {
                 decoder.set_repeating(repeating);
                 let decoded_block = decoder.decode_source()?;
                 self.lexer = decoder.into_lexer().morph();
-                self.builder.extend_errors(decoded_block.errors.into_iter().map(Into::into));
+                self.builder
+                    .extend_errors(decoded_block.errors.into_iter().map(Into::into));
                 self.builder.push_table(decoded_block.table);
 
                 Ok(decoded_block.exit)
