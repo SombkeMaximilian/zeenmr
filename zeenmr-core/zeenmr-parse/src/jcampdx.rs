@@ -6,6 +6,8 @@ pub(crate) mod block_format;
 
 pub(crate) mod decoding;
 
+pub(crate) mod tabulation;
+
 mod lexer;
 pub(crate) use lexer::Token;
 
