@@ -3,11 +3,11 @@ use crate::jcampdx::Value;
 /// Column in a JCAMP-DX data table.
 #[derive(Clone, PartialEq, Debug)]
 pub enum Column {
-    /// Only Integer values ([`i64`]).
+    /// Only Integers.
     Integer(RawColumn<i64>),
-    /// Only Float values ([`f64`]).
+    /// Only Floats.
     Float(RawColumn<f64>),
-    /// Only String values ([`String`]).
+    /// Only Strings.
     String(RawColumn<String>),
     /// Potentially mixed values.
     Mixed(RawColumn<Value>),
