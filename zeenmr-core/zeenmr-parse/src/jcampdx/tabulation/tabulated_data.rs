@@ -226,17 +226,17 @@ impl BufferCycle {
     }
 
     fn push_i64(&mut self, value: i64) {
-        self.current().push_i64(value);
+        self.current_mut().push_i64(value);
         self.cycle();
     }
 
     fn push_f64(&mut self, value: f64) {
-        self.current().push_f64(value);
+        self.current_mut().push_f64(value);
         self.cycle();
     }
 
     fn push_string<T: Into<String>>(&mut self, value: T) {
-        self.current().push_string(value);
+        self.current_mut().push_string(value);
         self.cycle();
     }
 }
