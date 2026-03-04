@@ -185,8 +185,6 @@ impl UpgradingBuffer {
 struct BufferCycle {
     /// Cycling buffers.
     buffers: Vec<UpgradingBuffer>,
-    /// Number of columns.
-    capacity: usize,
     /// Current column to push to.
     current: usize,
 }
@@ -196,48 +194,87 @@ impl BufferCycle {
     fn new() -> Self {
         Self {
             buffers: Vec::new(),
-            capacity: 0,
             current: 0,
         }
     }
 
+    /// Returns a mutable reference to the current `UpgradingBuffer`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no buffers have been added.
     fn current_mut(&mut self) -> &mut UpgradingBuffer {
         &mut self.buffers[self.current]
     }
 
-    fn cycle(&mut self) {
+    /// Advances to the next [`UpgradingBuffer`] in the cycle.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no buffers have been added.
+    fn advance(&mut self) {
         self.current = (self.current + 1) % self.buffers.len();
     }
 
+    /// Adds an [`UpgradingBuffer::Integer`] to the cycle.
+    ///
+    /// Using this method after pushing values potentially breaks the cycle.
     fn add_integer_buffer(&mut self) {
         self.buffers.push(UpgradingBuffer::new_integer());
     }
 
+    /// Adds an [`UpgradingBuffer::Float`] to the cycle.
+    ///
+    /// Using this method after pushing values potentially breaks the cycle.
     fn add_float_buffer(&mut self) {
         self.buffers.push(UpgradingBuffer::new_float());
     }
 
+    /// Adds an [`UpgradingBuffer::String`] to the cycle.
+    ///
+    /// Using this method after pushing values potentially breaks the cycle.
     fn add_string_buffer(&mut self) {
         self.buffers.push(UpgradingBuffer::new_string());
     }
 
+    /// Adds an [`UpgradingBuffer::Mixed`] to the cycle.
+    ///
+    /// Using this method after pushing values potentially breaks the cycle.
     fn add_mixed_buffer(&mut self) {
         self.buffers.push(UpgradingBuffer::new_mixed());
     }
 
+    /// Appends an `i64` to the current [`UpgradingBuffer`] in the cycle and
+    /// advances to the next.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no buffers have been added.
     fn push_i64(&mut self, value: i64) {
         self.current_mut().push_i64(value);
-        self.cycle();
+        self.advance();
     }
 
+    /// Appends an `f64` to the current [`UpgradingBuffer`] in the cycle and
+    /// advances to the next.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no buffers have been added.
     fn push_f64(&mut self, value: f64) {
         self.current_mut().push_f64(value);
-        self.cycle();
+        self.advance();
     }
 
+    /// Appends a `String` to the current [`UpgradingBuffer`] in the cycle and
+    /// advances to the next.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no buffers have been added.
     fn push_string<T: Into<String>>(&mut self, value: T) {
         self.current_mut().push_string(value);
-        self.cycle();
+        self.advance();
     }
 }
 
