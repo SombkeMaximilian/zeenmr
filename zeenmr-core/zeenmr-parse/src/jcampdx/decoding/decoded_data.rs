@@ -266,7 +266,7 @@ impl DecodedBlockBuilder {
 
     /// Updates the exit status to having encountered the [`End`] token.
     ///
-    /// [`HeaderKey`]: crate::jcampdx::decoding::EncodedToken::End
+    /// [`End`]: crate::jcampdx::decoding::EncodedToken::End
     pub(crate) fn header_key_exit(&mut self) {
         self.exit = ChildParserExit::EndToken;
     }
