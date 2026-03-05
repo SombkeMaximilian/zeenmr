@@ -23,4 +23,9 @@ impl Table {
     pub(crate) fn push<T: Into<Column>>(&mut self, column: T) {
         self.columns.push(column.into());
     }
+
+    pub(crate) fn extend<T: Into<Column>, I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        self.columns
+            .extend(iter.into_iter().map(Into::into));
+    }
 }
