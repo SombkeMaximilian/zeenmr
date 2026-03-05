@@ -1,5 +1,5 @@
 use crate::jcampdx::tabulation::error::Error;
-use crate::jcampdx::{ChildParserExit, Column, Table, Value};
+use crate::jcampdx::{ChildParserExit, Column, RawColumn, Table, Value};
 
 /// Tabulated data block.
 #[derive(Clone, PartialEq, Debug)]
@@ -189,6 +189,15 @@ struct BufferCycle {
     current: usize,
 }
 
+impl IntoIterator for BufferCycle {
+    type Item = UpgradingBuffer;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.buffers.into_iter()
+    }
+}
+
 impl BufferCycle {
     /// Creates a new, empty `BufferCycle`.
     fn new() -> Self {
@@ -281,7 +290,64 @@ impl BufferCycle {
 /// Builder pattern for [`TabulatedBlock`].
 #[derive(Clone, PartialEq, Debug)]
 pub(crate) struct TabulatedBlockBuilder {
+    /// Exit status of the parser (end of input or header key).
     exit: ChildParserExit,
+    /// Tabulated data.
     title: String,
+    /// Identifiers of the variables in the table.
+    identifiers: Vec<String>,
+    /// Columns being constructed.
+    buffer_cycle: BufferCycle,
+    /// Non-fatal errors during tabulation.
     errors: Vec<Error>,
+}
+
+impl Default for TabulatedBlockBuilder {
+    fn default() -> Self {
+        Self {
+            exit: ChildParserExit::default(),
+            title: "XYPOINTS".to_string(),
+            identifiers: Vec::new(),
+            buffer_cycle: BufferCycle::default(),
+            errors: Vec::new(),
+        }
+    }
+}
+
+impl TabulatedBlockBuilder {
+    /// Finalizes the `TabulatedBlock`.
+    pub(crate) fn finalize(self) -> TabulatedBlock {
+        let mut table = Table::new();
+        table.set_id(self.title);
+        table.extend(
+            self.buffer_cycle
+                .into_iter()
+                .zip(self.identifiers.into_iter())
+                .map(|(buffer, id)| match buffer {
+                    UpgradingBuffer::Integer(values) => {
+                        Column::from(RawColumn::<i64> { id, values })
+                    }
+                    UpgradingBuffer::Float(values) => Column::from(RawColumn::<f64> { id, values }),
+                    UpgradingBuffer::String(values) => {
+                        Column::from(RawColumn::<String> { id, values })
+                    }
+                    UpgradingBuffer::Mixed(values) => {
+                        Column::from(RawColumn::<Value> { id, values })
+                    }
+                }),
+        );
+
+        TabulatedBlock {
+            exit: self.exit,
+            table,
+            errors: self.errors,
+        }
+    }
+
+    /// Updates the exit status to having encountered the [`End`] token.
+    ///
+    /// [`End`]: crate::jcampdx::tabulation::GroupToken::End
+    pub(crate) fn header_key_exit(&mut self) {
+        self.exit = ChildParserExit::EndToken;
+    }
 }
