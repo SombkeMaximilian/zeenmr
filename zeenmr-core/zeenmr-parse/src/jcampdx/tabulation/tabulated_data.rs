@@ -185,7 +185,7 @@ impl UpgradingBuffer {
 struct BufferCycle {
     /// Cycling buffers.
     buffers: Vec<UpgradingBuffer>,
-    /// Current column to push to.
+    /// Current buffer to push to.
     current: usize,
 }
 
