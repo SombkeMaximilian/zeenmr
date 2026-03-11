@@ -253,6 +253,20 @@ impl BufferCycle {
         self.buffers.push(UpgradingBuffer::new_mixed());
     }
 
+    /// Skips the current buffer in the cycle by inserting a [`Value::Empty`]
+    /// and advances to the next.
+    fn skip_current(&mut self) {
+        self.current_mut().push_value(Value::Empty);
+        self.advance();
+    }
+
+    /// Completes the cycle by calling [`BufferCycle::skip_current`] repeatedly.
+    fn complete_cycle(&mut self) {
+        while self.current != 0 {
+            self.skip_current();
+        }
+    }
+
     /// Appends an `i64` to the current [`UpgradingBuffer`] in the cycle and
     /// advances to the next.
     ///
@@ -397,6 +411,18 @@ impl TabulatedBlockBuilder {
     pub(crate) fn add_mixed_column<T: Into<String>>(&mut self, id: T) {
         self.identifiers.push(id.into());
         self.buffer_cycle.add_mixed_buffer();
+    }
+
+    /// Skips the current column by inserting a [`Value::Empty`] and advances
+    /// to the next.
+    pub(crate) fn skip_current(&mut self) {
+        self.buffer_cycle.skip_current();
+    }
+
+    /// Completes the cycle by inserting [`Value::Empty`] in the remaining
+    /// columns, advancing back to the start.
+    pub(crate) fn complete_cycle(&mut self) {
+        self.buffer_cycle.complete_cycle();
     }
 
     /// Appends an `i64` to the current column and advances to the next.
