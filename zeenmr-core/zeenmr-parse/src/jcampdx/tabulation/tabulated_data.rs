@@ -285,6 +285,17 @@ impl BufferCycle {
         self.current_mut().push_string(value);
         self.advance();
     }
+
+    /// Appends a `Value` to the current [`UpgradingBuffer`] in the cycle and
+    /// advances to the next.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no buffers have been added.
+    fn push_value<T: Into<Value>>(&mut self, value: T) {
+        self.current_mut().push_value(value);
+        self.advance();
+    }
 }
 
 /// Builder pattern for [`TabulatedBlock`].
@@ -349,5 +360,78 @@ impl TabulatedBlockBuilder {
     /// [`End`]: crate::jcampdx::tabulation::GroupToken::End
     pub(crate) fn header_key_exit(&mut self) {
         self.exit = ChildParserExit::EndToken;
+    }
+
+    /// Sets the title of the dataset.
+    pub(crate) fn set_title<T: Into<String>>(&mut self, title: T) {
+        self.title = title.into();
+    }
+
+    /// Adds an integer column.
+    ///
+    /// Using this method after pushing values potentially breaks the cycling.
+    pub(crate) fn add_integer_column<T: Into<String>>(&mut self, id: T) {
+        self.identifiers.push(id.into());
+        self.buffer_cycle.add_integer_buffer();
+    }
+
+    /// Adds a float column.
+    ///
+    /// Using this method after pushing values potentially breaks the cycling.
+    pub(crate) fn add_float_column<T: Into<String>>(&mut self, id: T) {
+        self.identifiers.push(id.into());
+        self.buffer_cycle.add_float_buffer();
+    }
+
+    /// Adds a string column.
+    ///
+    /// Using this method after pushing values potentially breaks the cycling.
+    pub(crate) fn add_string_column<T: Into<String>>(&mut self, id: T) {
+        self.identifiers.push(id.into());
+        self.buffer_cycle.add_string_buffer();
+    }
+
+    /// Adds a mixed column.
+    ///
+    /// Using this method after pushing values potentially breaks the cycling.
+    pub(crate) fn add_mixed_column<T: Into<String>>(&mut self, id: T) {
+        self.identifiers.push(id.into());
+        self.buffer_cycle.add_mixed_buffer();
+    }
+
+    /// Appends an `i64` to the current column and advances to the next.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no columns have been added.
+    pub(crate) fn push_i64(&mut self, value: i64) {
+        self.buffer_cycle.push_i64(value);
+    }
+
+    /// Appends an `f64` to the current column and advances to the next.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no columns have been added.
+    pub(crate) fn push_f64(&mut self, value: f64) {
+        self.buffer_cycle.push_f64(value);
+    }
+
+    /// Appends a `String` to the current column and advances to the next.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no columns have been added.
+    pub(crate) fn push_string<T: Into<String>>(&mut self, value: T) {
+        self.buffer_cycle.push_string(value.into());
+    }
+
+    /// Appends a `Value` to the current column and advances to the next.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no columns have been added.
+    pub(crate) fn push_value<T: Into<Value>>(&mut self, value: T) {
+        self.buffer_cycle.push_value(value.into());
     }
 }
