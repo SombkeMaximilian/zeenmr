@@ -216,6 +216,12 @@ impl BufferCycle {
         &mut self.buffers[self.current]
     }
 
+    /// Clears the cycle, removing all buffers and the values they contain.
+    fn clear(&mut self) {
+        self.buffers.clear();
+        self.current = 0;
+    }
+
     /// Advances to the next [`UpgradingBuffer`] in the cycle.
     ///
     /// # Panics
@@ -381,36 +387,20 @@ impl TabulatedBlockBuilder {
         self.title = title.into();
     }
 
-    /// Adds an integer column.
+    /// Sets columns by inferring the type from the identifiers.
     ///
-    /// Using this method after pushing values potentially breaks the cycling.
-    pub(crate) fn add_integer_column<T: Into<String>>(&mut self, id: T) {
-        self.identifiers.push(id.into());
-        self.buffer_cycle.add_integer_buffer();
-    }
-
-    /// Adds a float column.
-    ///
-    /// Using this method after pushing values potentially breaks the cycling.
-    pub(crate) fn add_float_column<T: Into<String>>(&mut self, id: T) {
-        self.identifiers.push(id.into());
-        self.buffer_cycle.add_float_buffer();
-    }
-
-    /// Adds a string column.
-    ///
-    /// Using this method after pushing values potentially breaks the cycling.
-    pub(crate) fn add_string_column<T: Into<String>>(&mut self, id: T) {
-        self.identifiers.push(id.into());
-        self.buffer_cycle.add_string_buffer();
-    }
-
-    /// Adds a mixed column.
-    ///
-    /// Using this method after pushing values potentially breaks the cycling.
-    pub(crate) fn add_mixed_column<T: Into<String>>(&mut self, id: T) {
-        self.identifiers.push(id.into());
-        self.buffer_cycle.add_mixed_buffer();
+    /// Using this method clears the current cycle and any inserted values.
+    pub(crate) fn set_columns(&mut self, identifiers: Vec<String>) {
+        self.buffer_cycle.clear();
+        for id in identifiers.iter() {
+            match id.as_str() {
+                "X" | "Y" | "R" | "I" | "M" | "W" => self.buffer_cycle.add_integer_buffer(),
+                "F" | "F1" | "F2" => self.buffer_cycle.add_float_buffer(),
+                "A" => self.buffer_cycle.add_string_buffer(),
+                _ => self.buffer_cycle.add_mixed_buffer(),
+            }
+        }
+        self.identifiers = identifiers;
     }
 
     /// Skips the current column by inserting a [`Value::Empty`] and advances
