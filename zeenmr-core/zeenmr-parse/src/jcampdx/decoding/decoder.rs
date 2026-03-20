@@ -236,11 +236,10 @@ impl<'source> Decoder<'source> {
                         Ok(Affn::F64(value)) => self.builder.push_decoded_f64(value),
                         Err(e) => match e.kind() {
                             IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
-                                self.builder
-                                    .push_error(Error::overflow_with_index(
-                                        self.lexer.location(),
-                                        self.builder.decoded_len(),
-                                    ));
+                                self.builder.push_error(
+                                    Error::overflow(self.lexer.location())
+                                        .with_index(self.builder.decoded_len()),
+                                );
                                 self.builder.push_decoded_i64(i64::MIN);
                             }
                             _ => unreachable!(),
@@ -322,11 +321,10 @@ impl<'source> Decoder<'source> {
                         Ok(value) => self.builder.push_decoded_i64(value),
                         Err(e) => match e.kind() {
                             IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
-                                self.builder
-                                    .push_error(Error::overflow_with_index(
-                                        self.lexer.location(),
-                                        self.builder.decoded_len(),
-                                    ));
+                                self.builder.push_error(
+                                    Error::overflow(self.lexer.location())
+                                        .with_index(self.builder.decoded_len()),
+                                );
                                 self.builder.push_decoded_i64(i64::MIN);
                             }
                             _ => unreachable!(),
@@ -457,11 +455,10 @@ impl<'source> Decoder<'source> {
     fn invalid(&mut self) {
         match self.phase {
             Phase::Data | Phase::FirstData => {
-                self.builder
-                    .push_error(Error::invalid_value_with_index(
-                        self.lexer.location(),
-                        self.builder.decoded_len(),
-                    ));
+                self.builder.push_error(
+                    Error::invalid_value(self.lexer.location())
+                        .with_index(self.builder.decoded_len()),
+                );
                 match self.state {
                     State::Normal | State::LastWasDifference(_) => {
                         self.builder.push_decoded_i64(i64::MIN);
@@ -733,8 +730,8 @@ mod tests {
         "7 10000000000000000000 1 1 1\n\
          3 -10000000000000000000 1 1 1",
         [
-            Error::overflow_with_index(Position { line: 0, column: 2 }, 0),
-            Error::overflow_with_index(Position { line: 1, column: 2 }, 4),
+            Error::overflow(Position { line: 0, column: 2 }).with_index(0),
+            Error::overflow(Position { line: 1, column: 2 }).with_index(4),
         ]
     );
     recoverable_error_test!(
@@ -752,9 +749,9 @@ mod tests {
         "7 1 1 ? 1\n\
          3 0 ? 1 ?",
         [
-            Error::invalid_value_with_index(Position { line: 0, column: 6 }, 2),
-            Error::invalid_value_with_index(Position { line: 1, column: 4 }, 5),
-            Error::invalid_value_with_index(Position { line: 1, column: 8 }, 7),
+            Error::invalid_value(Position { line: 0, column: 6 }).with_index(2),
+            Error::invalid_value(Position { line: 1, column: 4 }).with_index(5),
+            Error::invalid_value(Position { line: 1, column: 8 }).with_index(7),
         ]
     );
 }

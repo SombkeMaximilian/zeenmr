@@ -109,6 +109,13 @@ impl std::fmt::Display for Error {
 }
 
 impl Error {
+    /// Adds the index of the value in the decoded values that caused the error.
+    pub(crate) fn with_index(mut self, index: usize) -> Self {
+        self.index = Some(index);
+
+        self
+    }
+
     /// Creates an [`InvalidLiteral`] error.
     ///
     /// [`InvalidLiteral`]: Kind::InvalidLiteral
@@ -142,17 +149,6 @@ impl Error {
         }
     }
 
-    /// Creates an [`Overflow`] error with an index.
-    ///
-    /// [`Overflow`]: Kind::Overflow
-    pub(crate) fn overflow_with_index(position: Position, index: usize) -> Self {
-        Self {
-            kind: Kind::Overflow,
-            position,
-            index: Some(index),
-        }
-    }
-
     /// Creates an [`IntegrityCheck`] error.
     ///
     /// [`IntegrityCheck`]: Kind::IntegrityCheck
@@ -172,17 +168,6 @@ impl Error {
             kind: Kind::InvalidValue,
             position,
             index: None,
-        }
-    }
-
-    /// Creates an [`InvalidValue`] error with an index.
-    ///
-    /// [`InvalidValue`]: Kind::InvalidValue
-    pub(crate) fn invalid_value_with_index(position: Position, index: usize) -> Self {
-        Self {
-            kind: Kind::InvalidValue,
-            position,
-            index: Some(index),
         }
     }
 
