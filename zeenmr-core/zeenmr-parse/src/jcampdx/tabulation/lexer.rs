@@ -9,7 +9,7 @@ use logos::{Lexer, Logos};
 #[logos(subpattern newline = r"\n|\r\n|\r")]
 #[logos(subpattern space = r"[ \t]")]
 #[logos(skip r"(?&space)")]
-#[logos(subpattern comment = r"\$\$[^\r\n]+(?&newline)?")]
+#[logos(subpattern comment = r"\$\$[^\r\n]+")]
 #[logos(skip r"(?&comment)")]
 pub(crate) enum GroupToken {
     /// Every new line is a checkpoint.
@@ -37,7 +37,7 @@ pub(crate) enum GroupToken {
     #[regex(r"-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?")]
     Numeric,
     /// Anything not numeric is a string.
-    #[regex(r"[^ \t\r\n#,;<>\(\)]*")]
+    #[regex(r"[^ \t\r\n#,;<>\(\)]+")]
     String,
     /// A grouped block optionally ends with the next JCAMP-DX header key.
     #[token("##")]
