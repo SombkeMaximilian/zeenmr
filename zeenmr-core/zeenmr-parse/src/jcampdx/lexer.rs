@@ -41,7 +41,7 @@ pub(crate) enum Token {
     #[regex(r"-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?")]
     Numeric,
     /// Anything not numeric is a string.
-    #[regex(r"[^ \t\r\n=#,<>\(\)]+")]
+    #[regex(r"[^ \t\r\n=#,<>\(\)]+", priority = 1)]
     String,
     /// A dataset always begins with a `TITLE` key.
     #[token("TITLE")]

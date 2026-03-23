@@ -37,7 +37,7 @@ pub(crate) enum GroupToken {
     #[regex(r"-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?")]
     Numeric,
     /// Anything not numeric is a string.
-    #[regex(r"[^ \t\r\n#,;<>\(\)]+")]
+    #[regex(r"[^ \t\r\n#,;<>\(\)]+", priority = 1)]
     String,
     /// A grouped block optionally ends with the next JCAMP-DX header key.
     #[token("##")]
