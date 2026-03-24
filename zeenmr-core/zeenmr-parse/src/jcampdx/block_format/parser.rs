@@ -91,7 +91,7 @@ impl<'source> FormatParser<'source> {
     /// the input is reached during parsing. Unless the end of the input is
     /// reached, the [`Lexer`] will be synchronized to the end of the current
     /// line.
-    pub(crate) fn parse_format(&mut self) -> Result<BlockFormat> {
+    pub(crate) fn parse_format(&mut self) -> Result<BlockFormat<'source>> {
         if let Err(e) = self.parse_tokens() {
             // if this fails the other error is unrecoverable anyway
             self.synchronize_end_of_line()?;
@@ -113,7 +113,7 @@ impl<'source> FormatParser<'source> {
     fn parse_tokens(&mut self) -> Result<()> {
         while let Some(token) = self.lexer.next().transpose()? {
             match token {
-                FormatToken::Identifier => self.identifier(),
+                FormatToken::Identifier => self.identifier()?,
                 FormatToken::Increment => self.increment()?,
                 FormatToken::Repeat => self.repeat()?,
                 FormatToken::DataBlockKind => {
@@ -159,46 +159,23 @@ impl<'source> FormatParser<'source> {
         }
     }
 
-    /// Finalizes the `BlockFormat` based on the state.
+    /// Finalizes the `BlockFormat`.
     ///
     /// # Errors
     ///
-    /// Returns an error if the corresponding `BlockFormat` cannot be
-    /// constructed.
-    fn finalize(&mut self) -> Result<BlockFormat> {
-        match self.state {
-            State::Prefix => {
-                if self.builder.prefix_is_empty() {
-                    Err(Error::empty_format(self.start))
-                } else {
-                    Ok(std::mem::take(&mut self.builder).finalize_single_group())
-                }
-            }
-            State::AfterIncrement => {
-                if !self.builder.incrementing_is_some() {
-                    Err(Error::empty_increment(self.start))
-                } else if self.builder.prefix_is_empty() {
-                    Err(Error::empty_repeat(self.start))
-                } else if !self.builder.prefix_matches_suffix() {
-                    Err(Error::mismatched_repeat(self.start))
-                } else {
-                    Ok(std::mem::take(&mut self.builder)
-                        .finalize_repeating()
-                        .expect("succeeds with checked conditions"))
-                }
-            }
-            State::Suffix => {
-                if !self.builder.prefix_matches_suffix() {
-                    Err(Error::mismatched_repeat(self.start))
-                } else if self.builder.prefix_is_empty() {
-                    Err(Error::empty_repeat(self.start))
-                } else if self.builder.incrementing_is_some() {
-                    Ok(std::mem::take(&mut self.builder)
-                        .finalize_repeating()
-                        .expect("succeeds with checked conditions"))
-                } else {
-                    Ok(std::mem::take(&mut self.builder).finalize_multi_group())
-                }
+    /// Returns an error if the format specifier was empty.
+    fn finalize(&mut self) -> Result<BlockFormat<'source>> {
+        let incrementing_set = self.builder.incrementing_is_some();
+
+        match std::mem::take(&mut self.builder).finalize() {
+            Some(block) => Ok(block),
+            // These cases are actually already reported in the other methods
+            // and only an empty format specifier can reach this point, but
+            // keeping it might make debugging in the future easier.
+            None => match self.state {
+                State::Prefix => Err(Error::empty_format(self.start)),
+                State::AfterIncrement if !incrementing_set => Err(Error::empty_increment(self.start)),
+                _ => Err(Error::empty_repeat(self.start))
             }
         }
     }
@@ -208,14 +185,25 @@ impl<'source> FormatParser<'source> {
     /// [`Identifier`]: FormatToken::Identifier
     ///
     /// [`Identifier`]s before a [`Repeat`] token are inserted into the prefix,
-    /// while those after a [`Repeat`] are inserted into the suffix.
+    /// while the suffix, i.e., after a [`Repeat`], are compared against the
+    /// prefix one by one to ensure identity.
     ///
     /// [`Identifier`]: FormatToken::Identifier
     /// [`Repeat`]: FormatToken::Repeat
-    fn identifier(&mut self) {
+    fn identifier(&mut self) -> Result<()> {
         match self.state {
-            State::Prefix | State::AfterIncrement => self.builder.push_prefix(self.lexer.slice()),
-            State::Suffix => self.builder.push_suffix(self.lexer.slice()),
+            State::Prefix | State::AfterIncrement => {
+                self.builder.push(self.lexer.slice());
+
+                Ok(())
+            },
+            State::Suffix => {
+                if !self.builder.compare_prefix(self.lexer.slice()) {
+                    Err(Error::mismatched_repeat(self.start))
+                } else {
+                    Ok(())
+                }
+            }
         }
     }
 
@@ -236,17 +224,19 @@ impl<'source> FormatParser<'source> {
     /// [`Prefix`]: State::Prefix
     fn increment(&mut self) -> Result<()> {
         match self.state {
-            State::Prefix => {
-                if self.builder.prefix_len() == 1 {
+            State::Prefix => match self.builder.len() {
+                0 => Err(Error::empty_increment(self.lexer.location())),
+                1 => {
                     self.state = State::AfterIncrement;
                     let incrementing = self
                         .builder
-                        .pop_prefix()
+                        .pop()
                         .expect("prefix len must be 1 to reach this");
                     self.builder.set_incrementing(incrementing);
 
                     Ok(())
-                } else {
+                }
+                _ => {
                     Err(Error::multiple_identifier_increment(self.lexer.location()))
                 }
             }
@@ -272,7 +262,7 @@ impl<'source> FormatParser<'source> {
     fn repeat(&mut self) -> Result<()> {
         match self.state {
             State::Prefix | State::AfterIncrement => {
-                if self.builder.prefix_is_empty() {
+                if self.builder.is_empty() {
                     Err(Error::empty_repeat(self.lexer.location()))
                 } else {
                     self.state = State::Suffix;
@@ -348,14 +338,14 @@ mod tests {
                 incrementing: "X".into(),
                 repeating: "R".into(),
             },
-            kind: Some("XYDATA".to_string()),
+            kind: Some("XYDATA"),
         })
     );
     parser_test!(
         multi_group,
         "(XY..XY)\n",
         Ok(BlockFormat {
-            line_layout: LineLayout::MultiGroup(vec!["X".into(), "Y".into()]),
+            line_layout: LineLayout::GroupedValues(vec!["X".into(), "Y".into()]),
             kind: None
         })
     );
@@ -363,15 +353,15 @@ mod tests {
         multi_group_block_kind,
         "(XY..XY), PEAKS\n",
         Ok(BlockFormat {
-            line_layout: LineLayout::MultiGroup(vec!["X".into(), "Y".into()]),
-            kind: Some("PEAKS".to_string())
+            line_layout: LineLayout::GroupedValues(vec!["X".into(), "Y".into()]),
+            kind: Some("PEAK")
         })
     );
     parser_test!(
         single_group,
         "(XYWA)\n",
         Ok(BlockFormat {
-            line_layout: LineLayout::SingleGroup(vec![
+            line_layout: LineLayout::GroupedValues(vec![
                 "X".into(),
                 "Y".into(),
                 "W".into(),
@@ -384,13 +374,13 @@ mod tests {
         single_group_block_kind,
         "(XYWA), PEAK ASSIGNMENTS\n",
         Ok(BlockFormat {
-            line_layout: LineLayout::SingleGroup(vec![
+            line_layout: LineLayout::GroupedValues(vec![
                 "X".into(),
                 "Y".into(),
                 "W".into(),
                 "A".into()
             ]),
-            kind: Some("PEAK ASSIGNMENTS".to_string())
+            kind: Some("PEAK ASSIGNMENTS")
         })
     );
     parser_test!(

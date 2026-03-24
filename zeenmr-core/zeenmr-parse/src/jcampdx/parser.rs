@@ -576,8 +576,7 @@ impl<'source> Parser<'source> {
 
                 Ok(decoded_block.exit)
             }
-            LineLayout::SingleGroup(_) => todo!(),
-            LineLayout::MultiGroup(_) => todo!(),
+            LineLayout::GroupedValues(_) => todo!(),
         }
     }
 }

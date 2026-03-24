@@ -1,43 +1,40 @@
 /// Layout of the lines in a data block.
 #[derive(Clone, Eq, PartialEq, Debug)]
-pub(crate) enum LineLayout {
+pub(crate) enum LineLayout<'source> {
     /// `XYDATA` specific layout.
     ///
     /// Each line contains one value for the first identifier, typically `X`,
     /// and then repeats values for the second identifier, typically `Y`, `R` or
     /// `I`, until the line ends.
     RepeatingValue {
-        incrementing: String,
-        repeating: String,
+        incrementing: &'source str,
+        repeating: &'source str,
     },
-    /// Grouped values enclosed by parentheses or separated by semicolons.
+    /// Grouped values enclosed by parentheses, or separated by semicolons or
+    /// newlines.
     ///
     /// Each line contains groups of values for the identifiers until the line
     /// ends. Typically, groups are not meant to extend beyond a linebreak, but
     /// they may.
-    MultiGroup(Vec<String>),
-    /// Grouped values separated by line breaks.
-    ///
-    /// Each line contains one group of values for the identifiers.
-    SingleGroup(Vec<String>),
+    GroupedValues(Vec<&'source str>),
 }
 
 /// Format of a data block.
 #[derive(Clone, Eq, PartialEq, Debug)]
-pub(crate) struct BlockFormat {
+pub(crate) struct BlockFormat<'source> {
     /// Layout of the lines.
-    pub(crate) line_layout: LineLayout,
+    pub(crate) line_layout: LineLayout<'source>,
     /// Optional kind descriptor.
-    pub(crate) kind: Option<String>,
+    pub(crate) kind: Option<&'source str>,
 }
 
 /// Builder pattern for [`BlockFormat`].
 #[derive(Clone, PartialEq, Debug, Default)]
 pub(crate) struct BlockFormatBuilder<'source> {
-    /// Prefix identifiers.
-    prefix: Vec<&'source str>,
-    /// Suffix identifiers.
-    suffix: Vec<&'source str>,
+    /// Main identifiers.
+    identifiers: Vec<&'source str>,
+    /// Current identifier to check against, may be out of bounds.
+    suffix_check: usize,
     /// Incrementing variable, if any.
     incrementing: Option<&'source str>,
     /// Block kind of `DATA TABLE` data block.
@@ -45,55 +42,39 @@ pub(crate) struct BlockFormatBuilder<'source> {
 }
 
 impl<'source> BlockFormatBuilder<'source> {
-    /// Finalizes the `BlockFormat` using a [`RepeatingValue`] line layout.
+    /// Finalizes the `BlockFormat`, or returns `None` if one cannot be
+    /// constructed.
+    ///
+    /// # Layout Requirements
+    ///
+    /// - [`RepeatingValue`]: `identifiers` contains exactly one name and
+    ///   `incrementing` is set.
+    /// - [`GroupedValues`]: `identifiers` is non-empty.
     ///
     /// [`RepeatingValue`]: LineLayout::RepeatingValue
-    ///
-    /// Returns `None` if the prefix length is not 1, or if the incrementing
-    /// variable identifier is not set.
-    pub(crate) fn finalize_repeating(self) -> Option<BlockFormat> {
-        if self.prefix.len() == 1 {
-            self.incrementing.map(|incrementing| BlockFormat {
-                line_layout: LineLayout::RepeatingValue {
-                    incrementing: incrementing.to_string(),
-                    repeating: self.prefix[0].to_string(),
-                },
-                kind: self.block_kind.map(ToString::to_string),
-            })
-        } else {
-            None
+    /// [`GroupedValues`]: LineLayout::GroupedValues
+    pub(crate) fn finalize(self) -> Option<BlockFormat<'source>> {
+        if self.identifiers.len() == 0 {
+            return None;
         }
-    }
 
-    /// Finalizes the `BlockFormat` using a [`SingleGroup`] line layout.
-    ///
-    /// [`SingleGroup`]: LineLayout::SingleGroup
-    pub(crate) fn finalize_single_group(self) -> BlockFormat {
-        let identifiers = self
-            .prefix
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<String>>();
-
-        BlockFormat {
-            line_layout: LineLayout::SingleGroup(identifiers),
-            kind: self.block_kind.map(ToString::to_string),
-        }
-    }
-
-    /// Finalizes the `BlockFormat` using a [`MultiGroup`] line layout.
-    ///
-    /// [`MultiGroup()`]: LineLayout::MultiGroup
-    pub(crate) fn finalize_multi_group(self) -> BlockFormat {
-        let identifiers = self
-            .suffix
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<String>>();
-
-        BlockFormat {
-            line_layout: LineLayout::MultiGroup(identifiers),
-            kind: self.block_kind.map(ToString::to_string),
+        match self.incrementing {
+            Some(incrementing) if self.identifiers.len() == 1 => {
+                Some(BlockFormat {
+                    line_layout: LineLayout::RepeatingValue {
+                        incrementing,
+                        repeating: self.identifiers[0],
+                    },
+                    kind: self.block_kind,
+                })
+            }
+            None if !self.identifiers.is_empty() => {
+                Some(BlockFormat {
+                    line_layout: LineLayout::GroupedValues(self.identifiers),
+                    kind: self.block_kind,
+                })
+            }
+            _ => None,
         }
     }
 
@@ -107,19 +88,29 @@ impl<'source> BlockFormatBuilder<'source> {
         self.block_kind.is_some()
     }
 
-    /// Returns `true` if the prefix contains no elements.
-    pub(crate) fn prefix_is_empty(&self) -> bool {
-        self.prefix.is_empty()
+    /// Returns `true` if the identifiers stack contains no elements.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.identifiers.is_empty()
     }
 
-    /// Returns the number of elements in the prefix stack.
-    pub(crate) fn prefix_len(&self) -> usize {
-        self.prefix.len()
+    /// Returns the number of elements in the identifiers stack.
+    pub(crate) fn len(&self) -> usize {
+        self.identifiers.len()
     }
 
-    /// Returns `true` if the prefix and suffix are equal.
-    pub(crate) fn prefix_matches_suffix(&self) -> bool {
-        self.prefix == self.suffix
+    /// Returns `true` if suffix matches the currently checked identifier.
+    ///
+    /// Starts at the first identifier and each call of this method increments
+    /// the check index. If the check index is out of bounds, `false` is
+    /// returned.
+    pub(crate) fn compare_prefix(&mut self, suffix: &'source str) -> bool {
+        let result = match self.identifiers.get(self.suffix_check) {
+            Some(prefix) if *prefix == suffix => true,
+            _ => false,
+        };
+        self.suffix_check += 1;
+
+        result
     }
 
     /// Sets the incrementing variable identifier.
@@ -132,19 +123,14 @@ impl<'source> BlockFormatBuilder<'source> {
         self.block_kind = Some(kind);
     }
 
-    /// Pushes a prefix identifier onto the stack.
-    pub(crate) fn push_prefix(&mut self, prefix: &'source str) {
-        self.prefix.push(prefix);
+    /// Pushes an identifier onto the stack.
+    pub(crate) fn push(&mut self, prefix: &'source str) {
+        self.identifiers.push(prefix);
     }
 
-    /// Pushes a suffix identifier onto the stack.
-    pub(crate) fn push_suffix(&mut self, suffix: &'source str) {
-        self.suffix.push(suffix);
-    }
-
-    /// Removes the last element from the prefix stack and returns it, or `None`
-    /// if it is empty.
-    pub(crate) fn pop_prefix(&mut self) -> Option<&'source str> {
-        self.prefix.pop()
+    /// Removes the last element from the stack and returns it, or `None` if it
+    /// is empty.
+    pub(crate) fn pop(&mut self) -> Option<&'source str> {
+        self.identifiers.pop()
     }
 }
