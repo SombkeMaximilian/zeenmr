@@ -182,7 +182,9 @@ impl<'source> Parser<'source> {
         }
     }
 
-    /// Key handler.
+    /// Handles [`Key`] tokens.
+    ///
+    /// [`Key`]: Token::Key
     ///
     /// Advances the lexer until it finds an [`Equals`] token. If there is only
     /// a single special token ([`Title`], etc.) between the initial [`Key`]
