@@ -266,13 +266,6 @@ impl BufferCycle {
         self.advance();
     }
 
-    /// Completes the cycle by calling [`BufferCycle::skip_current`] repeatedly.
-    fn complete_cycle(&mut self) {
-        while self.current != 0 {
-            self.skip_current();
-        }
-    }
-
     /// Appends an `i64` to the current [`UpgradingBuffer`] in the cycle and
     /// advances to the next.
     ///
@@ -375,6 +368,11 @@ impl TabulatedBlockBuilder {
         }
     }
 
+    /// Returns the index of the current column.
+    pub(crate) fn current_column_index(&self) -> usize {
+        self.buffer_cycle.current
+    }
+
     /// Updates the exit status to having encountered the [`End`] token.
     ///
     /// [`End`]: crate::jcampdx::tabulation::GroupToken::End
@@ -407,12 +405,6 @@ impl TabulatedBlockBuilder {
     /// to the next.
     pub(crate) fn skip_current(&mut self) {
         self.buffer_cycle.skip_current();
-    }
-
-    /// Completes the cycle by inserting [`Value::Empty`] in the remaining
-    /// columns, advancing back to the start.
-    pub(crate) fn complete_cycle(&mut self) {
-        self.buffer_cycle.complete_cycle();
     }
 
     /// Appends an `i64` to the current column and advances to the next.
@@ -449,5 +441,10 @@ impl TabulatedBlockBuilder {
     /// Panics if no columns have been added.
     pub(crate) fn push_value<T: Into<Value>>(&mut self, value: T) {
         self.buffer_cycle.push_value(value.into());
+    }
+
+    /// Pushes an error onto the stack.
+    pub(crate) fn push_error(&mut self, error: Error) {
+        self.errors.push(error);
     }
 }
