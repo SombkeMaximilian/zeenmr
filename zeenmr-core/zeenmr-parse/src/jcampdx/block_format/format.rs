@@ -88,6 +88,12 @@ impl<'source> BlockFormatBuilder<'source> {
         self.block_kind.is_some()
     }
 
+    /// Returns `true` if at least one identifier was pushed and
+    /// [`compare_prefix`] was called as many times as there are identifiers.
+    pub(crate) fn prefix_was_validated(&self) -> bool {
+        !self.is_empty() && self.suffix_check == self.identifiers.len()
+    }
+
     /// Returns `true` if the identifiers stack contains no elements.
     pub(crate) fn is_empty(&self) -> bool {
         self.identifiers.is_empty()

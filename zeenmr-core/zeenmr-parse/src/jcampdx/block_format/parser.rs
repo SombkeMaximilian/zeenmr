@@ -163,9 +163,14 @@ impl<'source> FormatParser<'source> {
     ///
     /// # Errors
     ///
-    /// Returns an error if the format specifier was empty.
+    /// Returns an error if the format specifier was empty, or if the prefix
+    /// was not fully validated despite there being a suffix.
     fn finalize(&mut self) -> Result<BlockFormat<'source>> {
         let incrementing_set = self.builder.incrementing_is_some();
+
+        if self.state == State::Suffix && !self.builder.prefix_was_validated() {
+            return Err(Error::mismatched_repeat(self.start))
+        }
 
         match std::mem::take(&mut self.builder).finalize() {
             Some(block) => Ok(block),
@@ -346,7 +351,7 @@ mod tests {
         "(XY..XY)\n",
         Ok(BlockFormat {
             line_layout: LineLayout::GroupedValues(vec!["X".into(), "Y".into()]),
-            kind: None
+            kind: None,
         })
     );
     parser_test!(
@@ -354,7 +359,7 @@ mod tests {
         "(XY..XY), PEAKS\n",
         Ok(BlockFormat {
             line_layout: LineLayout::GroupedValues(vec!["X".into(), "Y".into()]),
-            kind: Some("PEAK")
+            kind: Some("PEAKS"),
         })
     );
     parser_test!(
@@ -367,7 +372,7 @@ mod tests {
                 "W".into(),
                 "A".into()
             ]),
-            kind: None
+            kind: None,
         })
     );
     parser_test!(
@@ -380,7 +385,7 @@ mod tests {
                 "W".into(),
                 "A".into()
             ]),
-            kind: Some("PEAK ASSIGNMENTS")
+            kind: Some("PEAK ASSIGNMENTS"),
         })
     );
     parser_test!(
@@ -400,7 +405,7 @@ mod tests {
     );
     parser_test!(
         mismatched_repeat,
-        "X++(Y..)\n",
+        "X++(YY..Y)\n",
         Err(Error::mismatched_repeat(Position { line: 0, column: 0 }))
     );
     parser_test!(
@@ -415,10 +420,10 @@ mod tests {
     );
     parser_test!(
         increment_after_repeat,
-        "(Y..Y)X++\n",
+        "(Y..Y)++\n",
         Err(Error::increment_after_repeat(Position {
             line: 0,
-            column: 7
+            column: 6,
         }))
     );
     parser_test!(
@@ -426,7 +431,7 @@ mod tests {
         "XF1++(Y..Y)\n",
         Err(Error::multiple_identifier_increment(Position {
             line: 0,
-            column: 3
+            column: 3,
         }))
     );
 }
