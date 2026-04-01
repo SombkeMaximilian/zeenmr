@@ -89,7 +89,8 @@ impl<'source, L> TableParser<'source, L> {
 }
 
 impl<'source> TableParser<'source, NeedsLayout> {
-    pub(crate) fn with_multi_group(mut self, identifiers: Vec<String>) -> TableParser<'source, HasLayout> {
+    /// Initializes the parser with the column identifiers and group size.
+    pub(crate) fn with_identifiers(mut self, identifiers: Vec<String>) -> TableParser<'source, HasLayout> {
         self.group_size = identifiers.len();
         self.builder.set_columns(identifiers);
 
