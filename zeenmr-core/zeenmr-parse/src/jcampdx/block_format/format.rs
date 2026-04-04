@@ -59,21 +59,17 @@ impl<'source> BlockFormatBuilder<'source> {
         }
 
         match self.incrementing {
-            Some(incrementing) if self.identifiers.len() == 1 => {
-                Some(BlockFormat {
-                    line_layout: LineLayout::RepeatingValue {
-                        incrementing,
-                        repeating: self.identifiers[0],
-                    },
-                    kind: self.block_kind,
-                })
-            }
-            None if !self.identifiers.is_empty() => {
-                Some(BlockFormat {
-                    line_layout: LineLayout::GroupedValues(self.identifiers),
-                    kind: self.block_kind,
-                })
-            }
+            Some(incrementing) if self.identifiers.len() == 1 => Some(BlockFormat {
+                line_layout: LineLayout::RepeatingValue {
+                    incrementing,
+                    repeating: self.identifiers[0],
+                },
+                kind: self.block_kind,
+            }),
+            None if !self.identifiers.is_empty() => Some(BlockFormat {
+                line_layout: LineLayout::GroupedValues(self.identifiers),
+                kind: self.block_kind,
+            }),
             _ => None,
         }
     }

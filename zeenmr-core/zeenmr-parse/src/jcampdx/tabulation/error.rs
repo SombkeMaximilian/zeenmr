@@ -43,8 +43,8 @@ pub enum Kind {
     /// This can be:
     /// - A semicolon that terminates a group within parentheses
     /// - An unmatched closing parenthesis
-    /// - A new opening parenthesis before the previous one was closed, but
-    ///   the expected group size was not violated.
+    /// - A new opening parenthesis before the previous one was closed, but the
+    ///   expected group size was not violated.
     MismatchedGroupDelimiter,
     /// An unmatched opening or closing angle bracket was encountered.
     ///

@@ -169,7 +169,7 @@ impl<'source> FormatParser<'source> {
         let incrementing_set = self.builder.incrementing_is_some();
 
         if self.state == State::Suffix && !self.builder.prefix_was_validated() {
-            return Err(Error::mismatched_repeat(self.start))
+            return Err(Error::mismatched_repeat(self.start));
         }
 
         match std::mem::take(&mut self.builder).finalize() {
@@ -179,9 +179,11 @@ impl<'source> FormatParser<'source> {
             // keeping it might make debugging in the future easier.
             None => match self.state {
                 State::Prefix => Err(Error::empty_format(self.start)),
-                State::AfterIncrement if !incrementing_set => Err(Error::empty_increment(self.start)),
-                _ => Err(Error::empty_repeat(self.start))
-            }
+                State::AfterIncrement if !incrementing_set => {
+                    Err(Error::empty_increment(self.start))
+                }
+                _ => Err(Error::empty_repeat(self.start)),
+            },
         }
     }
 
@@ -201,7 +203,7 @@ impl<'source> FormatParser<'source> {
                 self.builder.push(self.lexer.slice());
 
                 Ok(())
-            },
+            }
             State::Suffix => {
                 if !self.builder.compare_prefix(self.lexer.slice()) {
                     Err(Error::mismatched_repeat(self.start))
@@ -241,10 +243,8 @@ impl<'source> FormatParser<'source> {
 
                     Ok(())
                 }
-                _ => {
-                    Err(Error::multiple_identifier_increment(self.lexer.location()))
-                }
-            }
+                _ => Err(Error::multiple_identifier_increment(self.lexer.location())),
+            },
             State::AfterIncrement => Err(Error::multiple_increment(self.lexer.location())),
             State::Suffix => Err(Error::increment_after_repeat(self.lexer.location())),
         }
