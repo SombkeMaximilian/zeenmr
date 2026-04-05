@@ -552,7 +552,9 @@ impl<'source> Parser<'source> {
         let mut format_parser = FormatParser::from(self.lexer.clone());
         let format = format_parser.parse_format()?;
         let mut table_parser = match format.line_layout {
-            LineLayout::RepeatingValue { .. } => panic!(),
+            LineLayout::RepeatingValue { .. } => {
+                return Err(Error::mismatched_block_format(self.lexer.location()));
+            },
             LineLayout::GroupedValues(identifiers) => TableParser::from(format_parser.into_lexer())
                 .with_identifiers(
                     identifiers
