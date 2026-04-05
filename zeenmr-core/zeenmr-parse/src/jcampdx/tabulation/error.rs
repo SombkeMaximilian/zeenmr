@@ -111,7 +111,7 @@ impl Error {
     /// Creates a [`MismatchedGroupDelimiter`] error.
     ///
     /// [`MismatchedGroupDelimiter`]: Kind::MismatchedGroupDelimiter
-    pub(crate) fn mismatched_group_terminator(position: Position) -> Self {
+    pub(crate) fn mismatched_group_delimiter(position: Position) -> Self {
         Self {
             kind: Kind::MismatchedGroupDelimiter,
             position,

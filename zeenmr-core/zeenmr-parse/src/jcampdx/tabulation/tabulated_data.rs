@@ -373,6 +373,11 @@ impl TabulatedBlockBuilder {
         self.buffer_cycle.current
     }
 
+    /// Returns the number of elements in a row.
+    pub(crate) fn row_len(&self) -> usize {
+        self.buffer_cycle.buffers.len()
+    }
+
     /// Updates the exit status to having encountered the [`End`] token.
     ///
     /// [`End`]: crate::jcampdx::tabulation::GroupToken::End
