@@ -33,6 +33,7 @@ pub enum Kind {
     Overflow,
     BlockFormat,
     Decode,
+    Tabulate,
     EndOfInput,
 }
 
@@ -50,6 +51,16 @@ impl From<crate::jcampdx::decoding::error::Error> for Error {
     fn from(value: crate::jcampdx::decoding::error::Error) -> Self {
         Self {
             kind: Kind::Decode,
+            position: value.position(),
+            source: Some(Arc::new(value)),
+        }
+    }
+}
+
+impl From<crate::jcampdx::tabulation::error::Error> for Error {
+    fn from(value: crate::jcampdx::tabulation::error::Error) -> Self {
+        Self {
+            kind: Kind::Tabulate,
             position: value.position(),
             source: Some(Arc::new(value)),
         }
@@ -83,6 +94,7 @@ impl std::fmt::Display for Error {
             Kind::Overflow => "overflow",
             Kind::BlockFormat => "block format",
             Kind::Decode => "decode error",
+            Kind::Tabulate => "tabulate error",
             Kind::EndOfInput => "end of input",
         };
 

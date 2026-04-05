@@ -2,6 +2,7 @@ use crate::jcampdx::block_format::{FormatParser, LineLayout};
 use crate::jcampdx::data::DatasetBuilder;
 use crate::jcampdx::decoding::Decoder;
 use crate::jcampdx::error::{Error, Result};
+use crate::jcampdx::tabulation::TableParser;
 use crate::jcampdx::{Dataset, Token, Value};
 use crate::{Location, Stack};
 use logos::{Lexer, Logos};
@@ -253,7 +254,12 @@ impl<'source> Parser<'source> {
                     ChildParserExit::EndToken => Ok(KeyExit::NextKey),
                 };
             }
-            Some(Token::GroupedBlock) => self.grouped_block(),
+            Some(Token::GroupedBlock) => {
+                return match self.grouped_block()? {
+                    ChildParserExit::EndOfInput => Ok(KeyExit::EndOfInput),
+                    ChildParserExit::EndToken => Ok(KeyExit::NextKey),
+                };
+            }
             Some(Token::AmbiguousBlock) => {
                 return match self.ambiguous_block()? {
                     ChildParserExit::EndOfInput => Ok(KeyExit::EndOfInput),
@@ -474,12 +480,11 @@ impl<'source> Parser<'source> {
     ///
     /// # Identifiers
     ///
-    /// Encoded blocks use the `XYDATA` format, which is followed by a string
-    /// of the form `X++(Y..Y)`, where `X` is the positional or independent
-    /// variable, while `Y` is the intensity or dependent variable. Common
-    /// examples include `X` and `F1` for the independent variable, and `Y`, `R`
-    /// and `I` for the dependent variable. See [`FormatParser`] for more
-    /// information.
+    /// Encoded blocks use the `XYDATA` format, which is of the form
+    /// `X++(Y..Y)`, where `X` is the positional or independent variable, while
+    /// `Y` is the intensity or dependent variable. Common examples include `X`
+    /// and `F1` for the independent variable, and `Y`, `R` and `I` for the
+    /// dependent variable. See [`FormatParser`] for more information.
     ///
     /// # Encoding
     ///
@@ -525,7 +530,48 @@ impl<'source> Parser<'source> {
         Ok(decoded_block.exit)
     }
 
-    fn grouped_block(&mut self) {}
+    /// Handles [`GroupedBlock`] tokens.
+    ///
+    /// [`GroupedBlock`]: Token::GroupedBlock
+    ///
+    /// Blocks of grouped data require context switches, once to extract the
+    /// identifiers of the data and once for transposing the groups to columns.
+    ///
+    /// # Identifiers
+    ///
+    /// Grouped blocks use any formats other than `XYDATA`, which are of the
+    /// form `(G)` or `(G..G)`, where `G` may be any group of identifiers.
+    /// Common examples include `X`, `Y`, `R` and `I` for measurement data, as
+    /// well as `W` for peak width, `M` for multiplicity.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the format of the block couldn't be parsed, or if
+    /// the [`TableParser`] encounters a fatal error.
+    fn grouped_block(&mut self) -> Result<ChildParserExit> {
+        let mut format_parser = FormatParser::from(self.lexer.clone());
+        let format = format_parser.parse_format()?;
+        let mut table_parser = match format.line_layout {
+            LineLayout::RepeatingValue { .. } => panic!(),
+            LineLayout::GroupedValues(identifiers) => TableParser::from(format_parser.into_lexer())
+                .with_identifiers(
+                    identifiers
+                        .into_iter()
+                        .map(ToString::to_string)
+                        .collect(),
+                ),
+        };
+        if let Some(kind) = format.kind {
+            table_parser.set_title(kind);
+        }
+        let tabulated_block = table_parser.tabulate_source()?;
+        self.lexer = table_parser.into_lexer().morph();
+        self.builder
+            .extend_errors(tabulated_block.errors.into_iter().map(Into::into));
+        self.builder.push_table(tabulated_block.table);
+
+        Ok(tabulated_block.exit)
+    }
 
     /// Handles [`AmbiguousBlock`] tokens.
     ///
@@ -578,7 +624,25 @@ impl<'source> Parser<'source> {
 
                 Ok(decoded_block.exit)
             }
-            LineLayout::GroupedValues(_) => todo!(),
+            LineLayout::GroupedValues(identifiers) => {
+                let mut table_parser = TableParser::from(format_parser.into_lexer())
+                    .with_identifiers(
+                        identifiers
+                            .into_iter()
+                            .map(ToString::to_string)
+                            .collect(),
+                    );
+                if let Some(kind) = format.kind {
+                    table_parser.set_title(kind);
+                }
+                let tabulated_block = table_parser.tabulate_source()?;
+                self.lexer = table_parser.into_lexer().morph();
+                self.builder
+                    .extend_errors(tabulated_block.errors.into_iter().map(Into::into));
+                self.builder.push_table(tabulated_block.table);
+
+                Ok(tabulated_block.exit)
+            }
         }
     }
 }

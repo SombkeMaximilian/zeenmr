@@ -53,11 +53,11 @@ enum State {
 
 /// Pre-initialization marker.
 #[derive(Debug)]
-struct NeedsLayout;
+pub(crate) struct NeedsLayout;
 
 /// Post-initialization marker.
 #[derive(Debug)]
-struct HasLayout;
+pub(crate) struct HasLayout;
 
 /// Parser for tables in row-major, grouped format.
 #[derive(Debug)]
@@ -106,6 +106,11 @@ impl<'source, L> TableParser<'source, L> {
     /// Recovers the [`Lexer`] from the `TableParser`.
     pub(crate) fn into_lexer(self) -> Lexer<'source, GroupToken> {
         self.lexer
+    }
+
+    /// Sets the title of the dataset.
+    pub(crate) fn set_title<T: Into<String>>(&mut self, title: T) {
+        self.builder.set_title(title);
     }
 }
 
