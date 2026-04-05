@@ -157,6 +157,12 @@ impl<'source> TableParser<'source, HasLayout> {
                 }
             }
         }
+        if self.awaits == Awaits::Value && self.at_end_of_group() {
+            self.builder.skip_current();
+        }
+        if !self.at_start_of_group() {
+            return Err(Error::mismatched_group_size(self.lexer.location()));
+        }
 
         Ok(std::mem::take(&mut self.builder).finalize())
     }
@@ -336,6 +342,9 @@ impl<'source> TableParser<'source, HasLayout> {
                 let mut found_closing = false;
                 while let Some(token) = self.lexer.next().transpose()? {
                     match token {
+                        GroupToken::OpenAngle => {
+                            return Err(Error::unmatched_string_delimiter(self.lexer.location()));
+                        }
                         GroupToken::CloseAngle => {
                             found_closing = true;
                             break;

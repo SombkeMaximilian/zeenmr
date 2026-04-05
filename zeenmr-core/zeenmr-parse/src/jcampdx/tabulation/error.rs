@@ -49,8 +49,9 @@ pub enum Kind {
     /// An unmatched opening or closing angle bracket was encountered.
     ///
     /// This specifically occurs if an angle bracket isn't closed before
-    /// reaching the end of the input or the next header key, or if a closing
-    /// angle bracket occurs without an opening one.
+    /// reaching the end of the input, the next opening angle bracket, or the
+    /// next header key, or if a closing angle bracket occurs without an opening
+    /// one.
     UnmatchedStringDelimiter,
     /// Two or more consecutive values are not separated or enclosed by angle
     /// brackets.
