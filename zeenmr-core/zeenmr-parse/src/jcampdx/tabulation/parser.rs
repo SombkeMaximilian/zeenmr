@@ -403,10 +403,9 @@ impl<'source> TableParser<'source, HasLayout> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Position;
     use crate::jcampdx::{ChildParserExit, RawColumn, Table, Value};
     use std::sync::LazyLock;
-
-    const IDENTIFIERS: [&str; 5] = ["X", "Y", "M", "S", "A"];
 
     static EXPECTED: LazyLock<TabulatedBlock> = LazyLock::new(|| {
         let mut table = Table::new();
@@ -457,7 +456,11 @@ mod tests {
             fn $name() {
                 let data = $data;
                 let tabulated = TableParser::from(data)
-                    .with_identifiers(IDENTIFIERS.map(ToString::to_string).to_vec())
+                    .with_identifiers(
+                        ["X", "Y", "M", "S", "A"]
+                            .map(ToString::to_string)
+                            .to_vec(),
+                    )
                     .tabulate_source()
                     .unwrap();
                 assert_eq!(tabulated, *EXPECTED);
@@ -524,5 +527,237 @@ mod tests {
             (3.651, 182, 4, <3.00 - skewed>, CH2)\n\
             (3.687, 167, 4, <0.87 - skewed>, CH2)\n\
             (3.727,  55, 4, <2.65 - skewed>, CH2)"
+    );
+    parser_test!(
+        parenthesis_enclosed_cross_line,
+        "\
+            (1.148, 209, 3, 1, CH3) (1.226, 416, 3, 2,   \n\
+            CH3) (1.306, 205, 3, 1, CH3) (2.610, 95,     \n\
+            1, 1, OH) (3.574,  63, 4, <1.00 - skewed>,   \n\
+            CH2) (3.651, 182, 4, <3.00 - skewed>, CH2)   \n\
+            (3.687, 167, 4, <0.87 - skewed>, CH2) (3.727,\n\
+            55, 4, <2.65 - skewed>, CH2)"
+    );
+
+    macro_rules! fatal_error_test {
+        ($name:ident, $columns:expr, $data:expr, $error:expr) => {
+            #[test]
+            fn $name() {
+                let identifiers = std::iter::repeat("A".to_string())
+                    .take($columns)
+                    .collect();
+                let data = $data;
+                let error = $error;
+                let tabulated = TableParser::from(data)
+                    .with_identifiers(identifiers)
+                    .tabulate_source()
+                    .unwrap_err();
+                assert_eq!(tabulated, error);
+            }
+        };
+    }
+
+    fatal_error_test!(
+        group_too_large_semicolon,
+        2,
+        "\
+            1, 1; 2, 2; 3, 3\n\
+            4, 4; 5, 5, 5;",
+        Error::mismatched_group_size(Position {
+            line: 1,
+            column: 10
+        })
+    );
+    fatal_error_test!(
+        group_too_large_whitespace,
+        2,
+        "\
+            1, 1  2, 2  3, 3\n\
+            4, 4  5, 5, 5",
+        Error::mismatched_group_size(Position {
+            line: 1,
+            column: 10
+        })
+    );
+    fatal_error_test!(
+        group_too_large_parentheses,
+        2,
+        "\
+            (1, 1) (2, 2) (3, 3)\n\
+            (4, 4) (5, 5, 5)",
+        Error::mismatched_group_size(Position {
+            line: 1,
+            column: 12
+        })
+    );
+    fatal_error_test!(
+        group_too_small_semicolon,
+        3,
+        "\
+            1, 1, 1; 2, 2, 2; 3, 3, 3\n\
+            4, 4, 4; 5, 5;",
+        Error::mismatched_group_size(Position {
+            line: 1,
+            column: 13
+        })
+    );
+    fatal_error_test!(
+        group_too_small_whitespace,
+        3,
+        "\
+            1, 1, 1  2, 2, 2  3, 3, 3\n\
+            4, 4, 4  5, 5",
+        Error::mismatched_group_size(Position {
+            line: 1,
+            column: 13
+        })
+    );
+    fatal_error_test!(
+        group_too_small_parentheses,
+        3,
+        "\
+            (1, 1, 1) (2, 2, 2) (3, 3, 3)\n\
+            (4, 4, 4) (5, 5)",
+        Error::mismatched_group_size(Position {
+            line: 1,
+            column: 15
+        })
+    );
+
+    fatal_error_test!(
+        mismatched_group_delimiter_unclosed_parenthesis,
+        2,
+        "\
+            (1, 1) (2, 2  (3, 3)\n\
+            (4, 4) (5, 5)",
+        Error::mismatched_group_delimiter(Position {
+            line: 0,
+            column: 14
+        })
+    );
+    fatal_error_test!(
+        mismatched_group_delimiter_unopened_parenthesis,
+        2,
+        "\
+            (1, 1)  2, 2) (3, 3)\n\
+            (4, 4) (5, 5)",
+        Error::mismatched_group_delimiter(Position {
+            line: 0,
+            column: 12
+        })
+    );
+    fatal_error_test!(
+        unmatched_string_delimiter_unclosed_angle_semicolon,
+        3,
+        "\
+            1, 1, <1>; 2, 2, <2>; 3, 3, <3>\n\
+            4, 4, <4>; 5, 5, <5 ;",
+        Error::unmatched_string_delimiter(Position {
+            line: 1,
+            column: 21
+        })
+    );
+    fatal_error_test!(
+        unmatched_string_delimiter_unopened_angle_semicolon,
+        3,
+        "\
+            1, 1,  1>; 2, 2, <2>; 3, 3, <3>\n\
+            4, 4, <4>; 5, 5, <5>;",
+        Error::unmatched_string_delimiter(Position { line: 0, column: 8 })
+    );
+    fatal_error_test!(
+        unmatched_string_delimiter_multiple_opened_angle_semicolon,
+        3,
+        "\
+            1, 1, <1 ; 2, 2, <2>; 3, 3, <3>\n\
+            4, 4, <4>; 5, 5, <5>;",
+        Error::unmatched_string_delimiter(Position {
+            line: 0,
+            column: 17
+        })
+    );
+    fatal_error_test!(
+        unmatched_string_delimiter_unclosed_angle_parentheses,
+        3,
+        "\
+            (1, 1, <1>) (2, 2, <2>) (3, 3, <3>)\n\
+            (4, 4, <4>) (5, 5, <5 )",
+        Error::unmatched_string_delimiter(Position {
+            line: 1,
+            column: 23
+        })
+    );
+    fatal_error_test!(
+        unmatched_string_delimiter_unopened_angle_parentheses,
+        3,
+        "\
+            (1, 1,  1>) (2, 2, <2>) (3, 3, <3>)\n\
+            (4, 4, <4>) (5, 5, <5>)",
+        Error::unmatched_string_delimiter(Position { line: 0, column: 9 })
+    );
+    fatal_error_test!(
+        unmatched_string_delimiter_multiple_opened_angle_parentheses,
+        3,
+        "\
+            (1, 1, <1 ) (2, 2, <2>) (3, 3, <3>)\n\
+            (4, 4, <4>) (5, 5, <5>)",
+        Error::unmatched_string_delimiter(Position {
+            line: 0,
+            column: 19
+        })
+    );
+    fatal_error_test!(
+        unmatched_string_delimiter_unclosed_angle_whitespace,
+        3,
+        "\
+            1, 1, <1> 2, 2, <2> 3, 3, <3>\n\
+            4, 4, <4> 5, 5, <5 ",
+        Error::unmatched_string_delimiter(Position {
+            line: 1,
+            column: 19
+        })
+    );
+    fatal_error_test!(
+        unmatched_string_delimiter_unopened_angle_whitespace,
+        3,
+        "\
+            1, 1,  1> 2, 2, <2> 3, 3, <3>\n\
+            4, 4, <4> 5, 5, <5>",
+        Error::unmatched_string_delimiter(Position { line: 0, column: 8 })
+    );
+    fatal_error_test!(
+        unmatched_string_delimiter_multiple_opened_angle_whitespace,
+        3,
+        "\
+            1, 1, <1  2, 2, <2> 3, 3, <3>\n\
+            4, 4, <4> 5, 5, <5>",
+        Error::unmatched_string_delimiter(Position {
+            line: 0,
+            column: 16
+        })
+    );
+    fatal_error_test!(
+        non_separated_values_semicolon,
+        2,
+        "\
+            1, 1; 2  2; 3, 3\n\
+            4, 4; 5, 5",
+        Error::non_separated_values(Position { line: 0, column: 9 })
+    );
+    fatal_error_test!(
+        non_separated_values_parentheses,
+        2,
+        "\
+            (1, 1) (2  2) (3, 3)\n\
+            (4, 4) (5, 5)",
+        Error::non_separated_values(Position { line: 0, column: 11 })
+    );
+    fatal_error_test!(
+        non_separated_values_whitespace,
+        2,
+        "\
+            1, 1 2  2 3, 3\n\
+            4, 4 5, 5",
+        Error::non_separated_values(Position { line: 0, column: 8 })
     );
 }
