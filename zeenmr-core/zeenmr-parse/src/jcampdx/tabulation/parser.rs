@@ -189,9 +189,9 @@ impl<'source> TableParser<'source, HasLayout> {
             match self.awaits {
                 Awaits::Value if self.at_start_of_group() => {}
                 Awaits::Value if self.at_end_of_group() => self.builder.skip_current(),
-                Awaits::Value | Awaits::Comma => {
-                    self.builder.push_error(Error::cross_line_group(self.lexer.location()))
-                }
+                Awaits::Value | Awaits::Comma => self
+                    .builder
+                    .push_error(Error::cross_line_group(self.lexer.location())),
                 Awaits::Terminator => {}
             }
         }
@@ -750,7 +750,10 @@ mod tests {
         "\
             (1, 1) (2  2) (3, 3)\n\
             (4, 4) (5, 5)",
-        Error::non_separated_values(Position { line: 0, column: 11 })
+        Error::non_separated_values(Position {
+            line: 0,
+            column: 11
+        })
     );
     fatal_error_test!(
         non_separated_values_whitespace,
@@ -759,5 +762,69 @@ mod tests {
             1, 1 2  2 3, 3\n\
             4, 4 5, 5",
         Error::non_separated_values(Position { line: 0, column: 8 })
+    );
+
+    macro_rules! recoverable_error_test {
+        ($name:ident, $columns:expr, $data:expr, $errors:expr) => {
+            #[test]
+            fn $name() {
+                let identifiers = std::iter::repeat("A".to_string())
+                    .take($columns)
+                    .collect();
+                let data = $data;
+                let errors = $errors;
+                let tabulated = TableParser::from(data)
+                    .with_identifiers(identifiers)
+                    .tabulate_source()
+                    .unwrap();
+                assert_eq!(tabulated.errors, errors)
+            }
+        };
+    }
+
+    recoverable_error_test!(
+        overflow_semicolon,
+        2,
+        "1, 10000000000000000000; 1, -10000000000000000000",
+        [
+            Error::overflow(Position { line: 0, column: 3 }),
+            Error::overflow(Position {
+                line: 0,
+                column: 28
+            }),
+        ]
+    );
+    recoverable_error_test!(
+        overflow_parentheses,
+        2,
+        "(1, 10000000000000000000) (1, -10000000000000000000)",
+        [
+            Error::overflow(Position { line: 0, column: 4 }),
+            Error::overflow(Position {
+                line: 0,
+                column: 30
+            }),
+        ]
+    );
+    recoverable_error_test!(
+        overflow_whitespace,
+        2,
+        "1, 10000000000000000000 1, -10000000000000000000",
+        [
+            Error::overflow(Position { line: 0, column: 3 }),
+            Error::overflow(Position {
+                line: 0,
+                column: 27
+            }),
+        ]
+    );
+    recoverable_error_test!(
+        semicolon_closes_parenthesis,
+        2,
+        "(1, 1) (2, 2; (3, 3)",
+        [Error::mismatched_group_delimiter(Position {
+            line: 0,
+            column: 12
+        })]
     );
 }
