@@ -606,9 +606,8 @@ impl<'source> Decoder<'source> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Position;
     use crate::jcampdx::ChildParserExit;
-    use crate::jcampdx::{RawColumn, Table};
+    use crate::{Position, RawColumn, Table};
     use std::sync::LazyLock;
 
     static EXPECTED: LazyLock<DecodedBlock> = LazyLock::new(|| {

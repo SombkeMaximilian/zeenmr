@@ -1,5 +1,6 @@
+use crate::jcampdx::ChildParserExit;
 use crate::jcampdx::tabulation::error::Error;
-use crate::jcampdx::{ChildParserExit, Column, RawColumn, Table, Value};
+use crate::{Column, RawColumn, Table, Value};
 
 /// Tabulated data block.
 #[derive(Clone, PartialEq, Debug)]

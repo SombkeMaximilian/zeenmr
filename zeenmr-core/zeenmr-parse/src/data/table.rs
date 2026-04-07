@@ -1,4 +1,4 @@
-use crate::jcampdx::Column;
+use crate::Column;
 
 /// Data table in a JCAMP-DX dataset.
 ///

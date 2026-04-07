@@ -1,12 +1,23 @@
+use crate::jcampdx::Token;
 use crate::jcampdx::block_format::{FormatParser, LineLayout};
-use crate::jcampdx::data::DatasetBuilder;
 use crate::jcampdx::decoding::Decoder;
 use crate::jcampdx::error::{Error, Result};
 use crate::jcampdx::tabulation::TableParser;
-use crate::jcampdx::{Dataset, Token, Value};
-use crate::{Location, Stack};
+use crate::{Dataset, DatasetBuilder, Location, Stack, Value};
 use logos::{Lexer, Logos};
 use std::num::IntErrorKind;
+
+pub type JcampDxDataset = Dataset<Error>;
+
+/// Exit status of a child parser.
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
+pub(crate) enum ChildParserExit {
+    /// Child parser was terminated by the end of the input.
+    #[default]
+    EndOfInput,
+    /// Child parser was terminated by encountering its respective end token.
+    EndToken,
+}
 
 /// Delimiters of bounded values.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -29,23 +40,13 @@ enum KeyExit {
     NextKey,
 }
 
-/// Exit status of a child parser.
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
-pub(crate) enum ChildParserExit {
-    /// Child parser was terminated by the end of the input.
-    #[default]
-    EndOfInput,
-    /// Child parser was terminated by encountering its respective end token.
-    EndToken,
-}
-
 /// JCAMP-DX file parser.
 #[derive(Debug)]
 pub(crate) struct Parser<'source> {
     /// Lexer for tokenizing the key-value pairs in JCAMP-DX headers.
     lexer: Lexer<'source, Token>,
     /// Dataset being constructed.
-    builder: DatasetBuilder,
+    builder: DatasetBuilder<Error>,
     /// Current key.
     current_key: &'source str,
     /// Current value.
@@ -85,7 +86,7 @@ impl<'source> From<Lexer<'source, Token>> for Parser<'source> {
 impl<'source> Parser<'source> {
     /// Parses the source until the last matching [`End`] token or the end of
     /// the source.
-    pub(crate) fn parse_source(&mut self) -> Result<Dataset> {
+    pub(crate) fn parse_source(&mut self) -> Result<JcampDxDataset> {
         self.initialize()?;
 
         self.parse_values()
@@ -99,7 +100,7 @@ impl<'source> Parser<'source> {
     ///
     /// [`End`]: Token::End
     /// [`Title`]: Token::Title
-    fn parse_values(&mut self) -> Result<Dataset> {
+    fn parse_values(&mut self) -> Result<JcampDxDataset> {
         while let Some(token) = self.lexer.next().transpose()? {
             let reset_auto_concatenate = token != Token::Comma;
             match token {

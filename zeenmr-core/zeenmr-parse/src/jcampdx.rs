@@ -11,8 +11,5 @@ pub(crate) mod tabulation;
 mod lexer;
 pub(crate) use lexer::Token;
 
-mod data;
-pub use data::{Column, Dataset, RawColumn, Table, Value};
-
 mod parser;
 pub(crate) use parser::{ChildParserExit, Parser};

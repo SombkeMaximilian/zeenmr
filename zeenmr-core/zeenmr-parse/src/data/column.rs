@@ -1,4 +1,4 @@
-use crate::jcampdx::Value;
+use crate::Value;
 
 /// Column in a JCAMP-DX data table.
 #[derive(Clone, PartialEq, Debug)]

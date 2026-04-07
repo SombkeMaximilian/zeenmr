@@ -1,5 +1,6 @@
+use crate::jcampdx::ChildParserExit;
 use crate::jcampdx::decoding::error::{Error, Kind};
-use crate::jcampdx::{ChildParserExit, RawColumn, Table};
+use crate::{RawColumn, Table};
 
 /// Decoded data block.
 #[derive(Clone, PartialEq, Debug)]

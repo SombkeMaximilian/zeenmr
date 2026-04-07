@@ -403,8 +403,8 @@ impl<'source> TableParser<'source, HasLayout> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Position;
-    use crate::jcampdx::{ChildParserExit, RawColumn, Table, Value};
+    use crate::jcampdx::ChildParserExit;
+    use crate::{Position, RawColumn, Table, Value};
     use std::sync::LazyLock;
 
     static EXPECTED: LazyLock<TabulatedBlock> = LazyLock::new(|| {

@@ -1,10 +1,10 @@
-use crate::jcampdx::error::Error;
-use crate::jcampdx::{Table, Value};
+use crate::{Table, Value};
 use std::collections::HashMap;
+use std::error::Error;
 
 /// Representation of a JCAMP-DX dataset.
 #[derive(Clone, PartialEq, Debug, Default)]
-pub struct Dataset {
+pub struct Dataset<E> {
     /// General parameters.
     parameters: HashMap<String, Value>,
     /// Tables in the dataset.
@@ -12,32 +12,38 @@ pub struct Dataset {
     /// Nested structures.
     children: Vec<Self>,
     /// Non-fatal errors during parsing.
-    errors: Vec<Error>,
+    errors: Vec<E>,
 }
 
-impl Dataset {
+impl<E> Dataset<E>
+where
+    E: Error + Default + Send + Sync,
+{
     /// Builder pattern for a new `Dataset`.
-    pub(crate) fn builder() -> DatasetBuilder {
+    pub(crate) fn builder() -> DatasetBuilder<E> {
         DatasetBuilder::default()
     }
 }
 
 /// Builder pattern for [`Dataset`].
 #[derive(Clone, PartialEq, Debug, Default)]
-pub(crate) struct DatasetBuilder {
+pub(crate) struct DatasetBuilder<E> {
     /// General parameters.
     parameters: HashMap<String, Value>,
     /// Tables in the dataset.
     tables: Vec<Table>,
     /// Nested structures.
-    children: Vec<Dataset>,
+    children: Vec<Dataset<E>>,
     /// Non-fatal errors during parsing.
-    errors: Vec<Error>,
+    errors: Vec<E>,
 }
 
-impl DatasetBuilder {
+impl<E> DatasetBuilder<E>
+where
+    E: Error + Default + Send + Sync,
+{
     /// Finalizes the `Dataset`.
-    pub(crate) fn finalize(self) -> Dataset {
+    pub(crate) fn finalize(self) -> Dataset<E> {
         Dataset {
             parameters: self.parameters,
             tables: self.tables,
@@ -62,17 +68,17 @@ impl DatasetBuilder {
     }
 
     /// Pushes a nested `Dataset` onto the stack.
-    pub(crate) fn push_child(&mut self, child: Dataset) {
+    pub(crate) fn push_child(&mut self, child: Dataset<E>) {
         self.children.push(child);
     }
 
     /// Pushes an error onto the stack.
-    pub(crate) fn push_error(&mut self, error: Error) {
+    pub(crate) fn push_error(&mut self, error: E) {
         self.errors.push(error);
     }
 
     /// Extends the error stack with the contents of an iterator.
-    pub(crate) fn extend_errors<I: IntoIterator<Item = Error>>(&mut self, iter: I) {
+    pub(crate) fn extend_errors<I: IntoIterator<Item = E>>(&mut self, iter: I) {
         self.errors.extend(iter);
     }
 }
