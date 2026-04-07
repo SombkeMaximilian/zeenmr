@@ -182,19 +182,18 @@ impl<'source> TableParser<'source, HasLayout> {
     /// [`Checkpoint`]: GroupToken::Checkpoint
     ///
     /// A newline character serves as a potential group separator. Groups within
-    /// parentheses can extend past a newline, in which case this is a simple
-    /// NOP.
+    /// parentheses can extend past a newline. Always transitions to awaiting a
+    /// value.
     fn check_point(&mut self) {
-        match self.awaits {
-            Awaits::Value if self.at_end_of_group() => self.builder.skip_current(),
-            Awaits::Value if self.at_start_of_group() => {}
-            Awaits::Value | Awaits::Comma => match self.state {
-                State::OutsideParentheses => self
-                    .builder
-                    .push_error(Error::cross_line_group(self.lexer.location())),
-                State::InsideParentheses => {}
-            },
-            Awaits::Terminator => {}
+        if self.state == State::OutsideParentheses {
+            match self.awaits {
+                Awaits::Value if self.at_start_of_group() => {}
+                Awaits::Value if self.at_end_of_group() => self.builder.skip_current(),
+                Awaits::Value | Awaits::Comma => {
+                    self.builder.push_error(Error::cross_line_group(self.lexer.location()))
+                }
+                Awaits::Terminator => {}
+            }
         }
         self.awaits = Awaits::Value;
     }
