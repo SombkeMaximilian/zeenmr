@@ -1,14 +1,15 @@
+use crate::data::{Column, DataTable, Value};
 use crate::jcampdx::ChildParserExit;
 use crate::jcampdx::tabulation::error::Error;
-use crate::{Column, RawColumn, Table, Value};
+use std::borrow::Cow;
 
 /// Tabulated data block.
 #[derive(Clone, PartialEq, Debug)]
-pub(crate) struct TabulatedBlock {
+pub(crate) struct TabulatedBlock<'source> {
     /// Exit status of the parser (end of input or header key).
     pub(crate) exit: ChildParserExit,
     /// Tabulated data.
-    pub(crate) table: Table,
+    pub(crate) table: DataTable<'source>,
     /// Non-fatal errors during tabulation.
     pub(crate) errors: Vec<Error>,
 }
@@ -23,40 +24,51 @@ pub(crate) struct TabulatedBlock {
 /// or `String` can at most be upgraded once. A `Mixed` buffer never gets
 /// upgraded.
 #[derive(Clone, PartialEq, Debug)]
-enum UpgradingBuffer {
+enum UpgradingBuffer<'source> {
     /// Only integers.
     Integer(Vec<i64>),
     /// Only floats.
     Float(Vec<f64>),
     /// Only strings.
-    String(Vec<String>),
+    String(Vec<Cow<'source, str>>),
     /// Potentially mixed values.
-    Mixed(Vec<Value>),
+    Mixed(Vec<Value<'source>>),
 }
 
-impl UpgradingBuffer {
-    /// Creates a new, empty [`UpgradingBuffer::Integer`].
+impl<'source> From<UpgradingBuffer<'source>> for Column<'source> {
+    fn from(value: UpgradingBuffer<'source>) -> Self {
+        match value {
+            UpgradingBuffer::Integer(values) => values.into(),
+            UpgradingBuffer::Float(values) => values.into(),
+            UpgradingBuffer::String(values) => values.into(),
+            UpgradingBuffer::Mixed(values) => values.into(),
+        }
+    }
+}
+
+impl<'source> UpgradingBuffer<'source> {
+    /// Creates a new, empty `Integer` buffer.
     fn new_integer() -> Self {
         Self::Integer(Vec::new())
     }
 
-    /// Creates a new, empty [`UpgradingBuffer::Float`].
+    /// Creates a new, empty `Float` buffer.
     fn new_float() -> Self {
         Self::Float(Vec::new())
     }
 
-    /// Creates a new, empty [`UpgradingBuffer::String`].
+    /// Creates a new, empty `String` buffer.
     fn new_string() -> Self {
         Self::String(Vec::new())
     }
 
-    /// Creates a new, empty [`UpgradingBuffer::Mixed`].
+    /// Creates a new, empty `Mixed` buffer.
     fn new_mixed() -> Self {
         Self::Mixed(Vec::new())
     }
 
     /// Helper for converting inner `Vec<i64>` to `Vec<f64>`, appending a new
-    /// `f64` to it and returning an [`UpgradingBuffer::Float`].
+    /// `f64` to it and returning a `Float` buffer.
     fn convert_to_float_and_push(inner: Vec<i64>, value: f64) -> Self {
         let mut converted = inner
             .into_iter()
@@ -68,16 +80,16 @@ impl UpgradingBuffer {
     }
 
     /// Helper for converting inner `Vec<T>` to `Vec<Value>`, appending a new
-    /// value to it and returning an [`UpgradingBuffer::Mixed`].
+    /// value to it and returning a `Mixed` buffer.
     fn convert_to_mixed_and_push<T, U>(inner: Vec<T>, value: U) -> Self
     where
-        T: Into<Value>,
-        U: Into<Value>,
+        T: Into<Value<'source>>,
+        U: Into<Value<'source>>,
     {
         let mut converted = inner
             .into_iter()
             .map(Into::into)
-            .collect::<Vec<Value>>();
+            .collect::<Vec<Value<'source>>>();
         converted.push(value.into());
 
         Self::Mixed(converted)
@@ -140,7 +152,7 @@ impl UpgradingBuffer {
     /// | `Float`     | ---               | `Mixed`            |
     /// | `String`    | ---               | ---                |
     /// | `Mixed`     | [`Value::String`] | ---                |
-    fn push_string<T: Into<String>>(&mut self, value: T) {
+    fn push_string<T: Into<Cow<'source, str>>>(&mut self, value: T) {
         let value = value.into();
 
         match self {
@@ -165,7 +177,7 @@ impl UpgradingBuffer {
     /// | `Float`     | ---               | `Mixed`            |
     /// | `String`    | ---               | `Mixed`            |
     /// | `Mixed`     | ---               | ---                |
-    fn push_value<T: Into<Value>>(&mut self, value: T) {
+    fn push_value<T: Into<Value<'source>>>(&mut self, value: T) {
         match self {
             Self::Integer(inner) => {
                 *self = Self::convert_to_mixed_and_push(std::mem::take(inner), value);
@@ -183,15 +195,15 @@ impl UpgradingBuffer {
 
 /// Constructs a collection of buffers by pushing to them in a cycle.
 #[derive(Clone, PartialEq, Debug, Default)]
-struct BufferCycle {
+struct BufferCycle<'source> {
     /// Cycling buffers.
-    buffers: Vec<UpgradingBuffer>,
+    buffers: Vec<UpgradingBuffer<'source>>,
     /// Current buffer to push to.
     current: usize,
 }
 
-impl IntoIterator for BufferCycle {
-    type Item = UpgradingBuffer;
+impl<'source> IntoIterator for BufferCycle<'source> {
+    type Item = UpgradingBuffer<'source>;
     type IntoIter = std::vec::IntoIter<Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -199,7 +211,7 @@ impl IntoIterator for BufferCycle {
     }
 }
 
-impl BufferCycle {
+impl<'source> BufferCycle<'source> {
     /// Creates a new, empty `BufferCycle`.
     fn new() -> Self {
         Self {
@@ -213,7 +225,7 @@ impl BufferCycle {
     /// # Panics
     ///
     /// Panics if no buffers have been added.
-    fn current_mut(&mut self) -> &mut UpgradingBuffer {
+    fn current_mut(&mut self) -> &mut UpgradingBuffer<'source> {
         &mut self.buffers[self.current]
     }
 
@@ -223,7 +235,7 @@ impl BufferCycle {
         self.current = 0;
     }
 
-    /// Advances to the next [`UpgradingBuffer`] in the cycle.
+    /// Advances to the next buffer in the cycle.
     ///
     /// # Panics
     ///
@@ -232,43 +244,43 @@ impl BufferCycle {
         self.current = (self.current + 1) % self.buffers.len();
     }
 
-    /// Adds an [`UpgradingBuffer::Integer`] to the cycle.
+    /// Adds an `Integer` buffer to the cycle.
     ///
     /// Using this method after pushing values potentially breaks the cycle.
     fn add_integer_buffer(&mut self) {
         self.buffers.push(UpgradingBuffer::new_integer());
     }
 
-    /// Adds an [`UpgradingBuffer::Float`] to the cycle.
+    /// Adds a `Float` buffer to the cycle.
     ///
     /// Using this method after pushing values potentially breaks the cycle.
     fn add_float_buffer(&mut self) {
         self.buffers.push(UpgradingBuffer::new_float());
     }
 
-    /// Adds an [`UpgradingBuffer::String`] to the cycle.
+    /// Adds a `String` buffer to the cycle.
     ///
     /// Using this method after pushing values potentially breaks the cycle.
     fn add_string_buffer(&mut self) {
         self.buffers.push(UpgradingBuffer::new_string());
     }
 
-    /// Adds an [`UpgradingBuffer::Mixed`] to the cycle.
+    /// Adds a `Mixed` buffer to the cycle.
     ///
     /// Using this method after pushing values potentially breaks the cycle.
     fn add_mixed_buffer(&mut self) {
         self.buffers.push(UpgradingBuffer::new_mixed());
     }
 
-    /// Skips the current buffer in the cycle by inserting a [`Value::Empty`]
+    /// Skips the current buffer in the cycle by inserting an empty value
     /// and advances to the next.
     fn skip_current(&mut self) {
         self.current_mut().push_value(Value::Empty);
         self.advance();
     }
 
-    /// Appends an `i64` to the current [`UpgradingBuffer`] in the cycle and
-    /// advances to the next.
+    /// Appends an `i64` to the current buffer in the cycle and advances to the
+    /// next.
     ///
     /// # Panics
     ///
@@ -278,8 +290,8 @@ impl BufferCycle {
         self.advance();
     }
 
-    /// Appends an `f64` to the current [`UpgradingBuffer`] in the cycle and
-    /// advances to the next.
+    /// Appends an `f64` to the current buffer in the cycle and advances to the
+    /// next.
     ///
     /// # Panics
     ///
@@ -289,24 +301,24 @@ impl BufferCycle {
         self.advance();
     }
 
-    /// Appends a `String` to the current [`UpgradingBuffer`] in the cycle and
-    /// advances to the next.
+    /// Appends a `String` to the current buffer in the cycle and advances to
+    /// the next.
     ///
     /// # Panics
     ///
     /// Panics if no buffers have been added.
-    fn push_string<T: Into<String>>(&mut self, value: T) {
+    fn push_string<T: Into<Cow<'source, str>>>(&mut self, value: T) {
         self.current_mut().push_string(value);
         self.advance();
     }
 
-    /// Appends a `Value` to the current [`UpgradingBuffer`] in the cycle and
-    /// advances to the next.
+    /// Appends a `Value` to the current buffer in the cycle and advances to the
+    /// next.
     ///
     /// # Panics
     ///
     /// Panics if no buffers have been added.
-    fn push_value<T: Into<Value>>(&mut self, value: T) {
+    fn push_value<T: Into<Value<'source>>>(&mut self, value: T) {
         self.current_mut().push_value(value);
         self.advance();
     }
@@ -314,24 +326,24 @@ impl BufferCycle {
 
 /// Builder pattern for [`TabulatedBlock`].
 #[derive(Clone, PartialEq, Debug)]
-pub(crate) struct TabulatedBlockBuilder {
+pub(crate) struct TabulatedBlockBuilder<'source> {
     /// Exit status of the parser (end of input or header key).
     exit: ChildParserExit,
     /// Tabulated data.
-    title: String,
+    title: Cow<'source, str>,
     /// Identifiers of the variables in the table.
-    identifiers: Vec<String>,
+    identifiers: Vec<Cow<'source, str>>,
     /// Columns being constructed.
-    buffer_cycle: BufferCycle,
+    buffer_cycle: BufferCycle<'source>,
     /// Non-fatal errors during tabulation.
     errors: Vec<Error>,
 }
 
-impl Default for TabulatedBlockBuilder {
+impl<'source> Default for TabulatedBlockBuilder<'source> {
     fn default() -> Self {
         Self {
             exit: ChildParserExit::default(),
-            title: "XYPOINTS".to_string(),
+            title: "XYPOINTS".into(),
             identifiers: Vec::new(),
             buffer_cycle: BufferCycle::default(),
             errors: Vec::new(),
@@ -339,28 +351,16 @@ impl Default for TabulatedBlockBuilder {
     }
 }
 
-impl TabulatedBlockBuilder {
+impl<'source> TabulatedBlockBuilder<'source> {
     /// Finalizes the `TabulatedBlock`.
-    pub(crate) fn finalize(self) -> TabulatedBlock {
-        let mut table = Table::new();
+    pub(crate) fn finalize(self) -> TabulatedBlock<'source> {
+        let columns = self
+            .buffer_cycle
+            .into_iter()
+            .zip(self.identifiers.into_iter())
+            .map(|(buffer, id)| (id, Column::from(buffer)));
+        let mut table = DataTable::from_iter(columns);
         table.set_id(self.title);
-        table.extend(
-            self.buffer_cycle
-                .into_iter()
-                .zip(self.identifiers.into_iter())
-                .map(|(buffer, id)| match buffer {
-                    UpgradingBuffer::Integer(values) => {
-                        Column::from(RawColumn::<i64> { id, values })
-                    }
-                    UpgradingBuffer::Float(values) => Column::from(RawColumn::<f64> { id, values }),
-                    UpgradingBuffer::String(values) => {
-                        Column::from(RawColumn::<String> { id, values })
-                    }
-                    UpgradingBuffer::Mixed(values) => {
-                        Column::from(RawColumn::<Value> { id, values })
-                    }
-                }),
-        );
 
         TabulatedBlock {
             exit: self.exit,
@@ -387,24 +387,24 @@ impl TabulatedBlockBuilder {
     }
 
     /// Sets the title of the dataset.
-    pub(crate) fn set_title<T: Into<String>>(&mut self, title: T) {
+    pub(crate) fn set_title<T: Into<Cow<'source, str>>>(&mut self, title: T) {
         self.title = title.into();
     }
 
     /// Sets columns by inferring the type from the identifiers.
     ///
     /// Using this method clears the current cycle and any inserted values.
-    pub(crate) fn set_columns(&mut self, identifiers: Vec<String>) {
+    pub(crate) fn set_columns(&mut self, identifiers: Vec<&'source str>) {
         self.buffer_cycle.clear();
         for id in identifiers.iter() {
-            match id.as_str() {
+            match *id {
                 "X" | "Y" | "R" | "I" | "M" | "W" => self.buffer_cycle.add_integer_buffer(),
                 "F" | "F1" | "F2" => self.buffer_cycle.add_float_buffer(),
                 "A" => self.buffer_cycle.add_string_buffer(),
                 _ => self.buffer_cycle.add_mixed_buffer(),
             }
         }
-        self.identifiers = identifiers;
+        self.identifiers = identifiers.into_iter().map(Into::into).collect();
     }
 
     /// Skips the current column by inserting a [`Value::Empty`] and advances
@@ -445,7 +445,7 @@ impl TabulatedBlockBuilder {
     /// # Panics
     ///
     /// Panics if no columns have been added.
-    pub(crate) fn push_value<T: Into<Value>>(&mut self, value: T) {
+    pub(crate) fn push_value<T: Into<Value<'source>>>(&mut self, value: T) {
         self.buffer_cycle.push_value(value.into());
     }
 

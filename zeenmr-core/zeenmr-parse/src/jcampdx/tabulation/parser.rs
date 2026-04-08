@@ -3,6 +3,7 @@ use crate::jcampdx::tabulation::error::{Error, Result};
 use crate::jcampdx::tabulation::{GroupToken, TabulatedBlock, TabulatedBlockBuilder};
 use crate::location::Location;
 use logos::{Lexer, Logos};
+use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::num::IntErrorKind;
 
@@ -69,7 +70,7 @@ pub(crate) struct TableParser<'source, L> {
     /// Current state for end-of-group checks.
     state: State,
     /// Table being constructed.
-    builder: TabulatedBlockBuilder,
+    builder: TabulatedBlockBuilder<'source>,
     /// Initialization status.
     layout: PhantomData<L>,
 }
@@ -109,7 +110,7 @@ impl<'source, L> TableParser<'source, L> {
     }
 
     /// Sets the title of the dataset.
-    pub(crate) fn set_title<T: Into<String>>(&mut self, title: T) {
+    pub(crate) fn set_title<T: Into<Cow<'source, str>>>(&mut self, title: T) {
         self.builder.set_title(title);
     }
 }
@@ -118,7 +119,7 @@ impl<'source> TableParser<'source, NeedsLayout> {
     /// Initializes the parser with the column identifiers and group size.
     pub(crate) fn with_identifiers(
         mut self,
-        identifiers: Vec<String>,
+        identifiers: Vec<&'source str>,
     ) -> TableParser<'source, HasLayout> {
         self.builder.set_columns(identifiers);
 
@@ -139,7 +140,7 @@ impl<'source> TableParser<'source, HasLayout> {
     ///
     /// Returns an error for fatal tabulation failures, such as invalid
     /// literals or an inconsistent number of columns.
-    pub(crate) fn tabulate_source(&mut self) -> Result<TabulatedBlock> {
+    pub(crate) fn tabulate_source(&mut self) -> Result<TabulatedBlock<'source>> {
         while let Some(token) = self.lexer.next().transpose()? {
             match token {
                 GroupToken::Checkpoint => self.check_point(),
@@ -403,45 +404,39 @@ impl<'source> TableParser<'source, HasLayout> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Position;
+    use crate::data::{DataTable, Value};
     use crate::jcampdx::ChildParserExit;
-    use crate::{Position, RawColumn, Table, Value};
     use std::sync::LazyLock;
 
     static EXPECTED: LazyLock<TabulatedBlock> = LazyLock::new(|| {
-        let mut table = Table::new();
-        table.set_id("XYPOINTS");
-        table.push(RawColumn::<f64> {
-            id: "X".to_string(),
-            values: vec![1.148, 1.226, 1.306, 2.610, 3.574, 3.651, 3.687, 3.727],
-        });
-        table.push(RawColumn::<i64> {
-            id: "Y".to_string(),
-            values: vec![209, 416, 205, 95, 63, 182, 167, 55],
-        });
-        table.push(RawColumn::<i64> {
-            id: "M".to_string(),
-            values: vec![3, 3, 3, 1, 4, 4, 4, 4],
-        });
-        table.push(RawColumn::<Value> {
-            id: "S".to_string(),
-            values: vec![
+        let mut table = DataTable::new_with_id("XYPOINTS");
+        table.insert(
+            "X".into(),
+            vec![1.148, 1.226, 1.306, 2.610, 3.574, 3.651, 3.687, 3.727].into(),
+        );
+        table.insert("Y".into(), vec![209, 416, 205, 95, 63, 182, 167, 55].into());
+        table.insert("M".into(), vec![3, 3, 3, 1, 4, 4, 4, 4].into());
+        table.insert(
+            "S".into(),
+            vec![
                 Value::Integer(1),
                 Value::Integer(2),
                 Value::Integer(1),
                 Value::Integer(1),
-                Value::String("1.00 - skewed".to_string()),
-                Value::String("3.00 - skewed".to_string()),
-                Value::String("0.87 - skewed".to_string()),
-                Value::String("2.65 - skewed".to_string()),
-            ],
-        });
-        table.push(RawColumn::<String> {
-            id: "A".to_string(),
-            values: ["CH3", "CH3", "CH3", "OH", "CH2", "CH2", "CH2", "CH2"]
+                Value::from("1.00 - skewed"),
+                Value::from("3.00 - skewed"),
+                Value::from("0.87 - skewed"),
+                Value::from("2.65 - skewed"),
+            ]
+            .into(),
+        );
+        table.insert(
+            "A".into(),
+            ["CH3", "CH3", "CH3", "OH", "CH2", "CH2", "CH2", "CH2"]
                 .into_iter()
-                .map(ToString::to_string)
                 .collect(),
-        });
+        );
 
         TabulatedBlock {
             exit: ChildParserExit::EndOfInput,
@@ -455,14 +450,9 @@ mod tests {
             #[test]
             fn $name() {
                 let data = $data;
-                let tabulated = TableParser::from(data)
-                    .with_identifiers(
-                        ["X", "Y", "M", "S", "A"]
-                            .map(ToString::to_string)
-                            .to_vec(),
-                    )
-                    .tabulate_source()
-                    .unwrap();
+                let mut tabulator =
+                    TableParser::from(data).with_identifiers(vec!["X", "Y", "M", "S", "A"]);
+                let tabulated = tabulator.tabulate_source().unwrap();
                 assert_eq!(tabulated, *EXPECTED);
             }
         };
@@ -543,9 +533,7 @@ mod tests {
         ($name:ident, $columns:expr, $data:expr, $error:expr) => {
             #[test]
             fn $name() {
-                let identifiers = std::iter::repeat("A".to_string())
-                    .take($columns)
-                    .collect();
+                let identifiers = std::iter::repeat("A").take($columns).collect();
                 let data = $data;
                 let error = $error;
                 let tabulated = TableParser::from(data)
@@ -768,15 +756,11 @@ mod tests {
         ($name:ident, $columns:expr, $data:expr, $errors:expr) => {
             #[test]
             fn $name() {
-                let identifiers = std::iter::repeat("A".to_string())
-                    .take($columns)
-                    .collect();
+                let identifiers = std::iter::repeat("A").take($columns).collect();
                 let data = $data;
                 let errors = $errors;
-                let tabulated = TableParser::from(data)
-                    .with_identifiers(identifiers)
-                    .tabulate_source()
-                    .unwrap();
+                let mut tabulator = TableParser::from(data).with_identifiers(identifiers);
+                let tabulated = tabulator.tabulate_source().unwrap();
                 assert_eq!(tabulated.errors, errors)
             }
         };

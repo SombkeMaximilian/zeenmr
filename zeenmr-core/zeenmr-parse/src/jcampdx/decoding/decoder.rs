@@ -3,6 +3,7 @@ use crate::jcampdx::decoding::error::{Error, Result};
 use crate::jcampdx::decoding::{DecodedBlock, DecodedBlockBuilder, EncodedToken};
 use crate::location::Cursor;
 use logos::{Lexer, Logos};
+use std::borrow::Cow;
 use std::num::{IntErrorKind, ParseIntError};
 
 /// `AFFN` numeric values.
@@ -66,7 +67,7 @@ pub(crate) struct Decoder<'source> {
     /// Current state for duplicate values and integrity checks.
     state: State,
     /// Decoded block being constructed.
-    builder: DecodedBlockBuilder,
+    builder: DecodedBlockBuilder<'source>,
 }
 
 impl<'source> From<&'source str> for Decoder<'source> {
@@ -102,17 +103,17 @@ impl<'source> Decoder<'source> {
     }
 
     /// Sets the title of the dataset.
-    pub(crate) fn set_title<T: Into<String>>(&mut self, title: T) {
+    pub(crate) fn set_title<T: Into<Cow<'source, str>>>(&mut self, title: T) {
         self.builder.set_title(title);
     }
 
     /// Sets the identifier of the incrementing variable.
-    pub(crate) fn set_incrementing<T: Into<String>>(&mut self, incrementing: T) {
+    pub(crate) fn set_incrementing<T: Into<Cow<'source, str>>>(&mut self, incrementing: T) {
         self.builder.set_incrementing(incrementing);
     }
 
     /// Sets the identifier of the repeating variable.
-    pub(crate) fn set_repeating<T: Into<String>>(&mut self, repeating: T) {
+    pub(crate) fn set_repeating<T: Into<Cow<'source, str>>>(&mut self, repeating: T) {
         self.builder.set_repeating(repeating);
     }
 
@@ -127,7 +128,7 @@ impl<'source> Decoder<'source> {
     ///
     /// Panics only if internal decoder invariants are violated, which should be
     /// unreachable under correct decoding logic.
-    pub(crate) fn decode_source(&mut self) -> Result<DecodedBlock> {
+    pub(crate) fn decode_source(&mut self) -> Result<DecodedBlock<'source>> {
         while let Some(token) = self.lexer.next().transpose()? {
             match token {
                 EncodedToken::CheckPoint => self.check_point(),
@@ -606,24 +607,22 @@ impl<'source> Decoder<'source> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Position;
+    use crate::data::DataTable;
     use crate::jcampdx::ChildParserExit;
-    use crate::{Position, RawColumn, Table};
     use std::sync::LazyLock;
 
     static EXPECTED: LazyLock<DecodedBlock> = LazyLock::new(|| {
-        let mut table = Table::new();
-        table.set_id("XYDATA");
-        table.push(RawColumn {
-            id: "Unknown".to_string(),
-            values: (0..20).map(|i| i as f64).rev().collect(),
-        });
-        table.push(RawColumn {
-            id: "Unknown".to_string(),
-            values: vec![
+        let mut table = DataTable::new_with_id("XYDATA");
+        table.insert("X".into(), (0..20).map(|i| i as f64).rev().collect());
+        table.insert(
+            "Y".into(),
+            vec![
                 482, -763, 215, -632, -924, 357, -678, 841, 512, -194, 321, -467, -689, 278, 505,
                 732, 835, -619, 247, -193,
-            ],
-        });
+            ]
+            .into(),
+        );
 
         DecodedBlock {
             exit: ChildParserExit::EndOfInput,
@@ -637,7 +636,12 @@ mod tests {
             #[test]
             fn $name() {
                 let data = $data;
-                let decoded = Decoder::from(data).decode_source().unwrap();
+                let mut decoder = Decoder::from(data);
+                decoder.set_title("XYDATA");
+                decoder.set_incrementing("X");
+                decoder.set_repeating("Y");
+                let decoded = decoder.decode_source().unwrap();
+
                 assert_eq!(decoded, *EXPECTED);
             }
         };
@@ -718,7 +722,8 @@ mod tests {
             fn $name() {
                 let data = $data;
                 let errors = $errors;
-                let decoded = Decoder::from(data).decode_source().unwrap();
+                let mut decoder = Decoder::from(data);
+                let decoded = decoder.decode_source().unwrap();
                 assert_eq!(decoded.errors, errors);
             }
         };

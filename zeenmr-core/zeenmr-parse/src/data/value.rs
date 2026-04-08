@@ -1,101 +1,105 @@
 use std::borrow::Cow;
 
-/// Values in JCAMP-DX files.
+/// Heterogeneous value parsed from spectroscopy data files.
 #[derive(Clone, PartialEq, Debug, Default)]
-pub enum Value {
-    /// Empty values for unset parameters.
+pub enum Value<'source> {
+    /// Represents an unset parameter.
     #[default]
     Empty,
-    /// Integer values.
+    /// Integer value.
     Integer(i64),
-    /// Float values.
+    /// IEEE float value.
     Float(f64),
-    /// Everything else is treated as a string.
-    String(String),
+    /// String value.
+    String(Cow<'source, str>),
     /// Arrays of values.
     Array(Vec<Self>),
 }
 
-impl From<()> for Value {
+impl From<()> for Value<'_> {
     fn from(_: ()) -> Self {
         Self::Empty
     }
 }
 
-impl From<i64> for Value {
+impl From<i64> for Value<'_> {
     fn from(value: i64) -> Self {
         Self::Integer(value)
     }
 }
 
-impl From<f64> for Value {
+impl From<f64> for Value<'_> {
     fn from(value: f64) -> Self {
         Self::Float(value)
     }
 }
 
-impl From<String> for Value {
+impl From<String> for Value<'_> {
     fn from(value: String) -> Self {
+        Self::String(value.into())
+    }
+}
+
+impl<'source> From<&'source str> for Value<'source> {
+    fn from(value: &'source str) -> Self {
+        Self::String(value.into())
+    }
+}
+
+impl<'source> From<Cow<'source, str>> for Value<'source> {
+    fn from(value: Cow<'source, str>) -> Self {
         Self::String(value)
     }
 }
 
-impl From<&str> for Value {
-    fn from(value: &str) -> Self {
-        Self::String(value.into())
-    }
-}
-
-impl From<&mut str> for Value {
-    fn from(value: &mut str) -> Self {
-        Self::String(value.into())
-    }
-}
-
-impl<'a> From<Cow<'a, str>> for Value {
-    fn from(value: Cow<'a, str>) -> Self {
-        Self::String(value.into())
-    }
-}
-
-impl<T> From<Vec<T>> for Value
+impl<'source, T> From<Vec<T>> for Value<'source>
 where
-    T: Into<Value>,
+    T: Into<Value<'source>>,
 {
     fn from(value: Vec<T>) -> Self {
         Self::Array(value.into_iter().map(Into::into).collect())
     }
 }
 
-impl<T, const N: usize> From<[T; N]> for Value
+impl<'source, T, const N: usize> From<[T; N]> for Value<'source>
 where
-    T: Into<Value>,
+    T: Into<Value<'source>>,
 {
     fn from(value: [T; N]) -> Self {
         Self::Array(value.into_iter().map(Into::into).collect())
     }
 }
 
-impl<T> From<&[T]> for Value
+impl<'source, T> From<&[T]> for Value<'source>
 where
-    T: Clone + Into<Value>,
+    T: Clone + Into<Value<'source>>,
 {
     fn from(value: &[T]) -> Self {
         Self::Array(value.iter().cloned().map(Into::into).collect())
     }
 }
 
-impl<T> FromIterator<T> for Value
+impl<'source, T> FromIterator<T> for Value<'source>
 where
-    T: Into<Value>,
+    T: Into<Value<'source>>,
 {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         Self::Array(iter.into_iter().map(Into::into).collect())
     }
 }
 
-impl Value {
-    /// Returns `true` if in the `Empty` variant.
+impl<'source> Value<'source> {
+    /// Returns `true` if the value is `Empty`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use zeenmr_parse::data::Value;
+    ///
+    /// let value = Value::Empty;
+    ///
+    /// assert!(value.is_empty());
+    /// ```
     pub fn is_empty(&self) -> bool {
         match self {
             Self::Empty => true,
@@ -103,7 +107,17 @@ impl Value {
         }
     }
 
-    /// Returns `true` if in the `Integer` variant.
+    /// Returns `true` if the value is an `Integer`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use zeenmr_parse::data::Value;
+    ///
+    /// let value = Value::Integer(42);
+    ///
+    /// assert!(value.is_integer());
+    /// ```
     pub fn is_integer(&self) -> bool {
         match self {
             Self::Integer(_) => true,
@@ -111,7 +125,37 @@ impl Value {
         }
     }
 
-    /// Returns `true` if in the `Float` variant.
+    /// Returns the contained `i64`, or `None` if the value is not an `Integer`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use zeenmr_parse::data::Value;
+    ///
+    /// let integer_value = Value::Integer(42);
+    /// let string_value = Value::from("not an integer");
+    ///
+    /// assert_eq!(integer_value.as_i64(), Some(42));
+    /// assert!(string_value.as_i64().is_none());
+    /// ```
+    pub fn as_i64(&self) -> Option<i64> {
+        match self {
+            Self::Integer(value) => Some(*value),
+            _ => None,
+        }
+    }
+
+    /// Returns `true` if the value is a `Float`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use zeenmr_parse::data::Value;
+    ///
+    /// let value = Value::Float(69.420);
+    ///
+    /// assert!(value.is_float());
+    /// ```
     pub fn is_float(&self) -> bool {
         match self {
             Self::Float(_) => true,
@@ -119,7 +163,37 @@ impl Value {
         }
     }
 
-    /// Returns `true` if in the `String` variant.
+    /// Returns the contained `f64`, or `None` if the value is not a `Float`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use zeenmr_parse::data::Value;
+    ///
+    /// let float_value = Value::Float(69.420);
+    /// let string_value = Value::from("not a float");
+    ///
+    /// assert_eq!(float_value.as_f64(), Some(69.420));
+    /// assert!(string_value.as_f64().is_none());
+    /// ```
+    pub fn as_f64(&self) -> Option<f64> {
+        match self {
+            Self::Float(value) => Some(*value),
+            _ => None,
+        }
+    }
+
+    /// Returns `true` if the value is a `String` (note: not the stdlib type).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use zeenmr_parse::data::Value;
+    ///
+    /// let value = Value::from("Hello, world!");
+    ///
+    /// assert!(value.is_string());
+    /// ```
     pub fn is_string(&self) -> bool {
         match self {
             Self::String(_) => true,
@@ -127,7 +201,42 @@ impl Value {
         }
     }
 
-    /// Returns `true` if in the `Array` variant.
+    /// Returns a string slice containing the string, or `None` if the value is
+    /// not a `String`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use zeenmr_parse::data::Value;
+    ///
+    /// let string_value = Value::from("Hello, world!");
+    /// let integer_value = Value::Integer(42);
+    ///
+    /// assert_eq!(string_value.as_str(), Some("Hello, world!"));
+    /// assert!(integer_value.as_str().is_none());
+    /// ```
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            Self::String(value) => Some(value.as_ref()),
+            _ => None,
+        }
+    }
+
+    /// Returns `true` if the value is an `Array`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use zeenmr_parse::data::Value;
+    ///
+    /// let value = Value::from([
+    ///     Value::Integer(42),
+    ///     Value::Float(69.420),
+    ///     Value::from("Hello, world!"),
+    /// ]);
+    ///
+    /// assert!(value.is_array());
+    /// ```
     pub fn is_array(&self) -> bool {
         match self {
             Self::Array(_) => true,
@@ -135,37 +244,76 @@ impl Value {
         }
     }
 
-    /// Returns the inner `i64`, or `None` if not in the `Integer` variant.
-    pub fn as_integer(&self) -> Option<i64> {
-        match self {
-            Self::Integer(value) => Some(*value),
-            _ => None,
-        }
-    }
-
-    /// Returns the inner `f64`, or `None` if not in the `Float` variant.
-    pub fn as_float(&self) -> Option<f64> {
-        match self {
-            Self::Float(value) => Some(*value),
-            _ => None,
-        }
-    }
-
-    /// Returns a string slice of the inner `String`, or `None` if not in the
-    /// `String` variant.
-    pub fn as_str(&self) -> Option<&str> {
-        match self {
-            Self::String(value) => Some(value.as_str()),
-            _ => None,
-        }
-    }
-
-    /// Returns a slice of the inner `Vec<Value>`, or `None` if not in the
-    /// `Array` variant.
-    pub fn as_slice(&self) -> Option<&[Value]> {
+    /// Returns a slice of the contained `Vec<Value>`, or `None` if the value is
+    /// not an `Array`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use zeenmr_parse::data::Value;
+    ///
+    /// let array_value = Value::from([Value::Integer(42)]);
+    /// let string_value = Value::from("Hello, world!");
+    ///
+    /// assert_eq!(array_value.as_slice(), Some(&[Value::Integer(42)]));
+    /// assert!(string_value.as_slice().is_none());
+    /// ```
+    pub fn as_slice(&self) -> Option<&[Self]> {
         match self {
             Self::Array(value) => Some(value),
             _ => None,
+        }
+    }
+
+    /// Returns a mutable slice of the contained `Vec<Value>`, or `None` if the
+    /// value is not an `Array`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use zeenmr_parse::data::Value;
+    ///
+    /// let mut array_value = Value::from([Value::Integer(42)]);
+    ///
+    /// if let Some(slice) = array_value.as_mut_slice() {
+    ///     slice[0] = Value::Float(69.420)
+    /// }
+    ///
+    /// assert_eq!(array_value.as_slice(), Some(&[Value::Float(69.420)]));
+    /// ```
+    pub fn as_mut_slice(&mut self) -> Option<&mut [Self]> {
+        match self {
+            Self::Array(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    /// Converts this `Value` into an owned form with a `'static` lifetime.
+    ///
+    /// This is useful when you need to store a parsed `Value` beyond the
+    /// lifetime of the input buffer. Borrowed string data is cloned into owned
+    /// `String`s. Arrays are converted recursively. All other variants are
+    /// moved.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::borrow::Cow;
+    /// use zeenmr_parse::data::Value;
+    ///
+    /// let value = Value::from("nmr");
+    /// let owned = value.into_owned();
+    ///
+    /// assert!(matches!(owned, Value::String(Cow::Owned(_))));
+    /// assert_eq!(owned.as_str(), Some("nmr"));
+    /// ```
+    pub fn into_owned(self) -> Value<'static> {
+        match self {
+            Self::Empty => Value::Empty,
+            Self::Integer(value) => Value::Integer(value),
+            Self::Float(value) => Value::Float(value),
+            Self::String(value) => Value::String(Cow::Owned(value.into_owned())),
+            Self::Array(value) => Value::Array(value.into_iter().map(Value::into_owned).collect()),
         }
     }
 }

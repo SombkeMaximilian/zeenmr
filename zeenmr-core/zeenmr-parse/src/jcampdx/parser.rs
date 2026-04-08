@@ -1,13 +1,15 @@
+use crate::data::{Dataset, Value};
 use crate::jcampdx::Token;
 use crate::jcampdx::block_format::{FormatParser, LineLayout};
 use crate::jcampdx::decoding::Decoder;
 use crate::jcampdx::error::{Error, Result};
 use crate::jcampdx::tabulation::TableParser;
-use crate::{Dataset, DatasetBuilder, Location, Stack, Value};
+use crate::{Location, Stack};
 use logos::{Lexer, Logos};
+use std::borrow::Cow;
 use std::num::IntErrorKind;
 
-pub type JcampDxDataset = Dataset<Error>;
+pub type JcampDxDataset<'source> = Dataset<'source, Error>;
 
 /// Exit status of a child parser.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
@@ -46,13 +48,13 @@ pub(crate) struct Parser<'source> {
     /// Lexer for tokenizing the key-value pairs in JCAMP-DX headers.
     lexer: Lexer<'source, Token>,
     /// Dataset being constructed.
-    builder: DatasetBuilder<Error>,
+    dataset: JcampDxDataset<'source>,
     /// Current key.
     current_key: &'source str,
     /// Current value.
-    current_value: Value,
+    current_value: Value<'source>,
     /// Stack for values bounded by delimiters.
-    bounded_stack: Stack<Delimiter, Value>,
+    bounded_stack: Stack<Delimiter, Value<'source>>,
     /// Concatenate consecutive strings.
     auto_concatenate: bool,
 }
@@ -61,7 +63,7 @@ impl<'source> From<&'source str> for Parser<'source> {
     fn from(value: &'source str) -> Self {
         Self {
             lexer: Token::lexer(value),
-            builder: Dataset::builder(),
+            dataset: Dataset::default(),
             current_key: "TITLE",
             current_value: Value::Empty,
             bounded_stack: Stack::new(),
@@ -74,7 +76,7 @@ impl<'source> From<Lexer<'source, Token>> for Parser<'source> {
     fn from(value: Lexer<'source, Token>) -> Self {
         Self {
             lexer: value,
-            builder: Dataset::builder(),
+            dataset: Dataset::default(),
             current_key: "TITLE",
             current_value: Value::Empty,
             bounded_stack: Stack::new(),
@@ -86,7 +88,7 @@ impl<'source> From<Lexer<'source, Token>> for Parser<'source> {
 impl<'source> Parser<'source> {
     /// Parses the source until the last matching [`End`] token or the end of
     /// the source.
-    pub(crate) fn parse_source(&mut self) -> Result<JcampDxDataset> {
+    pub(crate) fn parse_source(&mut self) -> Result<JcampDxDataset<'source>> {
         self.initialize()?;
 
         self.parse_values()
@@ -100,7 +102,7 @@ impl<'source> Parser<'source> {
     ///
     /// [`End`]: Token::End
     /// [`Title`]: Token::Title
-    fn parse_values(&mut self) -> Result<JcampDxDataset> {
+    fn parse_values(&mut self) -> Result<JcampDxDataset<'source>> {
         while let Some(token) = self.lexer.next().transpose()? {
             let reset_auto_concatenate = token != Token::Comma;
             match token {
@@ -142,21 +144,23 @@ impl<'source> Parser<'source> {
             }
         }
         if !self
-            .builder
-            .parameters_contain_key(self.current_key)
+            .dataset
+            .parameters
+            .contains_key(self.current_key)
         {
             let current_value = self.take_current_value();
-            self.builder
-                .insert_parameter(self.current_key, current_value);
+            self.dataset
+                .parameters
+                .insert(self.current_key.into(), current_value);
         }
 
-        Ok(std::mem::take(&mut self.builder).finalize())
+        Ok(std::mem::take(&mut self.dataset))
     }
 
     /// Takes the current value and replaces it with [`Empty`]
     ///
     /// [`Empty`]: Value::Empty
-    fn take_current_value(&mut self) -> Value {
+    fn take_current_value(&mut self) -> Value<'source> {
         std::mem::take(&mut self.current_value)
     }
 
@@ -205,14 +209,16 @@ impl<'source> Parser<'source> {
     /// [`Equals`]: Token::Equals
     fn key(&mut self) -> Result<KeyExit> {
         while let Some(top) = self.bounded_stack.top() {
-            self.builder
-                .push_error(Error::unclosed_delimiter(top.start));
+            self.dataset
+                .errors
+                .push(Error::unclosed_delimiter(top.start));
             self.end_bounded(top.delimiter)
                 .expect("should always get the right delimiter");
         }
         let current_value = self.take_current_value();
-        self.builder
-            .insert_parameter(self.current_key, current_value);
+        self.dataset
+            .parameters
+            .insert(self.current_key.into(), current_value);
         let start = self.lexer.span().end;
         let mut token_count = 0;
         let mut found_equals = false;
@@ -376,8 +382,9 @@ impl<'source> Parser<'source> {
             Ok(int) => Value::Integer(int),
             Err(e) => match e.kind() {
                 IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
-                    self.builder
-                        .push_error(Error::overflow(self.lexer.location(), e));
+                    self.dataset
+                        .errors
+                        .push(Error::overflow(self.lexer.location(), e));
 
                     Value::Integer(i64::MIN)
                 }
@@ -410,35 +417,37 @@ impl<'source> Parser<'source> {
     /// [`String`]: Token::String
     fn string(&mut self) {
         let value = self.lexer.slice();
-        let push_string = |values: &mut Vec<Value>| {
+        let push_string = |values: &mut Vec<Value<'source>>| {
             if let Some(Value::String(previous)) = values.last_mut()
                 && self.auto_concatenate
             {
-                if !previous.is_empty() {
-                    previous.push(' ');
+                let mut owned = previous.clone().into_owned();
+                if !owned.is_empty() {
+                    owned.push(' ');
                 }
-                previous.push_str(value);
+                owned.push_str(value);
+                *previous = Cow::Owned(owned);
             } else {
-                values.push(Value::String(value.to_string()));
+                values.push(Value::from(value));
             }
         };
         if let Some(top) = self.bounded_stack.top_mut() {
             push_string(&mut top.values);
         } else {
             match self.current_value {
-                Value::Empty => self.current_value = Value::String(value.to_string()),
+                Value::Empty => self.current_value = Value::from(value),
                 Value::String(ref mut previous) if self.auto_concatenate => {
-                    if previous.len() > 0 {
-                        previous.push(' ');
+                    let mut owned = previous.clone().into_owned();
+                    if !owned.is_empty() {
+                        owned.push(' ');
                     }
-                    previous.push_str(value);
+                    owned.push_str(value);
+                    *previous = Cow::Owned(owned);
                 }
                 Value::Array(ref mut array) => push_string(array),
                 _ => {
-                    self.current_value = Value::Array(vec![
-                        self.take_current_value(),
-                        Value::String(value.to_string()),
-                    ]);
+                    self.current_value =
+                        Value::Array(vec![self.take_current_value(), Value::from(value)]);
                 }
             }
         }
@@ -462,7 +471,7 @@ impl<'source> Parser<'source> {
     fn title(&mut self) -> Result<()> {
         let mut sub_parser = Self::from(self.lexer.clone());
         let child_dataset = sub_parser.parse_values()?;
-        self.builder.push_child(child_dataset);
+        self.dataset.children.push(child_dataset);
         self.lexer = sub_parser.lexer;
 
         Ok(())
@@ -513,20 +522,22 @@ impl<'source> Parser<'source> {
                         decoder.set_repeating(repeating);
                     }
                     _ => {
-                        self.builder
-                            .push_error(Error::mismatched_block_format(self.lexer.location()));
+                        self.dataset
+                            .errors
+                            .push(Error::mismatched_block_format(self.lexer.location()));
                     }
                 }
             }
             Err(e) => {
-                self.builder.push_error(e.into());
+                self.dataset.errors.push(e.into());
             }
         }
         let decoded_block = decoder.decode_source()?;
         self.lexer = decoder.into_lexer().morph();
-        self.builder
-            .extend_errors(decoded_block.errors.into_iter().map(Into::into));
-        self.builder.push_table(decoded_block.table);
+        self.dataset
+            .errors
+            .extend(decoded_block.errors.into_iter().map(Into::into));
+        self.dataset.data_tables.push(decoded_block.table);
 
         Ok(decoded_block.exit)
     }
@@ -556,22 +567,21 @@ impl<'source> Parser<'source> {
             LineLayout::RepeatingValue { .. } => {
                 return Err(Error::mismatched_block_format(self.lexer.location()));
             }
-            LineLayout::GroupedValues(identifiers) => TableParser::from(format_parser.into_lexer())
-                .with_identifiers(
-                    identifiers
-                        .into_iter()
-                        .map(ToString::to_string)
-                        .collect(),
-                ),
+            LineLayout::GroupedValues(identifiers) => {
+                TableParser::from(format_parser.into_lexer()).with_identifiers(identifiers)
+            }
         };
         if let Some(kind) = format.kind {
             table_parser.set_title(kind);
         }
         let tabulated_block = table_parser.tabulate_source()?;
         self.lexer = table_parser.into_lexer().morph();
-        self.builder
-            .extend_errors(tabulated_block.errors.into_iter().map(Into::into));
-        self.builder.push_table(tabulated_block.table);
+        self.dataset
+            .errors
+            .extend(tabulated_block.errors.into_iter().map(Into::into));
+        self.dataset
+            .data_tables
+            .push(tabulated_block.table);
 
         Ok(tabulated_block.exit)
     }
@@ -621,28 +631,27 @@ impl<'source> Parser<'source> {
                 decoder.set_repeating(repeating);
                 let decoded_block = decoder.decode_source()?;
                 self.lexer = decoder.into_lexer().morph();
-                self.builder
-                    .extend_errors(decoded_block.errors.into_iter().map(Into::into));
-                self.builder.push_table(decoded_block.table);
+                self.dataset
+                    .errors
+                    .extend(decoded_block.errors.into_iter().map(Into::into));
+                self.dataset.data_tables.push(decoded_block.table);
 
                 Ok(decoded_block.exit)
             }
             LineLayout::GroupedValues(identifiers) => {
-                let mut table_parser = TableParser::from(format_parser.into_lexer())
-                    .with_identifiers(
-                        identifiers
-                            .into_iter()
-                            .map(ToString::to_string)
-                            .collect(),
-                    );
+                let mut table_parser =
+                    TableParser::from(format_parser.into_lexer()).with_identifiers(identifiers);
                 if let Some(kind) = format.kind {
                     table_parser.set_title(kind);
                 }
                 let tabulated_block = table_parser.tabulate_source()?;
                 self.lexer = table_parser.into_lexer().morph();
-                self.builder
-                    .extend_errors(tabulated_block.errors.into_iter().map(Into::into));
-                self.builder.push_table(tabulated_block.table);
+                self.dataset
+                    .errors
+                    .extend(tabulated_block.errors.into_iter().map(Into::into));
+                self.dataset
+                    .data_tables
+                    .push(tabulated_block.table);
 
                 Ok(tabulated_block.exit)
             }

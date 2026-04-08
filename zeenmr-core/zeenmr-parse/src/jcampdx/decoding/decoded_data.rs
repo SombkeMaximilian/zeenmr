@@ -1,14 +1,15 @@
+use crate::data::DataTable;
 use crate::jcampdx::ChildParserExit;
 use crate::jcampdx::decoding::error::{Error, Kind};
-use crate::{RawColumn, Table};
+use std::borrow::Cow;
 
 /// Decoded data block.
 #[derive(Clone, PartialEq, Debug)]
-pub(crate) struct DecodedBlock {
+pub(crate) struct DecodedBlock<'source> {
     /// Exit status of the decoder (end of input or header key).
     pub(crate) exit: ChildParserExit,
     /// Decoded data.
-    pub(crate) table: Table,
+    pub(crate) table: DataTable<'source>,
     /// Non-fatal errors during decoding.
     pub(crate) errors: Vec<Error>,
 }
@@ -162,15 +163,15 @@ impl CheckPointSequence {
 
 /// Builder pattern for [`DecodedBlock`].
 #[derive(Clone, PartialEq, Debug)]
-pub(crate) struct DecodedBlockBuilder {
+pub(crate) struct DecodedBlockBuilder<'source> {
     /// Exit status of the decoder (end of input or header key).
     exit: ChildParserExit,
     /// Title of the dataset.
-    title: String,
+    title: Cow<'source, str>,
     /// Identifier of the incrementing variable.
-    incrementing: String,
+    incrementing: Cow<'source, str>,
     /// Identifier of the repeating variable.
-    repeating: String,
+    repeating: Cow<'source, str>,
     /// Decoded data points.
     decoded: DecodedStack,
     /// Recorded checkpoints.
@@ -179,13 +180,13 @@ pub(crate) struct DecodedBlockBuilder {
     errors: Vec<Error>,
 }
 
-impl Default for DecodedBlockBuilder {
+impl<'source> Default for DecodedBlockBuilder<'source> {
     fn default() -> Self {
         Self {
             exit: ChildParserExit::default(),
-            title: "XYDATA".to_string(),
-            incrementing: "Unknown".to_string(),
-            repeating: "Unknown".to_string(),
+            title: "XYDATA".into(),
+            incrementing: "Unknown".into(),
+            repeating: "Unknown".into(),
             decoded: DecodedStack::new(),
             check_points: CheckPointSequence::new(),
             errors: Vec::new(),
@@ -193,34 +194,27 @@ impl Default for DecodedBlockBuilder {
     }
 }
 
-impl DecodedBlockBuilder {
+impl<'source> DecodedBlockBuilder<'source> {
     /// Finalizes the `DecodedBlock`.
-    pub(crate) fn finalize(self) -> DecodedBlock {
-        let mut table = Table::new();
-        table.set_id(self.title);
+    pub(crate) fn finalize(self) -> DecodedBlock<'source> {
+        let mut table = DataTable::new_with_id(self.title);
         let is_valid = !self.errors.iter().any(|e| {
             *e.kind() == Kind::CheckPointValue || *e.kind() == Kind::CheckPointStepMismatch
         });
         if is_valid && let Some(step) = self.check_points.max_precision_step() {
             let first = *(self.check_points.values.first().unwrap());
             let count = self.decoded.len();
-            table.push(RawColumn::<f64> {
-                id: self.incrementing,
-                values: (0_usize..count)
+            table.insert(
+                self.incrementing,
+                (0_usize..count)
                     .map(|i| first + step * i as f64)
                     .collect(),
-            })
+            );
         }
         match self.decoded {
-            DecodedStack::I64(buffer) => table.push(RawColumn::<i64> {
-                id: self.repeating,
-                values: buffer,
-            }),
-            DecodedStack::F64(buffer) => table.push(RawColumn::<f64> {
-                id: self.repeating,
-                values: buffer,
-            }),
-        }
+            DecodedStack::I64(buffer) => table.insert(self.repeating, buffer.into()),
+            DecodedStack::F64(buffer) => table.insert(self.repeating, buffer.into()),
+        };
 
         DecodedBlock {
             exit: self.exit,
@@ -273,17 +267,17 @@ impl DecodedBlockBuilder {
     }
 
     /// Sets the title of the dataset.
-    pub(crate) fn set_title<T: Into<String>>(&mut self, title: T) {
+    pub(crate) fn set_title<T: Into<Cow<'source, str>>>(&mut self, title: T) {
         self.title = title.into();
     }
 
     /// Sets the identifier of the incrementing variable.
-    pub(crate) fn set_incrementing<T: Into<String>>(&mut self, incrementing: T) {
+    pub(crate) fn set_incrementing<T: Into<Cow<'source, str>>>(&mut self, incrementing: T) {
         self.incrementing = incrementing.into();
     }
 
     /// Sets the identifier of the repeating variable.
-    pub(crate) fn set_repeating<T: Into<String>>(&mut self, repeating: T) {
+    pub(crate) fn set_repeating<T: Into<Cow<'source, str>>>(&mut self, repeating: T) {
         self.repeating = repeating.into();
     }
 
