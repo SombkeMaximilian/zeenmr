@@ -29,6 +29,8 @@ pub enum Kind {
     MultipleKeyTokens,
     MismatchedDelimiter,
     UnclosedDelimiter,
+    UnexpectedPage,
+    NestedTuples,
     MismatchedBlockFormat,
     Overflow,
     BlockFormat,
@@ -90,6 +92,8 @@ impl std::fmt::Display for Error {
             Kind::MultipleKeyTokens => "multiple key tokens",
             Kind::MismatchedDelimiter => "mismatched delimiter",
             Kind::UnclosedDelimiter => "unclosed delimiter",
+            Kind::UnexpectedPage => "page outside of tuples",
+            Kind::NestedTuples => "nested tuples",
             Kind::MismatchedBlockFormat => "mismatched block format",
             Kind::Overflow => "overflow",
             Kind::BlockFormat => "block format",
@@ -164,6 +168,28 @@ impl Error {
     pub(crate) fn unclosed_delimiter(position: Position) -> Self {
         Self {
             kind: Kind::UnclosedDelimiter,
+            position,
+            source: None,
+        }
+    }
+
+    /// Creates a [`UnexpectedPage`] error.
+    ///
+    /// [`UnexpectedPage`]: Kind::UnexpectedPage
+    pub(crate) fn unexpected_page(position: Position) -> Self {
+        Self {
+            kind: Kind::UnexpectedPage,
+            position,
+            source: None,
+        }
+    }
+
+    /// Creates a [`NestedTuples`] error.
+    ///
+    /// [`NestedTuples`]: Kind::NestedTuples
+    pub(crate) fn nested_tuples(position: Position) -> Self {
+        Self {
+            kind: Kind::NestedTuples,
             position,
             source: None,
         }

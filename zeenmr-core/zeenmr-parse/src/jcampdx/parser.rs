@@ -1,4 +1,4 @@
-use crate::data::{Dataset, Value};
+use crate::data::{Dataset, ParameterTable, Value};
 use crate::jcampdx::Token;
 use crate::jcampdx::block_format::{FormatParser, LineLayout};
 use crate::jcampdx::decoding::Decoder;
@@ -7,6 +7,7 @@ use crate::jcampdx::tabulation::TableParser;
 use crate::{Location, Stack};
 use logos::{Lexer, Logos};
 use std::borrow::Cow;
+use std::marker::PhantomData;
 use std::num::IntErrorKind;
 
 pub type JcampDxDataset<'source> = Dataset<'source, Error>;
@@ -42,9 +43,17 @@ enum KeyExit {
     NextKey,
 }
 
+/// Marker for normal parser mode.
+#[derive(Debug)]
+pub(crate) struct Normal;
+
+/// Marker for `NTUPLES` parser mode.
+#[derive(Debug)]
+pub(crate) struct Tuples;
+
 /// JCAMP-DX file parser.
 #[derive(Debug)]
-pub(crate) struct Parser<'source> {
+pub(crate) struct Parser<'source, M> {
     /// Lexer for tokenizing the key-value pairs in JCAMP-DX headers.
     lexer: Lexer<'source, Token>,
     /// Dataset being constructed.
@@ -57,9 +66,11 @@ pub(crate) struct Parser<'source> {
     bounded_stack: Stack<Delimiter, Value<'source>>,
     /// Concatenate consecutive strings.
     auto_concatenate: bool,
+    /// Parsing mode.
+    mode: PhantomData<M>,
 }
 
-impl<'source> From<&'source str> for Parser<'source> {
+impl<'source> From<&'source str> for Parser<'source, Normal> {
     fn from(value: &'source str) -> Self {
         Self {
             lexer: Token::lexer(value),
@@ -68,11 +79,12 @@ impl<'source> From<&'source str> for Parser<'source> {
             current_value: Value::Empty,
             bounded_stack: Stack::new(),
             auto_concatenate: false,
+            mode: PhantomData,
         }
     }
 }
 
-impl<'source> From<Lexer<'source, Token>> for Parser<'source> {
+impl<'source, M> From<Lexer<'source, Token>> for Parser<'source, M> {
     fn from(value: Lexer<'source, Token>) -> Self {
         Self {
             lexer: value,
@@ -81,17 +93,202 @@ impl<'source> From<Lexer<'source, Token>> for Parser<'source> {
             current_value: Value::Empty,
             bounded_stack: Stack::new(),
             auto_concatenate: false,
+            mode: PhantomData,
         }
     }
 }
 
-impl<'source> Parser<'source> {
+/// Trait for methods that diverge between parser modes.
+trait ParserMode {
+    /// Inserts a parameter into the appropriate table.
+    fn insert_parameter(&mut self);
+
+    /// Handles [`Title`] tokens.
+    ///
+    /// [`Title`]: Token::Title
+    fn title(&mut self) -> Result<()>;
+
+    /// Handles [`Tuples`] tokens.
+    ///
+    /// [`Tuples`]: Token::Tuples
+    fn tuples(&mut self) -> Result<()>;
+
+    /// Handles [`Page`] tokens.
+    ///
+    /// [`Page`]: Token::Page
+    fn page(&mut self) -> Result<()>;
+}
+
+impl<'source> ParserMode for Parser<'source, Normal> {
+    /// Inserts the current key-value pair into the dataset's parameter table.
+    ///
+    /// This will never insert a key-value pair into the data parameters.
+    fn insert_parameter(&mut self) {
+        let value = self.take_current_value();
+        let key = self.current_key;
+        self.dataset.parameters.insert(key.into(), value);
+        self.current_key = "";
+    }
+
+    /// Handles [`Title`] tokens by starting a `Normal` child parser.
+    ///
+    /// [`Title`]: Token::Title
+    ///
+    /// JCAMP-DX files can recursively contain child datasets, which are
+    /// [`Title`] and [`End`] token pairs within another [`Title`] and [`End`]
+    /// token pair. This does not return an exit code because any main loop
+    /// would simply terminate regardless.
+    ///
+    /// [`Title`]: Token::Title
+    /// [`End`]: Token::End
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the child parser encounters a fatal error.
+    fn title(&mut self) -> Result<()> {
+        let mut sub_parser = Parser::<Normal>::from(self.lexer.clone());
+        sub_parser.current_key = "TITLE";
+        let child_dataset = sub_parser.parse_values()?;
+        self.dataset.children.push(child_dataset);
+        self.lexer = sub_parser.lexer;
+
+        Ok(())
+    }
+
+    /// Handles [`Tuples`] tokens by starting a `Tuples` child parser.
+    ///
+    /// [`Tuples`]: Token::Tuples
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the child parser encounters a fatal error.
+    fn tuples(&mut self) -> Result<()> {
+        let mut sub_parser = Parser::<Tuples>::from(self.lexer.clone());
+        sub_parser.current_key = "NTUPLES";
+        let child_dataset = sub_parser.parse_values()?;
+        self.dataset.children.push(child_dataset);
+        self.lexer = sub_parser.lexer;
+
+        Ok(())
+    }
+
+    /// Handles [`Page`] tokens.
+    ///
+    /// [`Page`]: Token::Page
+    ///
+    /// [`Page`] tokens are not valid outside an `NTUPLES` block. Therefore,
+    /// reaching this point is always an error that cannot be recovered from,
+    /// as the file is almost guaranteed to be malformed or corrupted.
+    fn page(&mut self) -> Result<()> {
+        Err(Error::unexpected_page(self.lexer.location()))
+    }
+}
+
+impl<'source> ParserMode for Parser<'source, Tuples> {
+    /// Inserts the current key-value pair into the active parameter table.
+    ///
+    /// If at least one [`Page`] token has been encountered in the current
+    /// context (i.e., until the current parser terminates), this will be the
+    /// most recently added data-specific parameter table.
+    fn insert_parameter(&mut self) {
+        let value = self.take_current_value();
+        let key = self.current_key;
+        if let Some(parameters) = self.dataset.data_parameters.last_mut() {
+            parameters.insert(key.into(), value);
+        } else {
+            self.dataset.parameters.insert(key.into(), value);
+        }
+        self.current_key = "";
+    }
+
+    /// Handles [`Title`] tokens.
+    ///
+    /// [`Title`]: Token::Title
+    ///
+    /// Further nesting is not valid inside an `NTUPLES` block. Therefore,
+    /// reaching this point is always an error that cannot be recovered from,
+    /// as the file is almost guaranteed to be malformed or corrupted.
+    fn title(&mut self) -> Result<()> {
+        Err(Error::nested_tuples(self.lexer.location()))
+    }
+
+    /// Handles [`Tuples`] tokens.
+    ///
+    /// [`Tuples`]: Token::Tuples
+    ///
+    /// Further nesting is not valid inside an `NTUPLES` block. Therefore,
+    /// reaching this point is always an error that cannot be recovered from,
+    /// as the file is almost guaranteed to be malformed or corrupted.
+    fn tuples(&mut self) -> Result<()> {
+        Err(Error::nested_tuples(self.lexer.location()))
+    }
+
+    /// Handles [`Page`] tokens.
+    ///
+    /// [`Page`]: Token::Page
+    ///
+    /// Adds a new, empty data-specific parameter table to the dataset and
+    /// switches to the key handler for the inline page assignment (e.g., `N=1`,
+    /// or `F1=4370.000`).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the following key handler fails, or if the key
+    /// handler returns an end of input exit code.
+    fn page(&mut self) -> Result<()> {
+        self.dataset
+            .data_parameters
+            .push(ParameterTable::default());
+        let exit_status = loop {
+            match self.key()? {
+                KeyExit::NextKey => continue,
+                other => break other,
+            }
+        };
+
+        match exit_status {
+            KeyExit::Success => Ok(()),
+            KeyExit::EndOfInput => Err(Error::end_of_input(self.lexer.location())),
+            KeyExit::NextKey => unreachable!(),
+        }
+    }
+}
+
+impl<'source, M> Parser<'source, M>
+where
+    Parser<'source, M>: ParserMode,
+{
     /// Parses the source until the last matching [`End`] token or the end of
     /// the source.
     pub(crate) fn parse_source(&mut self) -> Result<JcampDxDataset<'source>> {
         self.initialize()?;
+        self.current_key = "TITLE";
 
         self.parse_values()
+    }
+
+    /// Checks if the entry point is valid.
+    ///
+    /// An entry point must appear at the start of the input and consists of the
+    /// token sequence [`Key`] -> [`Title`] -> [`Equals`].
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if there are any invalid literals or if
+    /// there isn't a valid entry point.
+    ///
+    /// [`Key`]: Token::Key
+    /// [`Title`]: Token::Title
+    /// [`Equals`]: Token::Equals
+    fn initialize(&mut self) -> Result<()> {
+        match (
+            self.lexer.next().transpose()?,
+            self.lexer.next().transpose()?,
+            self.lexer.next().transpose()?,
+        ) {
+            (Some(Token::Key), Some(Token::Title), Some(Token::Equals)) => Ok(()),
+            _ => Err(Error::no_entry_point(self.lexer.location())),
+        }
     }
 
     /// Main loop for parsing values.
@@ -143,15 +340,8 @@ impl<'source> Parser<'source> {
                 self.auto_concatenate = true;
             }
         }
-        if !self
-            .dataset
-            .parameters
-            .contains_key(self.current_key)
-        {
-            let current_value = self.take_current_value();
-            self.dataset
-                .parameters
-                .insert(self.current_key.into(), current_value);
+        if !self.current_key.is_empty() {
+            self.insert_parameter();
         }
 
         Ok(std::mem::take(&mut self.dataset))
@@ -162,30 +352,6 @@ impl<'source> Parser<'source> {
     /// [`Empty`]: Value::Empty
     fn take_current_value(&mut self) -> Value<'source> {
         std::mem::take(&mut self.current_value)
-    }
-
-    /// Checks if the entry point is valid.
-    ///
-    /// An entry point must appear at the start of the input and consists of the
-    /// token sequence [`Key`] -> [`Title`] -> [`Equals`].
-    ///
-    /// # Errors
-    ///
-    /// This function returns an error if there are any invalid literals or if
-    /// there isn't a valid entry point.
-    ///
-    /// [`Key`]: Token::Key
-    /// [`Title`]: Token::Title
-    /// [`Equals`]: Token::Equals
-    fn initialize(&mut self) -> Result<()> {
-        match (
-            self.lexer.next().transpose()?,
-            self.lexer.next().transpose()?,
-            self.lexer.next().transpose()?,
-        ) {
-            (Some(Token::Key), Some(Token::Title), Some(Token::Equals)) => Ok(()),
-            _ => Err(Error::no_entry_point(self.lexer.location())),
-        }
     }
 
     /// Handles [`Key`] tokens.
@@ -215,10 +381,9 @@ impl<'source> Parser<'source> {
             self.end_bounded(top.delimiter)
                 .expect("should always get the right delimiter");
         }
-        let current_value = self.take_current_value();
-        self.dataset
-            .parameters
-            .insert(self.current_key.into(), current_value);
+        if !self.current_key.is_empty() {
+            self.insert_parameter();
+        }
         let start = self.lexer.span().end;
         let mut token_count = 0;
         let mut found_equals = false;
@@ -253,8 +418,8 @@ impl<'source> Parser<'source> {
         match special {
             Some(Token::Key) | Some(Token::Equals) => unreachable!(),
             Some(Token::Title) => self.title()?,
-            Some(Token::Tuples) => self.tuples(),
-            Some(Token::Page) => self.page(),
+            Some(Token::Tuples) => self.tuples()?,
+            Some(Token::Page) => self.page()?,
             Some(Token::EncodedBlock) => {
                 return match self.encoded_block()? {
                     ChildParserExit::EndOfInput => Ok(KeyExit::EndOfInput),
@@ -452,34 +617,6 @@ impl<'source> Parser<'source> {
             }
         }
     }
-
-    /// Handles a [`Title`] token by starting a `Parser` child.
-    ///
-    /// [`Title`]: Token::Title
-    ///
-    /// JCAMP-DX files can recursively contain child datasets, which are
-    /// [`Title`] and [`End`] token pairs within another [`Title`] and [`End`]
-    /// token pair. This does not return an exit code because any main loop
-    /// would simply terminate regardless.
-    ///
-    /// [`Title`]: Token::Title
-    /// [`End`]: Token::End
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the child `Parser` encounters a fatal error.
-    fn title(&mut self) -> Result<()> {
-        let mut sub_parser = Self::from(self.lexer.clone());
-        let child_dataset = sub_parser.parse_values()?;
-        self.dataset.children.push(child_dataset);
-        self.lexer = sub_parser.lexer;
-
-        Ok(())
-    }
-
-    fn tuples(&mut self) {}
-
-    fn page(&mut self) {}
 
     /// Handles [`EncodedBlock`] tokens.
     ///

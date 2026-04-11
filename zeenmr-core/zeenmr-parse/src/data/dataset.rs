@@ -7,6 +7,8 @@ pub struct Dataset<'source, E> {
     pub parameters: ParameterTable<'source>,
     /// Raw data.
     pub data_tables: Vec<DataTable<'source>>,
+    /// Parameters specific to the raw data.
+    pub data_parameters: Vec<ParameterTable<'source>>,
     /// Nested structures.
     pub children: Vec<Self>,
     /// Non-fatal errors during parsing.
