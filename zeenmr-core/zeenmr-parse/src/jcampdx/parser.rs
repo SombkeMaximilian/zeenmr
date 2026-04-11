@@ -59,7 +59,7 @@ pub(crate) struct Parser<'source, M> {
     /// Dataset being constructed.
     dataset: JcampDxDataset<'source>,
     /// Current key.
-    current_key: &'source str,
+    current_key: Option<&'source str>,
     /// Current value.
     current_value: Value<'source>,
     /// Stack for values bounded by delimiters.
@@ -75,7 +75,7 @@ impl<'source> From<&'source str> for Parser<'source, Normal> {
         Self {
             lexer: Token::lexer(value),
             dataset: Dataset::default(),
-            current_key: "TITLE",
+            current_key: None,
             current_value: Value::Empty,
             bounded_stack: Stack::new(),
             auto_concatenate: false,
@@ -89,7 +89,7 @@ impl<'source, M> From<Lexer<'source, Token>> for Parser<'source, M> {
         Self {
             lexer: value,
             dataset: Dataset::default(),
-            current_key: "TITLE",
+            current_key: None,
             current_value: Value::Empty,
             bounded_stack: Stack::new(),
             auto_concatenate: false,
@@ -120,14 +120,15 @@ trait ParserMode {
 }
 
 impl<'source> ParserMode for Parser<'source, Normal> {
-    /// Inserts the current key-value pair into the dataset's parameter table.
+    /// Inserts the current key-value pair into the dataset's parameter table if
+    /// `current_key` is a `Some` value.
     ///
     /// This will never insert a key-value pair into the data parameters.
     fn insert_parameter(&mut self) {
-        let value = self.take_current_value();
-        let key = self.current_key;
-        self.dataset.parameters.insert(key.into(), value);
-        self.current_key = "";
+        if let Some(key) = self.current_key.take() {
+            let value = self.take_current_value();
+            self.dataset.parameters.insert(key.into(), value);
+        }
     }
 
     /// Handles [`Title`] tokens by starting a `Normal` child parser.
@@ -147,7 +148,7 @@ impl<'source> ParserMode for Parser<'source, Normal> {
     /// Returns an error if the child parser encounters a fatal error.
     fn title(&mut self) -> Result<()> {
         let mut sub_parser = Parser::<Normal>::from(self.lexer.clone());
-        sub_parser.current_key = "TITLE";
+        sub_parser.current_key = Some("TITLE");
         let child_dataset = sub_parser.parse_values()?;
         self.dataset.children.push(child_dataset);
         self.lexer = sub_parser.lexer;
@@ -164,7 +165,7 @@ impl<'source> ParserMode for Parser<'source, Normal> {
     /// Returns an error if the child parser encounters a fatal error.
     fn tuples(&mut self) -> Result<()> {
         let mut sub_parser = Parser::<Tuples>::from(self.lexer.clone());
-        sub_parser.current_key = "NTUPLES";
+        sub_parser.current_key = Some("NTUPLES");
         let child_dataset = sub_parser.parse_values()?;
         self.dataset.children.push(child_dataset);
         self.lexer = sub_parser.lexer;
@@ -185,20 +186,21 @@ impl<'source> ParserMode for Parser<'source, Normal> {
 }
 
 impl<'source> ParserMode for Parser<'source, Tuples> {
-    /// Inserts the current key-value pair into the active parameter table.
+    /// Inserts the current key-value pair into the active parameter table if
+    /// `current_key` is a `Some` value.
     ///
     /// If at least one [`Page`] token has been encountered in the current
     /// context (i.e., until the current parser terminates), this will be the
     /// most recently added data-specific parameter table.
     fn insert_parameter(&mut self) {
-        let value = self.take_current_value();
-        let key = self.current_key;
-        if let Some(parameters) = self.dataset.data_parameters.last_mut() {
-            parameters.insert(key.into(), value);
-        } else {
-            self.dataset.parameters.insert(key.into(), value);
+        if let Some(key) = self.current_key.take() {
+            let value = self.take_current_value();
+            if let Some(parameters) = self.dataset.data_parameters.last_mut() {
+                parameters.insert(key.into(), value);
+            } else {
+                self.dataset.parameters.insert(key.into(), value);
+            }
         }
-        self.current_key = "";
     }
 
     /// Handles [`Title`] tokens.
@@ -264,7 +266,7 @@ where
     /// [`End`]: Token::End
     pub(crate) fn parse_source(&mut self) -> Result<JcampDxDataset<'source>> {
         self.initialize()?;
-        self.current_key = "TITLE";
+        self.current_key = Some("TITLE");
 
         self.parse_values()
     }
@@ -342,9 +344,7 @@ where
                 self.auto_concatenate = true;
             }
         }
-        if !self.current_key.is_empty() {
-            self.insert_parameter();
-        }
+        self.insert_parameter();
 
         Ok(std::mem::take(&mut self.dataset))
     }
@@ -383,9 +383,7 @@ where
             self.end_bounded(top.delimiter)
                 .expect("should always get the right delimiter");
         }
-        if !self.current_key.is_empty() {
-            self.insert_parameter();
-        }
+        self.insert_parameter();
         let start = self.lexer.span().end;
         let mut token_count = 0;
         let mut found_equals = false;
@@ -450,7 +448,7 @@ where
             | Some(Token::String)
             | None => {
                 let end = self.lexer.span().start;
-                self.current_key = self.lexer.source()[start..end].trim();
+                self.current_key = Some(self.lexer.source()[start..end].trim());
             }
         }
 
