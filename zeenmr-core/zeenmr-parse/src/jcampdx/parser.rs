@@ -260,6 +260,8 @@ where
 {
     /// Parses the source until the last matching [`End`] token or the end of
     /// the source.
+    ///
+    /// [`End`]: Token::End
     pub(crate) fn parse_source(&mut self) -> Result<JcampDxDataset<'source>> {
         self.initialize()?;
         self.current_key = "TITLE";
@@ -272,14 +274,14 @@ where
     /// An entry point must appear at the start of the input and consists of the
     /// token sequence [`Key`] -> [`Title`] -> [`Equals`].
     ///
+    /// [`Key`]: Token::Key
+    /// [`Title`]: Token::Title
+    /// [`Equals`]: Token::Equals
+    ///
     /// # Errors
     ///
     /// This function returns an error if there are any invalid literals or if
     /// there isn't a valid entry point.
-    ///
-    /// [`Key`]: Token::Key
-    /// [`Title`]: Token::Title
-    /// [`Equals`]: Token::Equals
     fn initialize(&mut self) -> Result<()> {
         match (
             self.lexer.next().transpose()?,
