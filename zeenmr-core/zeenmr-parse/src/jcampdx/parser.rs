@@ -11,8 +11,6 @@ use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::num::IntErrorKind;
 
-pub type JcampDxDataset<'source> = Dataset<'source, Error>;
-
 /// Exit status of a child parser.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub(crate) enum ChildParserExit {

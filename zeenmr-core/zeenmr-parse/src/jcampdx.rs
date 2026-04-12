@@ -2,8 +2,20 @@
 
 mod block_format;
 mod decoding;
-mod tabulation;
 mod lexer;
 mod parser;
+mod tabulation;
 
 pub mod error;
+
+use crate::data::Dataset;
+use error::{Error, Result};
+use parser::Parser;
+
+/// Dataset that can be parsed from JCAMP-DX files.
+pub type JcampDxDataset<'source> = Dataset<'source, Error>;
+
+pub fn parse_jcamp_dx(source: &str) -> Result<JcampDxDataset<'_>> {
+    // this allows changes to the parser without being a breaking change
+    Parser::from(source).parse_source()
+}
