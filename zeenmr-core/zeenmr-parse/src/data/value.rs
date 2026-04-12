@@ -101,10 +101,7 @@ impl<'source> Value<'source> {
     /// assert!(value.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
-        match self {
-            Self::Empty => true,
-            _ => false,
-        }
+        matches!(self, Self::Empty)
     }
 
     /// Returns `true` if the value is an `Integer`.
@@ -119,10 +116,7 @@ impl<'source> Value<'source> {
     /// assert!(value.is_integer());
     /// ```
     pub fn is_integer(&self) -> bool {
-        match self {
-            Self::Integer(_) => true,
-            _ => false,
-        }
+        matches!(self, Self::Integer(_))
     }
 
     /// Returns the contained `i64`, or `None` if the value is not an `Integer`.
@@ -157,10 +151,7 @@ impl<'source> Value<'source> {
     /// assert!(value.is_float());
     /// ```
     pub fn is_float(&self) -> bool {
-        match self {
-            Self::Float(_) => true,
-            _ => false,
-        }
+        matches!(self, Self::Float(_))
     }
 
     /// Returns the contained `f64`, or `None` if the value is not a `Float`.
@@ -195,10 +186,7 @@ impl<'source> Value<'source> {
     /// assert!(value.is_string());
     /// ```
     pub fn is_string(&self) -> bool {
-        match self {
-            Self::String(_) => true,
-            _ => false,
-        }
+        matches!(self, Self::String(_))
     }
 
     /// Returns a string slice containing the string, or `None` if the value is
@@ -238,10 +226,7 @@ impl<'source> Value<'source> {
     /// assert!(value.is_array());
     /// ```
     pub fn is_array(&self) -> bool {
-        match self {
-            Self::Array(_) => true,
-            _ => false,
-        }
+        matches!(self, Self::Array(_))
     }
 
     /// Returns a slice of the contained `Vec<Value>`, or `None` if the value is

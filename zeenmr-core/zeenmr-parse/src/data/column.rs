@@ -86,34 +86,22 @@ impl<'source> Column<'source> {
 
     /// Returns `true` if in the `Integer` variant.
     pub fn is_integer(&self) -> bool {
-        match self {
-            Self::Integer(_) => true,
-            _ => false,
-        }
+        matches!(self, Self::Integer(_))
     }
 
     /// Returns `true` if in the `Float` variant.
     pub fn is_float(&self) -> bool {
-        match self {
-            Self::Float(_) => true,
-            _ => false,
-        }
+        matches!(self, Self::Float(_))
     }
 
     /// Returns `true` if in the `String` variant.
     pub fn is_string(&self) -> bool {
-        match self {
-            Self::String(_) => true,
-            _ => false,
-        }
+        matches!(self, Self::String(_))
     }
 
     /// Returns `true` if in the `Mixed` variant.
     pub fn is_mixed(&self) -> bool {
-        match self {
-            Self::Mixed(_) => true,
-            _ => false,
-        }
+        matches!(self, Self::Mixed(_))
     }
 
     /// Converts this column into an owned form with a `'static` lifetime.

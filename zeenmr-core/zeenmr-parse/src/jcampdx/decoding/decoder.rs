@@ -432,7 +432,7 @@ impl<'source> Decoder<'source> {
                         .extend_decoded((1..num).map(|i| previous + (diff * i))),
                     State::Normal => self
                         .builder
-                        .extend_decoded(std::iter::repeat(previous).take((num - 1) as usize)),
+                        .extend_decoded(std::iter::repeat_n(previous, (num - 1) as usize)),
                     _ => unreachable!(),
                 }
 

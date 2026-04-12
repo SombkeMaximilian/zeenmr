@@ -367,12 +367,7 @@ mod tests {
         single_group,
         "(XYWA)\n",
         Ok(BlockFormat {
-            line_layout: LineLayout::GroupedValues(vec![
-                "X",
-                "Y",
-                "W",
-                "A",
-            ]),
+            line_layout: LineLayout::GroupedValues(vec!["X", "Y", "W", "A",]),
             kind: None,
         })
     );
@@ -380,12 +375,7 @@ mod tests {
         single_group_block_kind,
         "(XYWA), PEAK ASSIGNMENTS\n",
         Ok(BlockFormat {
-            line_layout: LineLayout::GroupedValues(vec![
-                "X",
-                "Y",
-                "W",
-                "A",
-            ]),
+            line_layout: LineLayout::GroupedValues(vec!["X", "Y", "W", "A",]),
             kind: Some("PEAK ASSIGNMENTS"),
         })
     );

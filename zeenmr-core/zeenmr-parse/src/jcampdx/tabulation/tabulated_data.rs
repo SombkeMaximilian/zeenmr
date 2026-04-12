@@ -357,7 +357,7 @@ impl<'source> TabulatedBlockBuilder<'source> {
         let columns = self
             .buffer_cycle
             .into_iter()
-            .zip(self.identifiers.into_iter())
+            .zip(self.identifiers)
             .map(|(buffer, id)| (id, Column::from(buffer)));
         let mut table = DataTable::from_iter(columns);
         table.set_id(self.title);

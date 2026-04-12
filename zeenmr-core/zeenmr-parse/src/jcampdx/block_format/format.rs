@@ -106,10 +106,10 @@ impl<'source> BlockFormatBuilder<'source> {
     /// the check index. If the check index is out of bounds, `false` is
     /// returned.
     pub(crate) fn compare_prefix(&mut self, suffix: &'source str) -> bool {
-        let result = match self.identifiers.get(self.suffix_check) {
-            Some(prefix) if *prefix == suffix => true,
-            _ => false,
-        };
+        let result = matches!(
+            self.identifiers.get(self.suffix_check),
+            Some(prefix) if *prefix == suffix
+        );
         self.suffix_check += 1;
 
         result

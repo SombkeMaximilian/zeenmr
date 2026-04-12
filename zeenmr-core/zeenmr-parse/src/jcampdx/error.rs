@@ -14,7 +14,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// An `Error` that occurred while parsing a file.
 ///
-///See the [`Kind`] enum for the different kinds of errors that can occur.
+/// See the [`Kind`] enum for the different kinds of errors that can occur.
 #[derive(Clone, Debug, Default)]
 pub struct Error {
     /// The `Kind` of error that occurred.
