@@ -12,30 +12,75 @@ use std::sync::Arc;
 /// directly.
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// An `Error` that occurred while parsing a file.
+///
+///See the [`Kind`] enum for the different kinds of errors that can occur.
 #[derive(Clone, Debug, Default)]
 pub struct Error {
+    /// The `Kind` of error that occurred.
     kind: Kind,
+    /// Position in the source.
     position: Position,
+    /// The source of the error, if any.
     source: Option<Arc<dyn std::error::Error + Send + Sync>>,
 }
 
+/// The kind of `Error` that can occur during decoding.
+///
+/// Marked as non-exhaustive to allow for new variants to be added in the future
+/// without breaking compatibility.
 #[non_exhaustive]
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub enum Kind {
+    /// A literal does not match any token.
     #[default]
     InvalidLiteral,
+    /// An entry point could not be found for the input.
+    ///
+    /// In the JCAMP-DX standard, a dataset is started with `##TITLE=` and ended
+    /// with `##END=`.
     NoEntryPoint,
+    /// A key prefix was encountered, but the label was empty.
+    ///
+    /// Keys start with `##`, `##.` or `##$` and are separated from their value
+    /// by `=`. If there is no token between the prefix and the key-value
+    /// separator, the key is empty and cannot be parsed.
     EmptyKey,
+    /// Another key token was encountered before fully parsing the current one.
+    ///
+    /// If another key token is encountered between an earlier key token and its
+    /// key-value separator, the file is likely malformed or corrupted.
     MultipleKeyTokens,
+    /// A closing delimiter which does not match the most recent opening
+    /// delimiter was encountered.
     MismatchedDelimiter,
+    /// An opening delimiter's matching closing delimiter was not encountered
+    /// before the next key token.
     UnclosedDelimiter,
+    /// Page tokens are only valid inside an `NTUPLES` block.
     UnexpectedPage,
+    /// Further nesting was encountered within an `NTUPLES` block.
     NestedTuples,
+    /// A block format which does not represent the correct kind of data block
+    /// was parsed.
+    ///
+    /// For example, the `XYDATA` format requires a format specifier of the form
+    /// `X++(Y..Y)`, while the `XYPOINTS` format requires a format specifier of
+    /// the form `(XY..XY)` or `(XY)`.
     MismatchedBlockFormat,
+    /// Value is too large for primitive types.
+    ///
+    /// This occurs if a value can't fit in an [`i64`] and usually means that
+    /// the file is corrupted.
     Overflow,
+    /// An error was encountered while parsing the format specifier of a data
+    /// block.
     BlockFormat,
+    /// An error was encountered while decoding an encoded block.
     Decode,
+    /// An error was encountered while parsing a data table.
     Tabulate,
+    /// The input ended unexpectedly early.
     EndOfInput,
 }
 
