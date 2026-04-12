@@ -99,7 +99,7 @@ impl<'source, M> From<Lexer<'source, Token>> for Parser<'source, M> {
 }
 
 /// Trait for methods that diverge between parser modes.
-trait ParserMode {
+pub(crate) trait ParserMode {
     /// Inserts a parameter into the appropriate table.
     fn insert_parameter(&mut self);
 
