@@ -406,7 +406,7 @@ mod tests {
     use super::*;
     use crate::Position;
     use crate::data::{DataTable, Value};
-    use crate::jcampdx::ChildParserExit;
+    use crate::jcampdx::parser::ChildParserExit;
     use std::sync::LazyLock;
 
     static EXPECTED: LazyLock<TabulatedBlock> = LazyLock::new(|| {

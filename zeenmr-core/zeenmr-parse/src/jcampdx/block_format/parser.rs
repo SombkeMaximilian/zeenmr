@@ -1,4 +1,4 @@
-use crate::jcampdx::ChildParserExit;
+use crate::jcampdx::parser::ChildParserExit;
 use crate::jcampdx::block_format::error::{Error, Result};
 use crate::jcampdx::block_format::{BlockFormat, BlockFormatBuilder, FormatToken};
 use crate::{Cursor, Location, Position};

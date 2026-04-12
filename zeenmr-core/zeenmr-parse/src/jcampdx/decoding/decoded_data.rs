@@ -1,5 +1,5 @@
 use crate::data::DataTable;
-use crate::jcampdx::ChildParserExit;
+use crate::jcampdx::parser::ChildParserExit;
 use crate::jcampdx::decoding::error::{Error, Kind};
 use std::borrow::Cow;
 

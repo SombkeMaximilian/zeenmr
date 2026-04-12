@@ -1,5 +1,5 @@
 use crate::data::{Dataset, ParameterTable, Value};
-use crate::jcampdx::Token;
+use crate::jcampdx::lexer::Token;
 use crate::jcampdx::block_format::{FormatParser, LineLayout};
 use crate::jcampdx::decoding::Decoder;
 use crate::jcampdx::error::{Error, Result};
