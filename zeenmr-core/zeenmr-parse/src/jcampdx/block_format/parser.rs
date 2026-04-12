@@ -1,6 +1,6 @@
 use crate::jcampdx::ChildParserExit;
 use crate::jcampdx::block_format::error::{Error, Result};
-use crate::jcampdx::block_format::{BlockFormat, BlockFormatBuilder, FormatToken, LineLayout};
+use crate::jcampdx::block_format::{BlockFormat, BlockFormatBuilder, FormatToken};
 use crate::{Cursor, Location, Position};
 use logos::{Lexer, Logos};
 
@@ -309,6 +309,7 @@ impl<'source> FormatParser<'source> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::jcampdx::block_format::LineLayout;
 
     macro_rules! parser_test {
         ($name:ident, $data:expr, $expected:expr) => {
@@ -329,8 +330,8 @@ mod tests {
         "(X++(Y..Y))\n",
         Ok(BlockFormat {
             line_layout: LineLayout::RepeatingValue {
-                incrementing: "X".into(),
-                repeating: "Y".into(),
+                incrementing: "X",
+                repeating: "Y",
             },
             kind: None,
         })
@@ -340,8 +341,8 @@ mod tests {
         "(X++(R..R)), XYDATA\n",
         Ok(BlockFormat {
             line_layout: LineLayout::RepeatingValue {
-                incrementing: "X".into(),
-                repeating: "R".into(),
+                incrementing: "X",
+                repeating: "R",
             },
             kind: Some("XYDATA"),
         })
@@ -350,7 +351,7 @@ mod tests {
         multi_group,
         "(XY..XY)\n",
         Ok(BlockFormat {
-            line_layout: LineLayout::GroupedValues(vec!["X".into(), "Y".into()]),
+            line_layout: LineLayout::GroupedValues(vec!["X", "Y"]),
             kind: None,
         })
     );
@@ -358,7 +359,7 @@ mod tests {
         multi_group_block_kind,
         "(XY..XY), PEAKS\n",
         Ok(BlockFormat {
-            line_layout: LineLayout::GroupedValues(vec!["X".into(), "Y".into()]),
+            line_layout: LineLayout::GroupedValues(vec!["X", "Y"]),
             kind: Some("PEAKS"),
         })
     );
@@ -367,10 +368,10 @@ mod tests {
         "(XYWA)\n",
         Ok(BlockFormat {
             line_layout: LineLayout::GroupedValues(vec![
-                "X".into(),
-                "Y".into(),
-                "W".into(),
-                "A".into()
+                "X",
+                "Y",
+                "W",
+                "A",
             ]),
             kind: None,
         })
@@ -380,10 +381,10 @@ mod tests {
         "(XYWA), PEAK ASSIGNMENTS\n",
         Ok(BlockFormat {
             line_layout: LineLayout::GroupedValues(vec![
-                "X".into(),
-                "Y".into(),
-                "W".into(),
-                "A".into()
+                "X",
+                "Y",
+                "W",
+                "A",
             ]),
             kind: Some("PEAK ASSIGNMENTS"),
         })
