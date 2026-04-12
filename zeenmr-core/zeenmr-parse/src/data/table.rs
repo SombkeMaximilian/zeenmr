@@ -2,8 +2,10 @@ use crate::data::{Column, Value};
 use std::borrow::{Borrow, Cow};
 use std::collections::BTreeMap;
 
+/// Type alias for tables containing raw data.
 pub type DataTable<'source> = Table<'source, Cow<'source, str>, Column<'source>>;
 
+/// Type alias for tables containing dataset parameters.
 pub type ParameterTable<'source> = Table<'source, Cow<'source, str>, Value<'source>>;
 
 /// Table in a JCAMP-DX dataset.
@@ -163,6 +165,12 @@ impl<'source, K, V> Table<'source, K, V> {
 }
 
 impl<'source> ParameterTable<'source> {
+    /// Converts this `Table` into an owned form with a `'static` lifetime.
+    ///
+    /// This is useful when you need to store a parsed `Table` beyond the
+    /// lifetime of the input buffer. Borrowed string data is cloned into
+    /// `Cow::Owned`. Array types are converted recursively. Everything else is
+    /// moved.
     pub fn into_owned(self) -> ParameterTable<'static> {
         let id = self.id.map(|id| Cow::Owned(id.into_owned()));
         let map = self
@@ -176,6 +184,12 @@ impl<'source> ParameterTable<'source> {
 }
 
 impl<'source> DataTable<'source> {
+    /// Converts this `Table` into an owned form with a `'static` lifetime.
+    ///
+    /// This is useful when you need to store a parsed `Table` beyond the
+    /// lifetime of the input buffer. Borrowed string data is cloned into
+    /// `Cow::Owned`. Array types are converted recursively. Everything else is
+    /// moved.
     pub fn into_owned(self) -> DataTable<'static> {
         let id = self.id.map(|id| Cow::Owned(id.into_owned()));
         let map = self

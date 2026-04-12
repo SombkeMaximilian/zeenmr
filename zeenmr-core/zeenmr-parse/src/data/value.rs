@@ -291,8 +291,8 @@ impl<'source> Value<'source> {
     /// Converts this `Value` into an owned form with a `'static` lifetime.
     ///
     /// This is useful when you need to store a parsed `Value` beyond the
-    /// lifetime of the input buffer. Borrowed string data is cloned into owned
-    /// `String`s. Arrays are converted recursively. All other variants are
+    /// lifetime of the input buffer. Borrowed string data is cloned into
+    /// `Cow::Owned`s. Arrays are converted recursively. All other variants are
     /// moved.
     ///
     /// # Examples
