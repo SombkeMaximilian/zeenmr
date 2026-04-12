@@ -1,6 +1,6 @@
 use crate::data::DataTable;
-use crate::jcampdx::parser::ChildParserExit;
 use crate::jcampdx::decoding::error::{Error, Kind};
+use crate::jcampdx::parser::ChildParserExit;
 use std::borrow::Cow;
 
 /// Decoded data block.
