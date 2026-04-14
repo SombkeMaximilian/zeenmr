@@ -274,8 +274,8 @@ impl Error {
     }
 
     /// Returns the `Kind` of error that occurred.
-    pub fn kind(&self) -> &Kind {
-        &self.kind
+    pub fn kind(&self) -> Kind {
+        self.kind
     }
 
     /// Returns the position in the source that caused the error.
