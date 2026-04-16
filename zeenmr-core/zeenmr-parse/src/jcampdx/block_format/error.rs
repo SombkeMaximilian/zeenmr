@@ -2,27 +2,69 @@
 
 use crate::Position;
 
+/// A specialized [`Result`] type.
+///
+/// [`Result`]: std::result::Result
+///
+/// This type alias avoids writing out
+/// `Result<T, zeenmr_parse::jcampdx::block_format::error::Error>` directly.
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// An `Error` that occurred while parsing the block format.
+///
+/// See the [`Kind`] enum for the different kinds of errors that can occur.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub struct Error {
+    /// The `Kind` of error that occurred.
     kind: Kind,
+    /// Position in the source.
     position: Position,
 }
 
+/// The kind of `Error` that can occur while parsing the block format.
+///
+/// Marked as non-exhaustive to allow for new variants to be added in the future
+/// without breaking compatibility.
 #[non_exhaustive]
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub enum Kind {
+    /// A literal does not match any token.
     #[default]
     InvalidLiteral,
+    /// The input ended.
+    ///
+    /// Since a block format describes how to read data following it, the input
+    /// ending means the file is certainly malformed or corrupted.
     EndOfInput,
+    /// The format specifier string is not present.
     EmptyFormat,
+    /// No identifier was encountered in the increment pattern.
+    ///
+    /// Example: `++(Y..Y)`
     EmptyIncrement,
+    /// No identifier was encountered in the repeat pattern.
+    ///
+    /// Example: `X++(..)`, `X++(..Y)`
     EmptyRepeat,
+    /// Repeating identifiers do not match.
+    ///
+    /// Example: `X++(Y..R)`
     MismatchedRepeat,
+    /// Multiple increment patterns were encountered.
+    ///
+    /// Example: `X++X++(Y..Y)`
     MultipleIncrement,
+    /// Multiple repeat patterns were encountered.
+    ///
+    /// Example: `X++(R..R..R)`, `X++(R..R)(I..I)`
     MultipleRepeat,
+    /// An increment pattern was encountered after a repeat pattern.
+    ///
+    /// Example: `(R..R)++`
     IncrementAfterRepeat,
+    /// Multiple identifiers were encountered in an increment pattern.
+    ///
+    /// Example: `XY++(Z..Z)`
     MultipleIdentifierIncrement,
 }
 
