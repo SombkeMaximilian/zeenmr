@@ -819,8 +819,8 @@ mod tests {
                     .join($file);
                 let content = read_to_string(path).unwrap();
                 let parsed = Parser::from(content.as_str())
-                    .parse_source()
-                    .unwrap();
+                    .parse_source();
+                assert!(parsed.is_ok());
             }
         };
     }
