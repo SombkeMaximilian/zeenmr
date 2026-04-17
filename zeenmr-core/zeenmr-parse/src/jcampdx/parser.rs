@@ -1,6 +1,6 @@
 use crate::Stack;
 use crate::data::{Dataset, ParameterTable, Value};
-use crate::error::Location;
+use crate::error::CurrentPosition;
 use crate::jcampdx::JcampDxDataset;
 use crate::jcampdx::block_format::{FormatParser, LineLayout};
 use crate::jcampdx::decoding::Decoder;
@@ -181,7 +181,7 @@ impl<'source> ParserMode for Parser<'source, Normal> {
     /// reaching this point is always an error that cannot be recovered from,
     /// as the file is almost guaranteed to be malformed or corrupted.
     fn page(&mut self) -> Result<()> {
-        Err(Error::unexpected_page(self.lexer.location()))
+        Err(Error::unexpected_page(self.lexer.position()))
     }
 }
 
@@ -211,7 +211,7 @@ impl<'source> ParserMode for Parser<'source, Tuples> {
     /// reaching this point is always an error that cannot be recovered from,
     /// as the file is almost guaranteed to be malformed or corrupted.
     fn title(&mut self) -> Result<()> {
-        Err(Error::nested_tuples(self.lexer.location()))
+        Err(Error::nested_tuples(self.lexer.position()))
     }
 
     /// Handles [`Tuples`] tokens.
@@ -222,7 +222,7 @@ impl<'source> ParserMode for Parser<'source, Tuples> {
     /// reaching this point is always an error that cannot be recovered from,
     /// as the file is almost guaranteed to be malformed or corrupted.
     fn tuples(&mut self) -> Result<()> {
-        Err(Error::nested_tuples(self.lexer.location()))
+        Err(Error::nested_tuples(self.lexer.position()))
     }
 
     /// Handles [`Page`] tokens.
@@ -250,7 +250,7 @@ impl<'source> ParserMode for Parser<'source, Tuples> {
 
         match exit_status {
             KeyExit::Success => Ok(()),
-            KeyExit::EndOfInput => Err(Error::end_of_input(self.lexer.location())),
+            KeyExit::EndOfInput => Err(Error::end_of_input(self.lexer.position())),
             KeyExit::NextKey => unreachable!(),
         }
     }
@@ -291,7 +291,7 @@ where
             self.lexer.next().transpose()?,
         ) {
             (Some(Token::Key), Some(Token::Title), Some(Token::Equals)) => Ok(()),
-            _ => Err(Error::no_entry_point(self.lexer.location())),
+            _ => Err(Error::no_entry_point(self.lexer.position())),
         }
     }
 
@@ -390,7 +390,7 @@ where
         let mut special = None;
         while let Some(token) = self.lexer.next().transpose()? {
             match token {
-                Token::Key => return Err(Error::multiple_key_tokens(self.lexer.location())),
+                Token::Key => return Err(Error::multiple_key_tokens(self.lexer.position())),
                 Token::Equals => {
                     found_equals = true;
                     break;
@@ -407,10 +407,10 @@ where
             token_count += 1;
         }
         if !found_equals {
-            return Err(Error::end_of_input(self.lexer.location()));
+            return Err(Error::end_of_input(self.lexer.position()));
         }
         if token_count == 0 {
-            return Err(Error::empty_key(self.lexer.location()));
+            return Err(Error::empty_key(self.lexer.position()));
         }
         if token_count > 1 {
             special = None;
@@ -489,7 +489,7 @@ where
     /// [`Frame`]: crate::Frame
     fn start_bounded(&mut self, delimiter: Delimiter) {
         self.bounded_stack
-            .push(delimiter, self.lexer.location());
+            .push(delimiter, self.lexer.position());
     }
 
     /// Finalizes the [`Frame`] at the top of the [`Stack`].
@@ -509,7 +509,7 @@ where
     /// [`Stack`].
     fn end_bounded(&mut self, delimiter: Delimiter) -> Result<()> {
         if self.bounded_stack.top_delimiter() != Some(&delimiter) {
-            return Err(Error::mismatched_delimiter(self.lexer.location()));
+            return Err(Error::mismatched_delimiter(self.lexer.position()));
         }
         let frame = self
             .bounded_stack
@@ -549,7 +549,7 @@ where
                 IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
                     self.dataset
                         .errors
-                        .push(Error::overflow(self.lexer.location(), e));
+                        .push(Error::overflow(self.lexer.position(), e));
 
                     Value::Integer(i64::MIN)
                 }
@@ -661,7 +661,7 @@ where
                     _ => {
                         self.dataset
                             .errors
-                            .push(Error::mismatched_block_format(self.lexer.location()));
+                            .push(Error::mismatched_block_format(self.lexer.position()));
                     }
                 }
             }
@@ -702,7 +702,7 @@ where
         let format = format_parser.parse_format()?;
         let mut table_parser = match format.line_layout {
             LineLayout::RepeatingValue { .. } => {
-                return Err(Error::mismatched_block_format(self.lexer.location()));
+                return Err(Error::mismatched_block_format(self.lexer.position()));
             }
             LineLayout::GroupedValues(identifiers) => {
                 TableParser::from(format_parser.into_lexer()).with_identifiers(identifiers)

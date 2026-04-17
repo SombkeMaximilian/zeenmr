@@ -212,14 +212,6 @@ impl<'source> IntoIterator for BufferCycle<'source> {
 }
 
 impl<'source> BufferCycle<'source> {
-    /// Creates a new, empty `BufferCycle`.
-    fn new() -> Self {
-        Self {
-            buffers: Vec::new(),
-            current: 0,
-        }
-    }
-
     /// Returns a mutable reference to the current `UpgradingBuffer`.
     ///
     /// # Panics

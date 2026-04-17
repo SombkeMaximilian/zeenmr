@@ -1,5 +1,5 @@
-use crate::error::Cursor;
-use crate::error::Location;
+use crate::error::CurrentPosition;
+use crate::error::LineCounter;
 use crate::jcampdx::tabulation::error::{Error, Result};
 use crate::jcampdx::tabulation::{GroupToken, TabulatedBlock, TabulatedBlockBuilder};
 use logos::{Lexer, Logos};
@@ -90,7 +90,7 @@ impl<'source> From<&'source str> for TableParser<'source, NeedsLayout> {
 impl<'source, T> From<Lexer<'source, T>> for TableParser<'source, NeedsLayout>
 where
     T: Logos<'source, Source = str> + Clone,
-    T::Extras: Clone + Into<Cursor>,
+    T::Extras: Clone + Into<LineCounter>,
 {
     fn from(value: Lexer<'source, T>) -> Self {
         Self {
@@ -162,7 +162,7 @@ impl<'source> TableParser<'source, HasLayout> {
             self.builder.skip_current();
         }
         if !self.at_start_of_group() {
-            return Err(Error::mismatched_group_size(self.lexer.location()));
+            return Err(Error::mismatched_group_size(self.lexer.position()));
         }
 
         Ok(std::mem::take(&mut self.builder).finalize())
@@ -192,7 +192,7 @@ impl<'source> TableParser<'source, HasLayout> {
                 Awaits::Value if self.at_end_of_group() => self.builder.skip_current(),
                 Awaits::Value | Awaits::Comma => self
                     .builder
-                    .push_error(Error::cross_line_group(self.lexer.location())),
+                    .push_error(Error::cross_line_group(self.lexer.position())),
                 Awaits::Terminator => {}
             }
         }
@@ -213,7 +213,7 @@ impl<'source> TableParser<'source, HasLayout> {
         match self.awaits {
             Awaits::Value if !self.at_end_of_group() => self.builder.skip_current(),
             Awaits::Comma => self.awaits = Awaits::Value,
-            _ => return Err(Error::mismatched_group_size(self.lexer.location())),
+            _ => return Err(Error::mismatched_group_size(self.lexer.position())),
         }
 
         Ok(())
@@ -232,13 +232,13 @@ impl<'source> TableParser<'source, HasLayout> {
     fn semicolon(&mut self) -> Result<()> {
         if self.state == State::InsideParentheses {
             self.builder
-                .push_error(Error::mismatched_group_delimiter(self.lexer.location()));
+                .push_error(Error::mismatched_group_delimiter(self.lexer.position()));
             self.state = State::OutsideParentheses;
         }
         match self.awaits {
             Awaits::Value if self.at_end_of_group() => self.builder.skip_current(),
             Awaits::Terminator => self.awaits = Awaits::Value,
-            _ => return Err(Error::mismatched_group_size(self.lexer.location())),
+            _ => return Err(Error::mismatched_group_size(self.lexer.position())),
         }
 
         Ok(())
@@ -257,11 +257,11 @@ impl<'source> TableParser<'source, HasLayout> {
     /// current group is not yet completed.
     fn open_parenthesis(&mut self) -> Result<()> {
         if self.state == State::InsideParentheses {
-            return Err(Error::mismatched_group_delimiter(self.lexer.location()));
+            return Err(Error::mismatched_group_delimiter(self.lexer.position()));
         }
         match self.awaits {
             Awaits::Value if self.at_start_of_group() => {}
-            _ => return Err(Error::mismatched_group_delimiter(self.lexer.location())),
+            _ => return Err(Error::mismatched_group_delimiter(self.lexer.position())),
         }
         self.state = State::InsideParentheses;
 
@@ -283,12 +283,12 @@ impl<'source> TableParser<'source, HasLayout> {
     /// [`OpenParenthesis`]: GroupToken::OpenParenthesis
     fn close_parenthesis(&mut self) -> Result<()> {
         if self.state == State::OutsideParentheses {
-            return Err(Error::mismatched_group_delimiter(self.lexer.location()));
+            return Err(Error::mismatched_group_delimiter(self.lexer.position()));
         }
         match self.awaits {
             Awaits::Value if self.at_end_of_group() => self.builder.skip_current(),
             Awaits::Terminator => self.awaits = Awaits::Value,
-            _ => return Err(Error::mismatched_group_size(self.lexer.location())),
+            _ => return Err(Error::mismatched_group_size(self.lexer.position())),
         }
         self.state = State::OutsideParentheses;
 
@@ -330,11 +330,11 @@ impl<'source> TableParser<'source, HasLayout> {
         match self.awaits {
             Awaits::Value if self.at_end_of_group() => self.awaits = Awaits::Terminator,
             Awaits::Value => self.awaits = Awaits::Comma,
-            Awaits::Comma => return Err(Error::non_separated_values(self.lexer.location())),
+            Awaits::Comma => return Err(Error::non_separated_values(self.lexer.position())),
             Awaits::Terminator if self.state == State::OutsideParentheses => {
                 self.awaits = Awaits::Comma
             }
-            Awaits::Terminator => return Err(Error::mismatched_group_size(self.lexer.location())),
+            Awaits::Terminator => return Err(Error::mismatched_group_size(self.lexer.position())),
         }
         match token {
             GroupToken::OpenAngle => {
@@ -343,7 +343,7 @@ impl<'source> TableParser<'source, HasLayout> {
                 while let Some(token) = self.lexer.next().transpose()? {
                     match token {
                         GroupToken::OpenAngle => {
-                            return Err(Error::unmatched_string_delimiter(self.lexer.location()));
+                            return Err(Error::unmatched_string_delimiter(self.lexer.position()));
                         }
                         GroupToken::CloseAngle => {
                             found_closing = true;
@@ -354,7 +354,7 @@ impl<'source> TableParser<'source, HasLayout> {
                     }
                 }
                 if !found_closing {
-                    return Err(Error::unmatched_string_delimiter(self.lexer.location()));
+                    return Err(Error::unmatched_string_delimiter(self.lexer.position()));
                 }
                 let end = self.lexer.span().start;
                 let value = self.lexer.source()[start..end].trim();
@@ -365,7 +365,7 @@ impl<'source> TableParser<'source, HasLayout> {
                 Err(e) => match e.kind() {
                     IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
                         self.builder
-                            .push_error(Error::overflow(self.lexer.location()));
+                            .push_error(Error::overflow(self.lexer.position()));
                         self.builder.push_i64(i64::MIN);
                     }
                     _ => {
@@ -397,7 +397,7 @@ impl<'source> TableParser<'source, HasLayout> {
     /// [`CloseAngle`] token, reaching this point is always an error that
     /// cannot be recovered from, as everything before it would become a string.
     fn close_angle(&mut self) -> Result<()> {
-        Err(Error::unmatched_string_delimiter(self.lexer.location()))
+        Err(Error::unmatched_string_delimiter(self.lexer.position()))
     }
 }
 
@@ -551,10 +551,7 @@ mod tests {
         "\
             1, 1; 2, 2; 3, 3\n\
             4, 4; 5, 5, 5;",
-        Error::mismatched_group_size(Position {
-            line: 1,
-            column: 10
-        })
+        Error::mismatched_group_size(Position::new(27..28, 1))
     );
     fatal_error_test!(
         group_too_large_whitespace,
@@ -562,10 +559,7 @@ mod tests {
         "\
             1, 1  2, 2  3, 3\n\
             4, 4  5, 5, 5",
-        Error::mismatched_group_size(Position {
-            line: 1,
-            column: 10
-        })
+        Error::mismatched_group_size(Position::new(27..28, 1))
     );
     fatal_error_test!(
         group_too_large_parentheses,
@@ -573,10 +567,7 @@ mod tests {
         "\
             (1, 1) (2, 2) (3, 3)\n\
             (4, 4) (5, 5, 5)",
-        Error::mismatched_group_size(Position {
-            line: 1,
-            column: 12
-        })
+        Error::mismatched_group_size(Position::new(33..34, 1))
     );
     fatal_error_test!(
         group_too_small_semicolon,
@@ -584,10 +575,7 @@ mod tests {
         "\
             1, 1, 1; 2, 2, 2; 3, 3, 3\n\
             4, 4, 4; 5, 5;",
-        Error::mismatched_group_size(Position {
-            line: 1,
-            column: 13
-        })
+        Error::mismatched_group_size(Position::new(39..40, 1))
     );
     fatal_error_test!(
         group_too_small_whitespace,
@@ -595,10 +583,7 @@ mod tests {
         "\
             1, 1, 1  2, 2, 2  3, 3, 3\n\
             4, 4, 4  5, 5",
-        Error::mismatched_group_size(Position {
-            line: 1,
-            column: 13
-        })
+        Error::mismatched_group_size(Position::new(39..39, 1))
     );
     fatal_error_test!(
         group_too_small_parentheses,
@@ -606,10 +591,7 @@ mod tests {
         "\
             (1, 1, 1) (2, 2, 2) (3, 3, 3)\n\
             (4, 4, 4) (5, 5)",
-        Error::mismatched_group_size(Position {
-            line: 1,
-            column: 15
-        })
+        Error::mismatched_group_size(Position::new(45..46, 1))
     );
 
     fatal_error_test!(
@@ -618,10 +600,7 @@ mod tests {
         "\
             (1, 1) (2, 2  (3, 3)\n\
             (4, 4) (5, 5)",
-        Error::mismatched_group_delimiter(Position {
-            line: 0,
-            column: 14
-        })
+        Error::mismatched_group_delimiter(Position::new(14..15, 0))
     );
     fatal_error_test!(
         mismatched_group_delimiter_unopened_parenthesis,
@@ -629,10 +608,7 @@ mod tests {
         "\
             (1, 1)  2, 2) (3, 3)\n\
             (4, 4) (5, 5)",
-        Error::mismatched_group_delimiter(Position {
-            line: 0,
-            column: 12
-        })
+        Error::mismatched_group_delimiter(Position::new(12..13, 0))
     );
     fatal_error_test!(
         unmatched_string_delimiter_unclosed_angle_semicolon,
@@ -640,10 +616,7 @@ mod tests {
         "\
             1, 1, <1>; 2, 2, <2>; 3, 3, <3>\n\
             4, 4, <4>; 5, 5, <5 ;",
-        Error::unmatched_string_delimiter(Position {
-            line: 1,
-            column: 21
-        })
+        Error::unmatched_string_delimiter(Position::new(53..53, 1))
     );
     fatal_error_test!(
         unmatched_string_delimiter_unopened_angle_semicolon,
@@ -651,7 +624,7 @@ mod tests {
         "\
             1, 1,  1>; 2, 2, <2>; 3, 3, <3>\n\
             4, 4, <4>; 5, 5, <5>;",
-        Error::unmatched_string_delimiter(Position { line: 0, column: 8 })
+        Error::unmatched_string_delimiter(Position::new(8..9, 0))
     );
     fatal_error_test!(
         unmatched_string_delimiter_multiple_opened_angle_semicolon,
@@ -659,10 +632,7 @@ mod tests {
         "\
             1, 1, <1 ; 2, 2, <2>; 3, 3, <3>\n\
             4, 4, <4>; 5, 5, <5>;",
-        Error::unmatched_string_delimiter(Position {
-            line: 0,
-            column: 17
-        })
+        Error::unmatched_string_delimiter(Position::new(17..18, 0))
     );
     fatal_error_test!(
         unmatched_string_delimiter_unclosed_angle_parentheses,
@@ -670,10 +640,7 @@ mod tests {
         "\
             (1, 1, <1>) (2, 2, <2>) (3, 3, <3>)\n\
             (4, 4, <4>) (5, 5, <5 )",
-        Error::unmatched_string_delimiter(Position {
-            line: 1,
-            column: 23
-        })
+        Error::unmatched_string_delimiter(Position::new(59..59, 1))
     );
     fatal_error_test!(
         unmatched_string_delimiter_unopened_angle_parentheses,
@@ -681,7 +648,7 @@ mod tests {
         "\
             (1, 1,  1>) (2, 2, <2>) (3, 3, <3>)\n\
             (4, 4, <4>) (5, 5, <5>)",
-        Error::unmatched_string_delimiter(Position { line: 0, column: 9 })
+        Error::unmatched_string_delimiter(Position::new(9..10, 0))
     );
     fatal_error_test!(
         unmatched_string_delimiter_multiple_opened_angle_parentheses,
@@ -689,10 +656,7 @@ mod tests {
         "\
             (1, 1, <1 ) (2, 2, <2>) (3, 3, <3>)\n\
             (4, 4, <4>) (5, 5, <5>)",
-        Error::unmatched_string_delimiter(Position {
-            line: 0,
-            column: 19
-        })
+        Error::unmatched_string_delimiter(Position::new(19..20, 0))
     );
     fatal_error_test!(
         unmatched_string_delimiter_unclosed_angle_whitespace,
@@ -700,10 +664,7 @@ mod tests {
         "\
             1, 1, <1> 2, 2, <2> 3, 3, <3>\n\
             4, 4, <4> 5, 5, <5 ",
-        Error::unmatched_string_delimiter(Position {
-            line: 1,
-            column: 19
-        })
+        Error::unmatched_string_delimiter(Position::new(49..49, 1))
     );
     fatal_error_test!(
         unmatched_string_delimiter_unopened_angle_whitespace,
@@ -711,7 +672,7 @@ mod tests {
         "\
             1, 1,  1> 2, 2, <2> 3, 3, <3>\n\
             4, 4, <4> 5, 5, <5>",
-        Error::unmatched_string_delimiter(Position { line: 0, column: 8 })
+        Error::unmatched_string_delimiter(Position::new(8..9, 0))
     );
     fatal_error_test!(
         unmatched_string_delimiter_multiple_opened_angle_whitespace,
@@ -719,10 +680,7 @@ mod tests {
         "\
             1, 1, <1  2, 2, <2> 3, 3, <3>\n\
             4, 4, <4> 5, 5, <5>",
-        Error::unmatched_string_delimiter(Position {
-            line: 0,
-            column: 16
-        })
+        Error::unmatched_string_delimiter(Position::new(16..17, 0))
     );
     fatal_error_test!(
         non_separated_values_semicolon,
@@ -730,7 +688,7 @@ mod tests {
         "\
             1, 1; 2  2; 3, 3\n\
             4, 4; 5, 5",
-        Error::non_separated_values(Position { line: 0, column: 9 })
+        Error::non_separated_values(Position::new(9..10, 0))
     );
     fatal_error_test!(
         non_separated_values_parentheses,
@@ -738,10 +696,7 @@ mod tests {
         "\
             (1, 1) (2  2) (3, 3)\n\
             (4, 4) (5, 5)",
-        Error::non_separated_values(Position {
-            line: 0,
-            column: 11
-        })
+        Error::non_separated_values(Position::new(11..12, 0))
     );
     fatal_error_test!(
         non_separated_values_whitespace,
@@ -749,7 +704,7 @@ mod tests {
         "\
             1, 1 2  2 3, 3\n\
             4, 4 5, 5",
-        Error::non_separated_values(Position { line: 0, column: 8 })
+        Error::non_separated_values(Position::new(8..9, 0))
     );
 
     macro_rules! recoverable_error_test {
@@ -771,11 +726,8 @@ mod tests {
         2,
         "1, 10000000000000000000; 1, -10000000000000000000",
         [
-            Error::overflow(Position { line: 0, column: 3 }),
-            Error::overflow(Position {
-                line: 0,
-                column: 28
-            }),
+            Error::overflow(Position::new(3..23, 0)),
+            Error::overflow(Position::new(28..49, 0)),
         ]
     );
     recoverable_error_test!(
@@ -783,11 +735,8 @@ mod tests {
         2,
         "(1, 10000000000000000000) (1, -10000000000000000000)",
         [
-            Error::overflow(Position { line: 0, column: 4 }),
-            Error::overflow(Position {
-                line: 0,
-                column: 30
-            }),
+            Error::overflow(Position::new(4..24, 0)),
+            Error::overflow(Position::new(30..51, 0)),
         ]
     );
     recoverable_error_test!(
@@ -795,20 +744,14 @@ mod tests {
         2,
         "1, 10000000000000000000 1, -10000000000000000000",
         [
-            Error::overflow(Position { line: 0, column: 3 }),
-            Error::overflow(Position {
-                line: 0,
-                column: 27
-            }),
+            Error::overflow(Position::new(3..23, 0)),
+            Error::overflow(Position::new(27..48, 0)),
         ]
     );
     recoverable_error_test!(
         semicolon_closes_parenthesis,
         2,
         "(1, 1) (2, 2; (3, 3)",
-        [Error::mismatched_group_delimiter(Position {
-            line: 0,
-            column: 12
-        })]
+        [Error::mismatched_group_delimiter(Position::new(12..13, 0))]
     );
 }

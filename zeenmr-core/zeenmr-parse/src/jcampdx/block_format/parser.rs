@@ -1,4 +1,4 @@
-use crate::error::{Cursor, Location, Position};
+use crate::error::{CurrentPosition, LineCounter, Position};
 use crate::jcampdx::block_format::error::{Error, Result};
 use crate::jcampdx::block_format::{BlockFormat, BlockFormatBuilder, FormatToken};
 use crate::jcampdx::parser::ChildParserExit;
@@ -43,7 +43,7 @@ pub(crate) struct FormatParser<'source> {
 impl<'source> From<&'source str> for FormatParser<'source> {
     fn from(value: &'source str) -> Self {
         let lexer = FormatToken::lexer(value);
-        let start = lexer.location();
+        let start = lexer.position();
 
         Self {
             lexer,
@@ -58,11 +58,11 @@ impl<'source> From<&'source str> for FormatParser<'source> {
 impl<'source, T> From<Lexer<'source, T>> for FormatParser<'source>
 where
     T: Logos<'source, Source = str> + Clone,
-    T::Extras: Clone + Into<Cursor>,
+    T::Extras: Clone + Into<LineCounter>,
 {
     fn from(value: Lexer<'source, T>) -> Self {
         let lexer = value.morph();
-        let start = lexer.location();
+        let start = lexer.position();
 
         Self {
             lexer,
@@ -99,7 +99,7 @@ impl<'source> FormatParser<'source> {
         }
 
         match self.exit {
-            ChildParserExit::EndOfInput => Err(Error::end_of_input(self.lexer.location())),
+            ChildParserExit::EndOfInput => Err(Error::end_of_input(self.lexer.position())),
             ChildParserExit::EndToken => self.finalize(),
         }
     }
@@ -154,7 +154,7 @@ impl<'source> FormatParser<'source> {
         }
 
         match self.exit {
-            ChildParserExit::EndOfInput => Err(Error::end_of_input(self.lexer.location())),
+            ChildParserExit::EndOfInput => Err(Error::end_of_input(self.lexer.position())),
             ChildParserExit::EndToken => Ok(()),
         }
     }
@@ -206,7 +206,7 @@ impl<'source> FormatParser<'source> {
             }
             State::Suffix => {
                 if !self.builder.compare_prefix(self.lexer.slice()) {
-                    Err(Error::mismatched_repeat(self.start))
+                    Err(Error::mismatched_repeat(self.lexer.position()))
                 } else {
                     Ok(())
                 }
@@ -232,7 +232,7 @@ impl<'source> FormatParser<'source> {
     fn increment(&mut self) -> Result<()> {
         match self.state {
             State::Prefix => match self.builder.len() {
-                0 => Err(Error::empty_increment(self.lexer.location())),
+                0 => Err(Error::empty_increment(self.lexer.position())),
                 1 => {
                     self.state = State::AfterIncrement;
                     let incrementing = self
@@ -243,10 +243,10 @@ impl<'source> FormatParser<'source> {
 
                     Ok(())
                 }
-                _ => Err(Error::multiple_identifier_increment(self.lexer.location())),
+                _ => Err(Error::multiple_identifier_increment(self.lexer.position())),
             },
-            State::AfterIncrement => Err(Error::multiple_increment(self.lexer.location())),
-            State::Suffix => Err(Error::increment_after_repeat(self.lexer.location())),
+            State::AfterIncrement => Err(Error::multiple_increment(self.lexer.position())),
+            State::Suffix => Err(Error::increment_after_repeat(self.lexer.position())),
         }
     }
 
@@ -268,14 +268,14 @@ impl<'source> FormatParser<'source> {
         match self.state {
             State::Prefix | State::AfterIncrement => {
                 if self.builder.is_empty() {
-                    Err(Error::empty_repeat(self.lexer.location()))
+                    Err(Error::empty_repeat(self.lexer.position()))
                 } else {
                     self.state = State::Suffix;
 
                     Ok(())
                 }
             }
-            State::Suffix => Err(Error::multiple_repeat(self.lexer.location())),
+            State::Suffix => Err(Error::multiple_repeat(self.lexer.position())),
         }
     }
 
@@ -301,7 +301,7 @@ impl<'source> FormatParser<'source> {
         if self.lexer.next().transpose()?.is_some() {
             Ok(())
         } else {
-            Err(Error::end_of_input(self.lexer.location()))
+            Err(Error::end_of_input(self.lexer.position()))
         }
     }
 }
@@ -382,47 +382,41 @@ mod tests {
     parser_test!(
         invalid_literal,
         "(X.Y)\n",
-        Err(Error::invalid_literal(Position { line: 0, column: 2 }))
-    );
-    parser_test!(
-        empty_repeat2,
-        "X++\n",
-        Err(Error::empty_repeat(Position { line: 0, column: 0 }))
+        Err(Error::invalid_literal(Position::new(2..3, 0)))
     );
     parser_test!(
         empty_repeat,
         "X++(..Y)\n",
-        Err(Error::empty_repeat(Position { line: 0, column: 4 }))
+        Err(Error::empty_repeat(Position::new(4..6, 0)))
+    );
+    parser_test!(
+        missing_repeat,
+        "X++\n",
+        Err(Error::empty_repeat(Position::new(0..0, 0)))
     );
     parser_test!(
         mismatched_repeat,
         "X++(YY..Y)\n",
-        Err(Error::mismatched_repeat(Position { line: 0, column: 0 }))
+        Err(Error::mismatched_repeat(Position::new(0..0, 0)))
     );
     parser_test!(
         multiple_increment,
         "(X++X++(Y..Y)\n",
-        Err(Error::multiple_increment(Position { line: 0, column: 5 }))
+        Err(Error::multiple_increment(Position::new(5..7, 0)))
     );
     parser_test!(
         multiple_repeat,
         "(X++(Y..Y..Y)\n",
-        Err(Error::multiple_repeat(Position { line: 0, column: 9 }))
+        Err(Error::multiple_repeat(Position::new(9..11, 0)))
     );
     parser_test!(
         increment_after_repeat,
         "(Y..Y)++\n",
-        Err(Error::increment_after_repeat(Position {
-            line: 0,
-            column: 6,
-        }))
+        Err(Error::increment_after_repeat(Position::new(6..8, 0)))
     );
     parser_test!(
         multiple_identifier_increment,
         "XF1++(Y..Y)\n",
-        Err(Error::multiple_identifier_increment(Position {
-            line: 0,
-            column: 3,
-        }))
+        Err(Error::multiple_identifier_increment(Position::new(3..5, 0)))
     );
 }

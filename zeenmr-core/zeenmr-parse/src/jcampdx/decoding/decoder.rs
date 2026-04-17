@@ -1,5 +1,5 @@
-use crate::error::Cursor;
-use crate::error::Location;
+use crate::error::CurrentPosition;
+use crate::error::LineCounter;
 use crate::jcampdx::decoding::error::{Error, Result};
 use crate::jcampdx::decoding::{DecodedBlock, DecodedBlockBuilder, EncodedToken};
 use logos::{Lexer, Logos};
@@ -84,7 +84,7 @@ impl<'source> From<&'source str> for Decoder<'source> {
 impl<'source, T> From<Lexer<'source, T>> for Decoder<'source>
 where
     T: Logos<'source, Source = str> + Clone,
-    T::Extras: Clone + Into<Cursor>,
+    T::Extras: Clone + Into<LineCounter>,
 {
     fn from(value: Lexer<'source, T>) -> Self {
         Self {
@@ -193,7 +193,7 @@ impl<'source> Decoder<'source> {
                             {
                                 self.builder
                                     .push_error(Error::checkpoint_step_mismatch(
-                                        self.lexer.location(),
+                                        self.lexer.position(),
                                     ));
                             }
                             _ => {}
@@ -208,7 +208,7 @@ impl<'source> Decoder<'source> {
                             {
                                 self.builder
                                     .push_error(Error::checkpoint_step_mismatch(
-                                        self.lexer.location(),
+                                        self.lexer.position(),
                                     ));
                             }
                             _ => {}
@@ -238,7 +238,7 @@ impl<'source> Decoder<'source> {
                         Err(e) => match e.kind() {
                             IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
                                 self.builder.push_error(
-                                    Error::overflow(self.lexer.location())
+                                    Error::overflow(self.lexer.position())
                                         .with_index(self.builder.decoded_len()),
                                 );
                                 self.builder.push_decoded_i64(i64::MIN);
@@ -249,12 +249,12 @@ impl<'source> Decoder<'source> {
                     State::IntegrityCheck => match self.parse_affn() {
                         Ok(Affn::I64(value)) => self.integrity_check(value)?,
                         Ok(Affn::F64(_)) => {
-                            return Err(Error::asdf_with_float(self.lexer.location()));
+                            return Err(Error::asdf_with_float(self.lexer.position()));
                         }
                         Err(e) => match e.kind() {
                             IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
                                 self.builder.push_error(Error::integrity_check(
-                                    self.lexer.location(),
+                                    self.lexer.position(),
                                     self.builder.decoded_len() - 1,
                                 ));
                             }
@@ -297,7 +297,7 @@ impl<'source> Decoder<'source> {
                             {
                                 self.builder
                                     .push_error(Error::checkpoint_step_mismatch(
-                                        self.lexer.location(),
+                                        self.lexer.position(),
                                     ));
                             }
                             _ => {}
@@ -306,7 +306,7 @@ impl<'source> Decoder<'source> {
                     Err(e) => match e.kind() {
                         IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
                             self.builder
-                                .push_error(Error::checkpoint_value(self.lexer.location()));
+                                .push_error(Error::checkpoint_value(self.lexer.position()));
                             self.builder.push_checkpoint_value(f64::NAN);
                         }
                         _ => unreachable!(),
@@ -323,7 +323,7 @@ impl<'source> Decoder<'source> {
                         Err(e) => match e.kind() {
                             IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
                                 self.builder.push_error(
-                                    Error::overflow(self.lexer.location())
+                                    Error::overflow(self.lexer.position())
                                         .with_index(self.builder.decoded_len()),
                                 );
                                 self.builder.push_decoded_i64(i64::MIN);
@@ -336,7 +336,7 @@ impl<'source> Decoder<'source> {
                         Err(e) => match e.kind() {
                             IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
                                 self.builder.push_error(Error::integrity_check(
-                                    self.lexer.location(),
+                                    self.lexer.position(),
                                     self.builder.decoded_len() - 1,
                                 ));
                             }
@@ -370,12 +370,12 @@ impl<'source> Decoder<'source> {
     /// [`Difference`]: EncodedToken::Difference
     fn difference(&mut self) -> Result<()> {
         if !self.builder.decoded_is_i64() {
-            return Err(Error::asdf_with_float(self.lexer.location()));
+            return Err(Error::asdf_with_float(self.lexer.position()));
         }
 
         let diff = self
             .parse_asdf()
-            .map_err(|_| Error::dif_dup_overflow(self.lexer.location()))?;
+            .map_err(|_| Error::dif_dup_overflow(self.lexer.position()))?;
 
         match self.phase {
             Phase::Data => {
@@ -383,14 +383,14 @@ impl<'source> Decoder<'source> {
                     .builder
                     .decoded_top()
                     .map(|top| *top + diff)
-                    .ok_or_else(|| Error::asdf_after_checkpoint(self.lexer.location()))?;
+                    .ok_or_else(|| Error::asdf_after_checkpoint(self.lexer.position()))?;
                 self.builder.push_decoded_i64(value);
                 self.state = State::LastWasDifference(diff);
 
                 Ok(())
             }
             Phase::CheckPoint | Phase::FirstData => {
-                Err(Error::asdf_after_checkpoint(self.lexer.location()))
+                Err(Error::asdf_after_checkpoint(self.lexer.position()))
             }
         }
     }
@@ -412,12 +412,12 @@ impl<'source> Decoder<'source> {
     /// [`Duplicate`]: EncodedToken::Duplicate
     fn duplicate(&mut self) -> Result<()> {
         if !self.builder.decoded_is_i64() {
-            return Err(Error::asdf_with_float(self.lexer.location()));
+            return Err(Error::asdf_with_float(self.lexer.position()));
         }
 
         let num = self
             .parse_asdf()
-            .map_err(|_| Error::dif_dup_overflow(self.lexer.location()))?;
+            .map_err(|_| Error::dif_dup_overflow(self.lexer.position()))?;
 
         match self.phase {
             Phase::Data => {
@@ -425,7 +425,7 @@ impl<'source> Decoder<'source> {
                     .builder
                     .decoded_top()
                     .copied()
-                    .ok_or_else(|| Error::asdf_after_checkpoint(self.lexer.location()))?;
+                    .ok_or_else(|| Error::asdf_after_checkpoint(self.lexer.position()))?;
                 match self.state {
                     State::LastWasDifference(diff) => self
                         .builder
@@ -439,7 +439,7 @@ impl<'source> Decoder<'source> {
                 Ok(())
             }
             Phase::CheckPoint | Phase::FirstData => {
-                Err(Error::asdf_after_checkpoint(self.lexer.location()))
+                Err(Error::asdf_after_checkpoint(self.lexer.position()))
             }
         }
     }
@@ -457,7 +457,7 @@ impl<'source> Decoder<'source> {
         match self.phase {
             Phase::Data | Phase::FirstData => {
                 self.builder.push_error(
-                    Error::invalid_value(self.lexer.location())
+                    Error::invalid_value(self.lexer.position())
                         .with_index(self.builder.decoded_len()),
                 );
                 match self.state {
@@ -466,7 +466,7 @@ impl<'source> Decoder<'source> {
                     }
                     State::IntegrityCheck => {
                         self.builder.push_error(Error::integrity_check(
-                            self.lexer.location(),
+                            self.lexer.position(),
                             self.builder.decoded_len() - 1,
                         ));
                     }
@@ -476,7 +476,7 @@ impl<'source> Decoder<'source> {
             }
             Phase::CheckPoint => {
                 self.builder
-                    .push_error(Error::invalid_value(self.lexer.location()));
+                    .push_error(Error::invalid_value(self.lexer.position()));
                 self.builder.push_checkpoint_value(f64::NAN);
                 self.phase = Phase::FirstData;
             }
@@ -494,7 +494,7 @@ impl<'source> Decoder<'source> {
     /// Panics if the decoded stack is empty.
     fn integrity_check(&mut self, value: i64) -> Result<()> {
         if !self.builder.decoded_is_i64() {
-            return Err(Error::asdf_with_float(self.lexer.location()));
+            return Err(Error::asdf_with_float(self.lexer.position()));
         }
 
         let matches = self
@@ -504,7 +504,7 @@ impl<'source> Decoder<'source> {
             .expect("integrity checks only after at least one value");
         if !matches {
             self.builder.push_error(Error::integrity_check(
-                self.lexer.location(),
+                self.lexer.position(),
                 self.builder.decoded_len() - 1,
             ));
             let top = self
@@ -698,22 +698,19 @@ mod tests {
     fatal_error_test!(
         invalid_literal,
         "10 1 2 3 4 # 6 7 8 9 10",
-        Error::invalid_literal(Position {
-            line: 0,
-            column: 11
-        })
+        Error::invalid_literal(Position::new(11..12, 0))
     );
     fatal_error_test!(
         dif_dup_check_point_value,
         "7 1 2 3 4\n\
          J 5 6 7 8",
-        Error::asdf_after_checkpoint(Position { line: 1, column: 0 })
+        Error::asdf_after_checkpoint(Position::new(10..11, 1))
     );
     fatal_error_test!(
         dif_dup_value_after_check_point,
         "7 1 2 3 4\n\
          3 J 6 7 8",
-        Error::asdf_after_checkpoint(Position { line: 1, column: 2 })
+        Error::asdf_after_checkpoint(Position::new(12..13, 1))
     );
 
     macro_rules! recoverable_error_test {
@@ -734,8 +731,8 @@ mod tests {
         "7 10000000000000000000 1 1 1\n\
          3 -10000000000000000000 1 1 1",
         [
-            Error::overflow(Position { line: 0, column: 2 }).with_index(0),
-            Error::overflow(Position { line: 1, column: 2 }).with_index(4),
+            Error::overflow(Position::new(2..22, 0)).with_index(0),
+            Error::overflow(Position::new(31..52, 1)).with_index(4),
         ]
     );
     recoverable_error_test!(
@@ -744,8 +741,8 @@ mod tests {
          4 IK%nM\n\
          0 G",
         [
-            Error::integrity_check(Position { line: 1, column: 2 }, 3),
-            Error::integrity_check(Position { line: 2, column: 2 }, 7),
+            Error::integrity_check(Position::new(10..11, 1), 3),
+            Error::integrity_check(Position::new(18..19, 2), 7),
         ]
     );
     recoverable_error_test!(
@@ -753,9 +750,9 @@ mod tests {
         "7 1 1 ? 1\n\
          3 0 ? 1 ?",
         [
-            Error::invalid_value(Position { line: 0, column: 6 }).with_index(2),
-            Error::invalid_value(Position { line: 1, column: 4 }).with_index(5),
-            Error::invalid_value(Position { line: 1, column: 8 }).with_index(7),
+            Error::invalid_value(Position::new(6..7, 0)).with_index(2),
+            Error::invalid_value(Position::new(14..15, 1)).with_index(5),
+            Error::invalid_value(Position::new(18..19, 1)).with_index(7),
         ]
     );
 }

@@ -1,10 +1,10 @@
-use crate::error::{Cursor, Location, UpdateCursor};
+use crate::error::{CurrentPosition, LineCounter, UpdateLineCounter};
 use crate::jcampdx::block_format::error::Error;
 use logos::{Lexer, Logos};
 
 /// JCAMP-DX block format specifier lexer.
 #[derive(Clone, PartialEq, Debug, Logos)]
-#[logos(extras = Cursor)]
+#[logos(extras = LineCounter)]
 #[logos(error(Error, invalid_literal))]
 #[logos(subpattern newline = r"\n|\r\n|\r")]
 #[logos(subpattern space = r"[ \t]")]
@@ -33,12 +33,12 @@ pub(crate) enum FormatToken {
     #[regex(r",[^\n\r]+")]
     DataBlockKind,
     /// A new line ends a data block format specifier.
-    #[regex(r"(?&newline)", UpdateCursor::newline)]
+    #[regex(r"(?&newline)", UpdateLineCounter::newline)]
     End,
 }
 
 fn invalid_literal(lexer: &Lexer<FormatToken>) -> Error {
-    Error::invalid_literal(lexer.location())
+    Error::invalid_literal(lexer.position())
 }
 
 #[cfg(test)]
@@ -137,7 +137,7 @@ mod tests {
         "(X.Y)",
         [
             Ok(FormatToken::Identifier),
-            Err(Error::invalid_literal(Position { line: 0, column: 2 })),
+            Err(Error::invalid_literal(Position::new(2..3, 0))),
             Ok(FormatToken::Identifier),
         ]
     );
@@ -145,9 +145,9 @@ mod tests {
         invalid_literal_numeric,
         "(1..3)",
         [
-            Err(Error::invalid_literal(Position { line: 0, column: 1 })),
+            Err(Error::invalid_literal(Position::new(1..2, 0))),
             Ok(FormatToken::Repeat),
-            Err(Error::invalid_literal(Position { line: 0, column: 4 })),
+            Err(Error::invalid_literal(Position::new(4..5, 0))),
         ]
     );
 }
