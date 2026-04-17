@@ -1,6 +1,6 @@
 //! JCAMP-DX parsing error types.
 
-use crate::Position;
+use crate::error::Position;
 use std::num::ParseIntError;
 use std::sync::Arc;
 

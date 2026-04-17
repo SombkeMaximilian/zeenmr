@@ -1,5 +1,5 @@
+use crate::error::{Cursor, Location, UpdateCursor};
 use crate::jcampdx::error::Error;
-use crate::{Cursor, Location, UpdateCursor};
 use logos::{Lexer, Logos};
 
 /// JCAMP-DX lexer.

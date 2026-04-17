@@ -1,7 +1,7 @@
-use crate::Location;
+use crate::error::Cursor;
+use crate::error::Location;
 use crate::jcampdx::decoding::error::{Error, Result};
 use crate::jcampdx::decoding::{DecodedBlock, DecodedBlockBuilder, EncodedToken};
-use crate::location::Cursor;
 use logos::{Lexer, Logos};
 use std::borrow::Cow;
 use std::num::{IntErrorKind, ParseIntError};
@@ -607,8 +607,8 @@ impl<'source> Decoder<'source> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Position;
     use crate::data::DataTable;
+    use crate::error::Position;
     use crate::jcampdx::parser::ChildParserExit;
     use std::sync::LazyLock;
 

@@ -1,4 +1,4 @@
-use crate::location::Position;
+use crate::error::Position;
 
 /// Stack frame for values of type `V` enclosed by delimiters of type `D`.
 #[derive(Clone, Eq, PartialEq, Debug)]

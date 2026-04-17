@@ -1,6 +1,6 @@
 //! JCAMP-DX grouped block tabulation error types.
 
-use crate::Position;
+use crate::error::Position;
 
 /// A specialized [`Result`] type.
 ///

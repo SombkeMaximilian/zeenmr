@@ -1,11 +1,12 @@
+use crate::Stack;
 use crate::data::{Dataset, ParameterTable, Value};
+use crate::error::Location;
 use crate::jcampdx::JcampDxDataset;
 use crate::jcampdx::block_format::{FormatParser, LineLayout};
 use crate::jcampdx::decoding::Decoder;
 use crate::jcampdx::error::{Error, Result};
 use crate::jcampdx::lexer::Token;
 use crate::jcampdx::tabulation::TableParser;
-use crate::{Location, Stack};
 use logos::{Lexer, Logos};
 use std::borrow::Cow;
 use std::marker::PhantomData;
@@ -818,8 +819,7 @@ mod tests {
                     .join($version)
                     .join($file);
                 let content = read_to_string(path).unwrap();
-                let parsed = Parser::from(content.as_str())
-                    .parse_source();
+                let parsed = Parser::from(content.as_str()).parse_source();
                 assert!(parsed.is_ok());
             }
         };

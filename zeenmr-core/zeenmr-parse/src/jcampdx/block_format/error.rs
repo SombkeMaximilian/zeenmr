@@ -1,6 +1,6 @@
 //! JCAMP-DX block format parsing error types.
 
-use crate::Position;
+use crate::error::Position;
 
 /// A specialized [`Result`] type.
 ///

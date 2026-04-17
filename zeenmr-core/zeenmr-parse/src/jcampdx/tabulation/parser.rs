@@ -1,7 +1,7 @@
-use crate::Cursor;
+use crate::error::Cursor;
+use crate::error::Location;
 use crate::jcampdx::tabulation::error::{Error, Result};
 use crate::jcampdx::tabulation::{GroupToken, TabulatedBlock, TabulatedBlockBuilder};
-use crate::location::Location;
 use logos::{Lexer, Logos};
 use std::borrow::Cow;
 use std::marker::PhantomData;
@@ -404,8 +404,8 @@ impl<'source> TableParser<'source, HasLayout> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Position;
     use crate::data::{DataTable, Value};
+    use crate::error::Position;
     use crate::jcampdx::parser::ChildParserExit;
     use std::sync::LazyLock;
 

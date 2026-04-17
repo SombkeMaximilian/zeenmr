@@ -1,5 +1,5 @@
+use crate::error::{Cursor, Location, UpdateCursor};
 use crate::jcampdx::block_format::error::Error;
-use crate::{Cursor, Location, UpdateCursor};
 use logos::{Lexer, Logos};
 
 /// JCAMP-DX block format specifier lexer.
@@ -44,7 +44,7 @@ fn invalid_literal(lexer: &Lexer<FormatToken>) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Position;
+    use crate::error::Position;
     use crate::jcampdx::block_format::error::Result;
 
     macro_rules! lexer_test {
