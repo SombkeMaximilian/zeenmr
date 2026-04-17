@@ -303,17 +303,6 @@ impl<'source> BufferCycle<'source> {
         self.current_mut().push_string(value);
         self.advance();
     }
-
-    /// Appends a `Value` to the current buffer in the cycle and advances to the
-    /// next.
-    ///
-    /// # Panics
-    ///
-    /// Panics if no buffers have been added.
-    fn push_value<T: Into<Value<'source>>>(&mut self, value: T) {
-        self.current_mut().push_value(value);
-        self.advance();
-    }
 }
 
 /// Builder pattern for [`TabulatedBlock`].
@@ -430,15 +419,6 @@ impl<'source> TabulatedBlockBuilder<'source> {
     /// Panics if no columns have been added.
     pub(crate) fn push_string<T: Into<String>>(&mut self, value: T) {
         self.buffer_cycle.push_string(value.into());
-    }
-
-    /// Appends a `Value` to the current column and advances to the next.
-    ///
-    /// # Panics
-    ///
-    /// Panics if no columns have been added.
-    pub(crate) fn push_value<T: Into<Value<'source>>>(&mut self, value: T) {
-        self.buffer_cycle.push_value(value.into());
     }
 
     /// Pushes an error onto the stack.

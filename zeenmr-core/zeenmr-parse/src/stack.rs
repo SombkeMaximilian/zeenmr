@@ -24,11 +24,6 @@ impl<D, V> Stack<D, V> {
         Self { frames: Vec::new() }
     }
 
-    /// Returns `true` if no [`Frame`]s have been recorded.
-    pub(crate) fn is_empty(&self) -> bool {
-        self.frames.is_empty()
-    }
-
     /// Returns the `Frame` at the top of the stack, or `None` if it is empty.
     pub(crate) fn top(&self) -> Option<&Frame<D, V>> {
         self.frames.last()
@@ -53,19 +48,6 @@ impl<D, V> Stack<D, V> {
             start,
             values: Vec::new(),
         });
-    }
-
-    /// Pushes a value into the [`Frame`] at the top of the stack.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the stack is empty.
-    pub(crate) fn push_value(&mut self, value: V) {
-        self.frames
-            .last_mut()
-            .expect("push_value called on empty stack")
-            .values
-            .push(value);
     }
 
     /// Removes and returns the `Frame` at the top of the stack, or `None` if it

@@ -79,11 +79,6 @@ impl<'source> BlockFormatBuilder<'source> {
         self.incrementing.is_some()
     }
 
-    /// Returns `true` if the block kind was set.
-    pub(crate) fn block_kind_is_some(&self) -> bool {
-        self.block_kind.is_some()
-    }
-
     /// Returns `true` if at least one identifier was pushed and
     /// [`compare_prefix`] was called as many times as there are identifiers.
     pub(crate) fn prefix_was_validated(&self) -> bool {
