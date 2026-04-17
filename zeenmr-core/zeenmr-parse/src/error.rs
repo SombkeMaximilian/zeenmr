@@ -1,3 +1,5 @@
+//! Types and traits for error recording and display.
+
 use logos::{Lexer, Logos};
 use std::ops::Range;
 

@@ -1,3 +1,5 @@
+//! Types for representing spectroscopic data.
+
 mod value;
 pub use value::Value;
 
