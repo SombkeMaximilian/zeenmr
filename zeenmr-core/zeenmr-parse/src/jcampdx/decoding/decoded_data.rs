@@ -198,9 +198,10 @@ impl<'source> DecodedBlockBuilder<'source> {
     /// Finalizes the `DecodedBlock`.
     pub(crate) fn finalize(self) -> DecodedBlock<'source> {
         let mut table = DataTable::new_with_id(self.title);
-        let is_valid = !self.errors.iter().any(|e| {
-            e.kind() == Kind::CheckPointValue || e.kind() == Kind::CheckPointStepMismatch
-        });
+        let is_valid = !self
+            .errors
+            .iter()
+            .any(|e| e.kind() == Kind::CheckPointValue || e.kind() == Kind::CheckPointStepMismatch);
         if is_valid && let Some(step) = self.check_points.max_precision_step() {
             let first = *(self.check_points.values.first().unwrap());
             let count = self.decoded.len();
