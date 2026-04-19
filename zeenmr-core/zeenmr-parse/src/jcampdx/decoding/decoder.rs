@@ -681,6 +681,12 @@ mod tests {
          3 J 6 7 8",
         Error::asdf_after_checkpoint(Position::new(12..13, 1))
     );
+    fatal_error_test!(
+        asdf_with_float,
+        "7 1.5 2.5 3.5 4.5\n\
+         3 5.5 J   7.5 8.5",
+        Error::asdf_with_float(Position::new(24..25, 1))
+    );
 
     macro_rules! recoverable_error_test {
         ($name:ident, $data:expr, $errors:expr) => {
