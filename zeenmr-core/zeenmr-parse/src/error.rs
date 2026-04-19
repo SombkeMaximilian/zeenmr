@@ -1,7 +1,7 @@
 //! Types and traits for error recording and display.
 
 mod display;
-pub use display::{ErrorDisplay, ParseError};
+pub use display::{Annotations, ErrorDisplay, ParseError};
 
 mod position;
 pub use position::Position;

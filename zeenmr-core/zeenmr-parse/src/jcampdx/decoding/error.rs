@@ -1,6 +1,6 @@
 //! JCAMP-DX decoding error types.
 
-use crate::error::{ParseError, Position};
+use crate::error::{Annotations, ParseError, Position};
 
 /// A specialized [`Result`] type.
 ///
@@ -95,78 +95,97 @@ impl ParseError for Error {
     }
 
     fn message(&self) -> String {
-        let message = match self.kind {
+        match self.kind {
             Kind::InvalidLiteral => "invalid literal",
             Kind::Overflow => "value magnitude too large to decode",
             Kind::DifDupOverflow => "DIF/DUP value magnitude too large to decode",
             Kind::IntegrityCheck => "integrity check failed",
             Kind::InvalidValue => "invalid value (parsed as `-2^63`)",
-            Kind::AsdfAfterCheckPoint => {
-                "DIF/DUP cannot appear as the first value after a checkpoint"
-            }
-            Kind::AsdfWithFloat => "DIF/DUP encoding cannot be mixed with floating point values",
-            Kind::CheckPointValue => "non-finite checkpoint value corrupts subsequent calculations",
-            Kind::CheckPointStepMismatch => {
-                "decoded data point spacing is inconsistent with checkpoint step size"
-            }
-        };
-
-        message.into()
+            Kind::AsdfCheckpoint => "checkpoint is ASDF-encoded",
+            Kind::DifDupAfterCheckPoint => "first value is DIF/DUP",
+            Kind::AsdfWithFloat => "DIF/DUP encoding mixed with floating point values",
+            Kind::CheckPointStepMismatch => "checkpoint value spacing is inconsistent",
+        }
+        .into()
     }
 
-    fn note(&self) -> Option<String> {
-        let note = match self.kind {
-            Kind::InvalidLiteral => {
-                "values must be a standard numeric format or ASDF-encoded"
-            }
-            Kind::DifDupOverflow => {
-                "DIF/DUP values affect all subsequent values on the line"
-            }
-            Kind::IntegrityCheck => {
-                "in XYDATA mode, the first value of a line repeats the last \
-                 value of the previous line if DIF-encoded"
-            }
-            Kind::InvalidValue => {
-                "missing or corrupted values are marked `?` in the source"
-            }
-            Kind::AsdfAfterCheckPoint => {
-                "ASDF encoding is not permitted as a checkpoint value or the \
-                 first data value"
-            }
-            Kind::AsdfWithFloat => {
-                "mixing ASDF encoding with floating point is not permitted \
-                 by the standard"
-            }
-            Kind::CheckPointStepMismatch => {
-                "expected step = (x_b - x_a) / (n_b - n_a) where x is the value \
-                and n is the decoded point count at checkpoints a and b"
-            }
-            _ => return None,
-        };
-
-        Some(note.into())
+    fn highlight_text(&self) -> String {
+        match self.kind {
+            Kind::InvalidLiteral => "does not match any token",
+            Kind::Overflow | Kind::DifDupOverflow => "does not fit into 64-bit signed integer",
+            Kind::IntegrityCheck => "not equal to the last value on previous line",
+            Kind::InvalidValue => "",
+            Kind::AsdfCheckpoint => "should not be ASDF-encoded",
+            Kind::DifDupAfterCheckPoint => "should not be DIF/DUP-encoded",
+            Kind::AsdfWithFloat => "should not be DIF/DUP-encoded or float",
+            Kind::CheckPointStepMismatch => "does not match prior step size",
+        }
+        .into()
     }
 
-    fn fix_hint(&self) -> Option<String> {
-        let hint = match self.kind {
-            Kind::Overflow | Kind::DifDupOverflow => {
-                "adjacent values may have been combined"
-            }
-            Kind::IntegrityCheck => {
-                "a line may have been skipped or duplicated"
-            }
-            Kind::AsdfAfterCheckPoint | Kind::AsdfWithFloat => {
-                "the instrument exporting this dataset might not comply with \
-                 the JCAMP-DX standard"
-            }
-            Kind::CheckPointValue | Kind::CheckPointStepMismatch => {
-                "a line may have been skipped or duplicated, and the checkpoint \
-                 column couldn't be included in the output"
-            }
-            _ => return None,
-        };
+    fn note(&self) -> Annotations {
+        match self.kind {
+            Kind::InvalidLiteral => "\
+             values must be a standard numeric format or ASDF-encoded \
+            "
+            .into(),
+            Kind::DifDupOverflow => "\
+             DIF/DUP values affect all subsequent values on the line \
+            "
+            .into(),
+            Kind::IntegrityCheck => "\
+             in XYDATA mode, the first value of a line repeats the last \
+             value of the previous line if DIF-encoded \
+            "
+            .into(),
+            Kind::InvalidValue => "\
+             missing or corrupted values are marked `?` in the source \
+            "
+            .into(),
+            Kind::AsdfCheckpoint => "\
+             ASDF encoding is not permitted as a checkpoint value\
+            "
+            .into(),
+            Kind::DifDupAfterCheckPoint => "\
+             DIF/DUP encoding is not permitted as the first data value\
+            "
+            .into(),
+            Kind::AsdfWithFloat => "\
+             mixing ASDF encoding with floating point is not permitted by \
+             the standard \
+            "
+            .into(),
+            Kind::CheckPointStepMismatch => "\
+             expected step = (x_b - x_a) / (n_b - n_a) where x is the value \
+             and n is the decoded point count at checkpoints a and b \
+            "
+            .into(),
+            _ => Annotations::None,
+        }
+    }
 
-        Some(hint.into())
+    fn fix_hint(&self) -> Annotations {
+        match self.kind {
+            Kind::Overflow | Kind::DifDupOverflow => Annotations::Multiple(vec![
+                "adjacent values may have been combined".into(),
+                "re-export the file from the software".into(),
+            ]),
+            Kind::IntegrityCheck => Annotations::Multiple(vec![
+                "a line may have been skipped or duplicated".into(),
+                "re-export the file from the software".into(),
+            ]),
+            Kind::AsdfCheckpoint | Kind::DifDupAfterCheckPoint | Kind::AsdfWithFloat => "\
+             the software exporting this dataset might not comply with \
+             the JCAMP-DX standard \
+            "
+            .into(),
+            Kind::CheckPointStepMismatch => Annotations::Multiple(vec![
+                "a line may have been skipped or duplicated".into(),
+                "adjacent values may have been combined".into(),
+                "re-export the file from the software".into(),
+            ]),
+            _ => Annotations::None,
+        }
     }
 }
 

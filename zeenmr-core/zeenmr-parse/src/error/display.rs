@@ -8,14 +8,17 @@ pub trait ParseError: std::error::Error {
     /// Short, one-line description of what went wrong.
     fn message(&self) -> String;
 
-    /// Optional, longer explanation of the error.
-    fn note(&self) -> Option<String> {
-        None
+    /// Text next to the highlight.
+    fn highlight_text(&self) -> String;
+
+    /// Optional, longer explanations of the error.
+    fn note(&self) -> Annotations {
+        Annotations::default()
     }
 
-    /// Optional hint for how to fix the error.
-    fn fix_hint(&self) -> Option<String> {
-        None
+    /// Optional hints for how to fix the error.
+    fn fix_hint(&self) -> Annotations {
+        Annotations::default()
     }
 
     /// Returns the cause of the error, if any.
@@ -29,6 +32,32 @@ pub trait ParseError: std::error::Error {
     #[allow(unused_variables)]
     fn secondary(&self, source: &str) -> Vec<(Position, String)> {
         Vec::new()
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Debug, Default)]
+pub enum Annotations {
+    #[default]
+    None,
+    One(String),
+    Multiple(Vec<String>),
+}
+
+impl From<&'static str> for Annotations {
+    fn from(value: &'static str) -> Self {
+        Annotations::One(value.into())
+    }
+}
+
+impl From<String> for Annotations {
+    fn from(value: String) -> Self {
+        Annotations::One(value)
+    }
+}
+
+impl From<Vec<String>> for Annotations {
+    fn from(value: Vec<String>) -> Self {
+        Annotations::Multiple(value)
     }
 }
 
@@ -82,15 +111,35 @@ where
 
         let highlight = "^".repeat((position.end - position.start).max(1));
         let pad = " ".repeat(column);
-        writeln!(f, "{gutter} | {pad}{highlight} {}", self.error.message())?;
+        writeln!(
+            f,
+            "{gutter} | {pad}{highlight} {}",
+            self.error.highlight_text()
+        )?;
         writeln!(f, "{gutter} |",)?;
 
-        if let Some(note) = self.error.note() {
-            writeln!(f, "{gutter} - note: {note}")?;
+        match self.error.note() {
+            Annotations::None => {}
+            Annotations::One(note) => {
+                writeln!(f, "{gutter} - note: {note}")?;
+            }
+            Annotations::Multiple(notes) => {
+                for note in notes.into_iter() {
+                    writeln!(f, "{gutter} - note: {note}")?;
+                }
+            }
         }
 
-        if let Some(hint) = self.error.fix_hint() {
-            writeln!(f, "{gutter} - hint: {hint}")?;
+        match self.error.fix_hint() {
+            Annotations::None => {}
+            Annotations::One(hint) => {
+                writeln!(f, "{gutter} - hint: {hint}")?;
+            }
+            Annotations::Multiple(hints) => {
+                for hint in hints.into_iter() {
+                    writeln!(f, "{gutter} - hint: {hint}")?;
+                }
+            }
         }
 
         Ok(())
