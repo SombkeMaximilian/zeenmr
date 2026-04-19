@@ -274,48 +274,17 @@ impl<'source> Decoder<'source> {
     ///
     /// [`Compressed`]: EncodedToken::Compressed
     ///
-    /// In [`Phase::CheckPoint`], sets the checkpoint value and transitions to
-    /// [`Phase::FirstData`]. In [`Phase::FirstData`] or [`Phase::Data`],
-    /// appends a value, or performs integrity check if in
-    /// [`State::IntegrityCheck`], and sets phase to [`Phase::Data`] and state
-    /// to [`State::Normal`].
+    /// In [`Phase::FirstData`] or [`Phase::Data`], appends a value, or performs
+    /// integrity check if in [`State::IntegrityCheck`], and sets phase to
+    /// [`Phase::Data`] and state to [`State::Normal`].
     ///
     /// # Errors
     ///
-    /// Returns an error if an integrity check is attempted while the decoded
-    /// values stack is in its `f64` variant.
+    /// Returns an error if in [`Phase::CheckPoint`], or if an integrity check
+    /// is attempted while the decoded values stack is in its `f64` variant.
     fn compressed(&mut self) -> Result<()> {
         match self.phase {
-            Phase::CheckPoint => {
-                match self.parse_asdf() {
-                    Ok(value) => {
-                        let previous_step = self.builder.checkpoint_step();
-                        self.builder.push_checkpoint_value(value as f64);
-                        match (previous_step, self.builder.checkpoint_step()) {
-                            (Some(previous), Some(current))
-                                if (previous - current).abs() > crate::CHECK_PRECISION =>
-                            {
-                                self.builder
-                                    .push_error(Error::checkpoint_step_mismatch(
-                                        self.lexer.position(),
-                                    ));
-                            }
-                            _ => {}
-                        }
-                    }
-                    Err(e) => match e.kind() {
-                        IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
-                            self.builder
-                                .push_error(Error::checkpoint_value(self.lexer.position()));
-                            self.builder.push_checkpoint_value(f64::NAN);
-                        }
-                        _ => unreachable!(),
-                    },
-                }
-                self.phase = Phase::FirstData;
-
-                Ok(())
-            }
+            Phase::CheckPoint => Err(Error::asdf_after_checkpoint(self.lexer.position())),
             Phase::Data | Phase::FirstData => {
                 match self.state {
                     State::Normal | State::LastWasDifference(_) => match self.parse_asdf() {
