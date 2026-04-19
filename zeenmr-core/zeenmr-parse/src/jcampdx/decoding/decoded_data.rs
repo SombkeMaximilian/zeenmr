@@ -201,7 +201,7 @@ impl<'source> DecodedBlockBuilder<'source> {
         let is_valid = !self
             .errors
             .iter()
-            .any(|e| e.kind() == Kind::CheckPointValue || e.kind() == Kind::CheckPointStepMismatch);
+            .any(|e| e.kind() == Kind::CheckPointStepMismatch);
         if is_valid && let Some(step) = self.check_points.max_precision_step() {
             let first = *(self.check_points.values.first().unwrap());
             let count = self.decoded.len();

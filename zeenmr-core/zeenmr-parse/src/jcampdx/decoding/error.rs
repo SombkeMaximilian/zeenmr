@@ -55,12 +55,18 @@ pub enum Kind {
     /// Missing or corrupted values are replaced by `?`. These are decoded as
     /// [`i64::MIN`].
     InvalidValue,
+    /// A checkpoint value was `ASDF` encoded.
+    ///
+    /// Checkpoints are meant to be plain numeric values as per the standard.
+    /// While `SQZ` values could be resolved in this place, they strongly
+    /// indicate data corruption.
+    AsdfCheckpoint,
     /// A `DIF` or `DUP` was encountered directly after a checkpoint.
     ///
     /// `DIF` and `DUP` values apply to the directly preceding value in the same
     /// line. If they're the first value in a line, they can't be resolved. This
     /// applies to the checkpoint value itself and the first actual data value.
-    AsdfAfterCheckPoint,
+    DifDupAfterCheckPoint,
     /// A `DIF` or `DUP` was encountered after or before floating point values.
     ///
     /// `DIF` encodes the next value as a difference to the previous value. This
@@ -70,11 +76,6 @@ pub enum Kind {
     /// and these encodings should not be mixed with floating point values as
     /// per the standard.
     AsdfWithFloat,
-    /// A checkpoint value is non-finite.
-    ///
-    /// Computing steps between data points from non-finite checkpoint values
-    /// corrupts the remainder of the calculations.
-    CheckPointValue,
     /// The step size between check points does not match.
     ///
     /// The expected step size between checkpoints is
@@ -240,12 +241,23 @@ impl Error {
         }
     }
 
-    /// Creates a [`AsdfAfterCheckPoint`] error.
+    /// Creates a [`AsdfCheckpoint`] error.
     ///
-    /// [`AsdfAfterCheckPoint`]: Kind::AsdfAfterCheckPoint
-    pub(crate) fn asdf_after_checkpoint(position: Position) -> Self {
+    /// [`AsdfCheckpoint`]: Kind::AsdfCheckpoint
+    pub(crate) fn asdf_checkpoint(position: Position) -> Self {
         Self {
-            kind: Kind::AsdfAfterCheckPoint,
+            kind: Kind::AsdfCheckpoint,
+            position,
+            index: None,
+        }
+    }
+
+    /// Creates a [`DifDupAfterCheckPoint`] error.
+    ///
+    /// [`DifDupAfterCheckPoint`]: Kind::DifDupAfterCheckPoint
+    pub(crate) fn dif_dup_after_checkpoint(position: Position) -> Self {
+        Self {
+            kind: Kind::DifDupAfterCheckPoint,
             position,
             index: None,
         }
@@ -257,17 +269,6 @@ impl Error {
     pub(crate) fn asdf_with_float(position: Position) -> Self {
         Self {
             kind: Kind::AsdfWithFloat,
-            position,
-            index: None,
-        }
-    }
-
-    /// Creates a [`CheckPointValue`] error.
-    ///
-    /// [`CheckPointValue`]: Kind::CheckPointValue
-    pub(crate) fn checkpoint_value(position: Position) -> Self {
-        Self {
-            kind: Kind::CheckPointValue,
             position,
             index: None,
         }

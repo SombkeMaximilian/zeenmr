@@ -284,7 +284,7 @@ impl<'source> Decoder<'source> {
     /// is attempted while the decoded values stack is in its `f64` variant.
     fn compressed(&mut self) -> Result<()> {
         match self.phase {
-            Phase::CheckPoint => Err(Error::asdf_after_checkpoint(self.lexer.position())),
+            Phase::CheckPoint => Err(Error::asdf_checkpoint(self.lexer.position())),
             Phase::Data | Phase::FirstData => {
                 match self.state {
                     State::Normal | State::LastWasDifference(_) => match self.parse_asdf() {
@@ -352,15 +352,14 @@ impl<'source> Decoder<'source> {
                     .builder
                     .decoded_top()
                     .map(|top| *top + diff)
-                    .ok_or_else(|| Error::asdf_after_checkpoint(self.lexer.position()))?;
+                    .ok_or_else(|| Error::dif_dup_after_checkpoint(self.lexer.position()))?;
                 self.builder.push_decoded_i64(value);
                 self.state = State::LastWasDifference(diff);
 
                 Ok(())
             }
-            Phase::CheckPoint | Phase::FirstData => {
-                Err(Error::asdf_after_checkpoint(self.lexer.position()))
-            }
+            Phase::CheckPoint => Err(Error::asdf_checkpoint(self.lexer.position())),
+            Phase::FirstData => Err(Error::dif_dup_after_checkpoint(self.lexer.position())),
         }
     }
 
@@ -394,7 +393,7 @@ impl<'source> Decoder<'source> {
                     .builder
                     .decoded_top()
                     .copied()
-                    .ok_or_else(|| Error::asdf_after_checkpoint(self.lexer.position()))?;
+                    .ok_or_else(|| Error::dif_dup_after_checkpoint(self.lexer.position()))?;
                 match self.state {
                     State::LastWasDifference(diff) => self
                         .builder
@@ -407,9 +406,8 @@ impl<'source> Decoder<'source> {
 
                 Ok(())
             }
-            Phase::CheckPoint | Phase::FirstData => {
-                Err(Error::asdf_after_checkpoint(self.lexer.position()))
-            }
+            Phase::CheckPoint => Err(Error::asdf_checkpoint(self.lexer.position())),
+            Phase::FirstData => Err(Error::dif_dup_after_checkpoint(self.lexer.position())),
         }
     }
 
@@ -670,16 +668,16 @@ mod tests {
         Error::invalid_literal(Position::new(11..12, 0))
     );
     fatal_error_test!(
-        dif_dup_check_point_value,
+        asdf_check_point_value,
         "7 1 2 3 4\n\
          J 5 6 7 8",
-        Error::asdf_after_checkpoint(Position::new(10..11, 1))
+        Error::asdf_checkpoint(Position::new(10..11, 1))
     );
     fatal_error_test!(
         dif_dup_value_after_check_point,
         "7 1 2 3 4\n\
          3 J 6 7 8",
-        Error::asdf_after_checkpoint(Position::new(12..13, 1))
+        Error::dif_dup_after_checkpoint(Position::new(12..13, 1))
     );
     fatal_error_test!(
         asdf_with_float,
