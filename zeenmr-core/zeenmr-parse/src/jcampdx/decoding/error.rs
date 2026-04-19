@@ -1,6 +1,6 @@
 //! JCAMP-DX decoding error types.
 
-use crate::error::Position;
+use crate::error::{ParseError, Position};
 
 /// A specialized [`Result`] type.
 ///
@@ -88,23 +88,92 @@ pub enum Kind {
     CheckPointStepMismatch,
 }
 
+impl ParseError for Error {
+    fn primary(&self) -> Position {
+        self.position
+    }
+
+    fn message(&self) -> String {
+        let message = match self.kind {
+            Kind::InvalidLiteral => "invalid literal",
+            Kind::Overflow => "value magnitude too large to decode",
+            Kind::DifDupOverflow => "DIF/DUP value magnitude too large to decode",
+            Kind::IntegrityCheck => "integrity check failed",
+            Kind::InvalidValue => "invalid value (parsed as `-2^63`)",
+            Kind::AsdfAfterCheckPoint => {
+                "DIF/DUP cannot appear as the first value after a checkpoint"
+            }
+            Kind::AsdfWithFloat => "DIF/DUP encoding cannot be mixed with floating point values",
+            Kind::CheckPointValue => "non-finite checkpoint value corrupts subsequent calculations",
+            Kind::CheckPointStepMismatch => {
+                "decoded data point spacing is inconsistent with checkpoint step size"
+            }
+        };
+
+        message.into()
+    }
+
+    fn note(&self) -> Option<String> {
+        let note = match self.kind {
+            Kind::InvalidLiteral => {
+                "values must be a standard numeric format or ASDF-encoded"
+            }
+            Kind::DifDupOverflow => {
+                "DIF/DUP values affect all subsequent values on the line"
+            }
+            Kind::IntegrityCheck => {
+                "in XYDATA mode, the first value of a line repeats the last \
+                 value of the previous line if DIF-encoded"
+            }
+            Kind::InvalidValue => {
+                "missing or corrupted values are marked `?` in the source"
+            }
+            Kind::AsdfAfterCheckPoint => {
+                "ASDF encoding is not permitted as a checkpoint value or the \
+                 first data value"
+            }
+            Kind::AsdfWithFloat => {
+                "mixing ASDF encoding with floating point is not permitted \
+                 by the standard"
+            }
+            Kind::CheckPointStepMismatch => {
+                "expected step = (x_b - x_a) / (n_b - n_a) where x is the value \
+                and n is the decoded point count at checkpoints a and b"
+            }
+            _ => return None,
+        };
+
+        Some(note.into())
+    }
+
+    fn fix_hint(&self) -> Option<String> {
+        let hint = match self.kind {
+            Kind::Overflow | Kind::DifDupOverflow => {
+                "adjacent values may have been combined"
+            }
+            Kind::IntegrityCheck => {
+                "a line may have been skipped or duplicated"
+            }
+            Kind::AsdfAfterCheckPoint | Kind::AsdfWithFloat => {
+                "the instrument exporting this dataset might not comply with \
+                 the JCAMP-DX standard"
+            }
+            Kind::CheckPointValue | Kind::CheckPointStepMismatch => {
+                "a line may have been skipped or duplicated, and the checkpoint \
+                 column couldn't be included in the output"
+            }
+            _ => return None,
+        };
+
+        Some(hint.into())
+    }
+}
+
 impl std::error::Error for Error {}
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let description = match self.kind() {
-            Kind::InvalidLiteral => "invalid literal encountered",
-            Kind::Overflow => "overflow",
-            Kind::DifDupOverflow => "dif overflow",
-            Kind::IntegrityCheck => "integrity check failed",
-            Kind::InvalidValue => "invalid value",
-            Kind::AsdfAfterCheckPoint => "DIF or DUP after checkpoint",
-            Kind::AsdfWithFloat => "DIF or DUP with float",
-            Kind::CheckPointValue => "checkpoint value encountered",
-            Kind::CheckPointStepMismatch => "checkpoint step mismatch",
-        };
-
-        write!(f, "{description}")
+        write!(f, "{}", self.message())
     }
 }
 
