@@ -3,6 +3,10 @@
 use crate::error::Position;
 use std::sync::Arc;
 
+pub use crate::jcampdx::block_format::error::{Error as FormatError, Kind as FormatErrorKind};
+pub use crate::jcampdx::decoding::error::{Error as DecodeError, Kind as DecodeErrorKind};
+pub use crate::jcampdx::tabulation::error::{Error as TableError, Kind as TableErrorKind};
+
 /// A specialized [`Result`] type.
 ///
 /// [`Result`]: std::result::Result

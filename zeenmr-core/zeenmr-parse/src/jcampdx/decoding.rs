@@ -1,4 +1,4 @@
-pub mod error;
+pub(crate) mod error;
 
 mod decoded_data;
 pub(crate) use decoded_data::{DecodedBlock, DecodedBlockBuilder};

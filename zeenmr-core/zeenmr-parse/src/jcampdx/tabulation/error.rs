@@ -8,7 +8,7 @@ use crate::error::Position;
 ///
 /// This type alias avoids writing out
 /// `Result<T, zeenmr_parse::jcampdx::tabulation::error::Error>` directly.
-pub type Result<T> = std::result::Result<T, Error>;
+pub(crate) type Result<T> = std::result::Result<T, Error>;
 
 /// An `Error` that occurred during tabulation of a block.
 ///

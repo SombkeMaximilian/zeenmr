@@ -1,4 +1,4 @@
-pub mod error;
+pub(crate) mod error;
 
 mod lexer;
 pub(crate) use lexer::GroupToken;
