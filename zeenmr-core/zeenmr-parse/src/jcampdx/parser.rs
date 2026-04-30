@@ -673,7 +673,7 @@ where
         self.lexer = decoder.into_lexer().morph();
         self.dataset
             .errors
-            .extend(decoded_block.errors.into_iter().map(Into::into));
+            .extend(decoded_block.errors.into_iter().map(Error::from));
         self.dataset.data_tables.push(decoded_block.table);
 
         Ok(decoded_block.exit)
@@ -715,7 +715,7 @@ where
         self.lexer = table_parser.into_lexer().morph();
         self.dataset
             .errors
-            .extend(tabulated_block.errors.into_iter().map(Into::into));
+            .extend(tabulated_block.errors.into_iter().map(Error::from));
         self.dataset
             .data_tables
             .push(tabulated_block.table);
@@ -770,7 +770,7 @@ where
                 self.lexer = decoder.into_lexer().morph();
                 self.dataset
                     .errors
-                    .extend(decoded_block.errors.into_iter().map(Into::into));
+                    .extend(decoded_block.errors.into_iter().map(Error::from));
                 self.dataset.data_tables.push(decoded_block.table);
 
                 Ok(decoded_block.exit)
@@ -785,7 +785,7 @@ where
                 self.lexer = table_parser.into_lexer().morph();
                 self.dataset
                     .errors
-                    .extend(tabulated_block.errors.into_iter().map(Into::into));
+                    .extend(tabulated_block.errors.into_iter().map(Error::from));
                 self.dataset
                     .data_tables
                     .push(tabulated_block.table);

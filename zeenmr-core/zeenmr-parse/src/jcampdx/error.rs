@@ -1,7 +1,6 @@
 //! JCAMP-DX parsing error types.
 
 use crate::error::Position;
-use std::sync::Arc;
 
 pub use crate::jcampdx::block_format::error::{Error as FormatError, Kind as FormatErrorKind};
 pub use crate::jcampdx::decoding::error::{Error as DecodeError, Kind as DecodeErrorKind};
@@ -18,14 +17,12 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// An `Error` that occurred while parsing a file.
 ///
 /// See the [`Kind`] enum for the different kinds of errors that can occur.
-#[derive(Clone, Debug, Default)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub struct Error {
     /// The `Kind` of error that occurred.
     kind: Kind,
     /// Position in the source.
     position: Position,
-    /// The source of the error, if any.
-    source: Option<Arc<dyn std::error::Error + Send + Sync>>,
 }
 
 /// The kind of `Error` that can occur during decoding.
@@ -78,58 +75,43 @@ pub enum Kind {
     Overflow,
     /// An error was encountered while parsing the format specifier of a data
     /// block.
-    BlockFormat,
+    Format(FormatError),
     /// An error was encountered while decoding an encoded block.
-    Decode,
+    Decode(DecodeError),
     /// An error was encountered while parsing a data table.
-    Tabulate,
+    Table(TableError),
     /// The input ended unexpectedly early.
     EndOfInput,
 }
 
-impl From<crate::jcampdx::block_format::error::Error> for Error {
-    fn from(value: crate::jcampdx::block_format::error::Error) -> Self {
+impl From<FormatError> for Error {
+    fn from(value: FormatError) -> Self {
         Self {
-            kind: Kind::BlockFormat,
+            kind: Kind::Format(value),
             position: value.position(),
-            source: Some(Arc::new(value)),
         }
     }
 }
 
-impl From<crate::jcampdx::decoding::error::Error> for Error {
-    fn from(value: crate::jcampdx::decoding::error::Error) -> Self {
+impl From<DecodeError> for Error {
+    fn from(value: DecodeError) -> Self {
         Self {
-            kind: Kind::Decode,
+            kind: Kind::Decode(value),
             position: value.position(),
-            source: Some(Arc::new(value)),
         }
     }
 }
 
-impl From<crate::jcampdx::tabulation::error::Error> for Error {
-    fn from(value: crate::jcampdx::tabulation::error::Error) -> Self {
+impl From<TableError> for Error {
+    fn from(value: TableError) -> Self {
         Self {
-            kind: Kind::Tabulate,
+            kind: Kind::Table(value),
             position: value.position(),
-            source: Some(Arc::new(value)),
         }
     }
 }
 
-impl Eq for Error {}
-
-impl PartialEq for Error {
-    fn eq(&self, other: &Self) -> bool {
-        self.kind == other.kind && self.position == other.position
-    }
-}
-
-impl std::error::Error for Error {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        self.source.as_ref().map(|e| e.as_ref() as _)
-    }
-}
+impl std::error::Error for Error {}
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -144,9 +126,9 @@ impl std::fmt::Display for Error {
             Kind::NestedTuples => "nested tuples",
             Kind::MismatchedBlockFormat => "mismatched block format",
             Kind::Overflow => "overflow",
-            Kind::BlockFormat => "block format",
-            Kind::Decode => "decode error",
-            Kind::Tabulate => "tabulate error",
+            Kind::Format(e) => return e.fmt(f),
+            Kind::Decode(e) => return e.fmt(f),
+            Kind::Table(e) => return e.fmt(f),
             Kind::EndOfInput => "end of input",
         };
 
@@ -162,7 +144,6 @@ impl Error {
         Self {
             kind: Kind::InvalidLiteral,
             position,
-            source: None,
         }
     }
 
@@ -173,7 +154,6 @@ impl Error {
         Self {
             kind: Kind::EmptyKey,
             position,
-            source: None,
         }
     }
 
@@ -184,7 +164,6 @@ impl Error {
         Self {
             kind: Kind::NoEntryPoint,
             position,
-            source: None,
         }
     }
 
@@ -195,7 +174,6 @@ impl Error {
         Self {
             kind: Kind::MultipleKeyTokens,
             position,
-            source: None,
         }
     }
 
@@ -206,7 +184,6 @@ impl Error {
         Self {
             kind: Kind::MismatchedDelimiter,
             position,
-            source: None,
         }
     }
 
@@ -217,7 +194,6 @@ impl Error {
         Self {
             kind: Kind::UnclosedDelimiter,
             position,
-            source: None,
         }
     }
 
@@ -228,7 +204,6 @@ impl Error {
         Self {
             kind: Kind::UnexpectedPage,
             position,
-            source: None,
         }
     }
 
@@ -239,7 +214,6 @@ impl Error {
         Self {
             kind: Kind::NestedTuples,
             position,
-            source: None,
         }
     }
 
@@ -250,7 +224,6 @@ impl Error {
         Self {
             kind: Kind::MismatchedBlockFormat,
             position,
-            source: None,
         }
     }
 
@@ -261,7 +234,6 @@ impl Error {
         Self {
             kind: Kind::Overflow,
             position,
-            source: None,
         }
     }
 
@@ -272,7 +244,6 @@ impl Error {
         Self {
             kind: Kind::EndOfInput,
             position,
-            source: None,
         }
     }
 
@@ -284,10 +255,5 @@ impl Error {
     /// Returns the position in the source that caused the error.
     pub fn position(&self) -> Position {
         self.position
-    }
-
-    /// Returns the source of the error, if any.
-    pub fn source(&self) -> Option<&(dyn std::error::Error + Send + Sync)> {
-        self.source.as_deref()
     }
 }
