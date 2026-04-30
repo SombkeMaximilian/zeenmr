@@ -549,7 +549,7 @@ where
                 IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
                     self.dataset
                         .errors
-                        .push(Error::overflow(self.lexer.position(), e));
+                        .push(Error::overflow(self.lexer.position()));
 
                     Value::Integer(i64::MIN)
                 }

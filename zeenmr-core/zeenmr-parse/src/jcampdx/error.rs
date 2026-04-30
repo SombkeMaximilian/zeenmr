@@ -1,7 +1,6 @@
 //! JCAMP-DX parsing error types.
 
 use crate::error::Position;
-use std::num::ParseIntError;
 use std::sync::Arc;
 
 /// A specialized [`Result`] type.
@@ -254,11 +253,11 @@ impl Error {
     /// Creates an [`Overflow`] error.
     ///
     /// [`Overflow`]: Kind::Overflow
-    pub(crate) fn overflow(position: Position, source: ParseIntError) -> Self {
+    pub(crate) fn overflow(position: Position) -> Self {
         Self {
             kind: Kind::Overflow,
             position,
-            source: Some(Arc::new(source)),
+            source: None,
         }
     }
 
