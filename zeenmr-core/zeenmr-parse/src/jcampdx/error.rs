@@ -2,9 +2,9 @@
 
 use crate::error::Position;
 
-pub use crate::jcampdx::block_format::error::{Error as FormatError, Kind as FormatErrorKind};
-pub use crate::jcampdx::decoding::error::{Error as DecodeError, Kind as DecodeErrorKind};
-pub use crate::jcampdx::tabulation::error::{Error as TableError, Kind as TableErrorKind};
+pub use crate::jcampdx::block_format::error as format_error;
+pub use crate::jcampdx::decoding::error as decode_error;
+pub use crate::jcampdx::tabulation::error as table_error;
 
 /// A specialized [`Result`] type.
 ///
@@ -25,7 +25,7 @@ pub struct Error {
     position: Position,
 }
 
-/// The kind of `Error` that can occur during decoding.
+/// The kind of `Error` that can occur while parsing a file.
 ///
 /// Marked as non-exhaustive to allow for new variants to be added in the future
 /// without breaking compatibility.
@@ -75,17 +75,17 @@ pub enum Kind {
     Overflow,
     /// An error was encountered while parsing the format specifier of a data
     /// block.
-    Format(FormatError),
+    Format(format_error::Error),
     /// An error was encountered while decoding an encoded block.
-    Decode(DecodeError),
+    Decode(decode_error::Error),
     /// An error was encountered while parsing a data table.
-    Table(TableError),
+    Table(table_error::Error),
     /// The input ended unexpectedly early.
     EndOfInput,
 }
 
-impl From<FormatError> for Error {
-    fn from(value: FormatError) -> Self {
+impl From<format_error::Error> for Error {
+    fn from(value: format_error::Error) -> Self {
         Self {
             kind: Kind::Format(value),
             position: value.position(),
@@ -93,8 +93,8 @@ impl From<FormatError> for Error {
     }
 }
 
-impl From<DecodeError> for Error {
-    fn from(value: DecodeError) -> Self {
+impl From<decode_error::Error> for Error {
+    fn from(value: decode_error::Error) -> Self {
         Self {
             kind: Kind::Decode(value),
             position: value.position(),
@@ -102,8 +102,8 @@ impl From<DecodeError> for Error {
     }
 }
 
-impl From<TableError> for Error {
-    fn from(value: TableError) -> Self {
+impl From<table_error::Error> for Error {
+    fn from(value: table_error::Error) -> Self {
         Self {
             kind: Kind::Table(value),
             position: value.position(),

@@ -1,4 +1,4 @@
-pub(crate) mod error;
+pub mod error;
 
 mod format;
 pub(crate) use format::{BlockFormat, BlockFormatBuilder, LineLayout};
