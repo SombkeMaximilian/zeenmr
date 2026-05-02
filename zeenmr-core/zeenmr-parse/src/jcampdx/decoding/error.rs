@@ -1,6 +1,6 @@
 //! JCAMP-DX decoding error types.
 
-use crate::error::{Annotations, ParseError, Position};
+use crate::error::Position;
 
 /// A specialized [`Result`] type.
 ///
@@ -89,13 +89,11 @@ pub enum Kind {
     CheckPointStepMismatch,
 }
 
-impl ParseError for Error {
-    fn primary(&self) -> Position {
-        self.position
-    }
+impl std::error::Error for Error {}
 
-    fn message(&self) -> String {
-        match self.kind {
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let description = match self.kind {
             Kind::InvalidLiteral => "invalid literal",
             Kind::Overflow => "value magnitude too large to decode",
             Kind::DifDupOverflow => "DIF/DUP value magnitude too large to decode",
@@ -105,95 +103,9 @@ impl ParseError for Error {
             Kind::DifDupAfterCheckPoint => "first value is DIF/DUP",
             Kind::AsdfWithFloat => "DIF/DUP encoding mixed with floating point values",
             Kind::CheckPointStepMismatch => "checkpoint value spacing is inconsistent",
-        }
-        .into()
-    }
+        };
 
-    fn highlight_text(&self) -> String {
-        match self.kind {
-            Kind::InvalidLiteral => "does not match any token",
-            Kind::Overflow | Kind::DifDupOverflow => "does not fit into 64-bit signed integer",
-            Kind::IntegrityCheck => "not equal to the last value on previous line",
-            Kind::InvalidValue => "",
-            Kind::AsdfCheckpoint => "should not be ASDF-encoded",
-            Kind::DifDupAfterCheckPoint => "should not be DIF/DUP-encoded",
-            Kind::AsdfWithFloat => "should not be DIF/DUP-encoded or float",
-            Kind::CheckPointStepMismatch => "does not match prior step size",
-        }
-        .into()
-    }
-
-    fn note(&self) -> Annotations {
-        match self.kind {
-            Kind::InvalidLiteral => "\
-             values must be a standard numeric format or ASDF-encoded \
-            "
-            .into(),
-            Kind::DifDupOverflow => "\
-             DIF/DUP values affect all subsequent values on the line \
-            "
-            .into(),
-            Kind::IntegrityCheck => "\
-             in XYDATA mode, the first value of a line repeats the last \
-             value of the previous line if DIF-encoded \
-            "
-            .into(),
-            Kind::InvalidValue => "\
-             missing or corrupted values are marked `?` in the source \
-            "
-            .into(),
-            Kind::AsdfCheckpoint => "\
-             ASDF encoding is not permitted as a checkpoint value\
-            "
-            .into(),
-            Kind::DifDupAfterCheckPoint => "\
-             DIF/DUP encoding is not permitted as the first data value\
-            "
-            .into(),
-            Kind::AsdfWithFloat => "\
-             mixing ASDF encoding with floating point is not permitted by \
-             the standard \
-            "
-            .into(),
-            Kind::CheckPointStepMismatch => "\
-             expected step = (x_b - x_a) / (n_b - n_a) where x is the value \
-             and n is the decoded point count at checkpoints a and b \
-            "
-            .into(),
-            _ => Annotations::None,
-        }
-    }
-
-    fn fix_hint(&self) -> Annotations {
-        match self.kind {
-            Kind::Overflow | Kind::DifDupOverflow => Annotations::Multiple(vec![
-                "adjacent values may have been combined".into(),
-                "re-export the file from the software".into(),
-            ]),
-            Kind::IntegrityCheck => Annotations::Multiple(vec![
-                "a line may have been skipped or duplicated".into(),
-                "re-export the file from the software".into(),
-            ]),
-            Kind::AsdfCheckpoint | Kind::DifDupAfterCheckPoint | Kind::AsdfWithFloat => "\
-             the software exporting this dataset might not comply with \
-             the JCAMP-DX standard \
-            "
-            .into(),
-            Kind::CheckPointStepMismatch => Annotations::Multiple(vec![
-                "a line may have been skipped or duplicated".into(),
-                "adjacent values may have been combined".into(),
-                "re-export the file from the software".into(),
-            ]),
-            _ => Annotations::None,
-        }
-    }
-}
-
-impl std::error::Error for Error {}
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.message())
+        write!(f, "{description}")
     }
 }
 
