@@ -1,10 +1,8 @@
-use crate::error::{CurrentPosition, LineCounter, UpdateLineCounter};
 use crate::jcampdx::tabulation::error::Error;
 use logos::{Lexer, Logos};
 
 /// JCAMP-DX grouped block lexer.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, Logos)]
-#[logos(extras = LineCounter)]
 #[logos(error(Error, invalid_literal))]
 #[logos(subpattern newline = r"\n|\r\n|\r")]
 #[logos(subpattern space = r"[ \t]")]
@@ -13,7 +11,7 @@ use logos::{Lexer, Logos};
 #[logos(skip r"(?&comment)")]
 pub(crate) enum GroupToken {
     /// Every new line is a checkpoint.
-    #[regex(r"(?&newline)", UpdateLineCounter::newline)]
+    #[regex(r"(?&newline)")]
     Checkpoint,
     /// Commas separate multiple values.
     #[token(",")]
@@ -48,7 +46,7 @@ pub(crate) enum GroupToken {
 
 /// Literals that could not be matched to any token.
 fn invalid_literal(lexer: &Lexer<GroupToken>) -> Error {
-    Error::invalid_literal(lexer.position())
+    Error::invalid_literal(lexer.span().into())
 }
 
 #[cfg(test)]

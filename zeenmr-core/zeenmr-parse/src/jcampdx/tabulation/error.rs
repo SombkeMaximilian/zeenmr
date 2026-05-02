@@ -1,6 +1,6 @@
 //! JCAMP-DX grouped block tabulation error types.
 
-use crate::error::Position;
+use crate::error::ByteRange;
 
 /// A specialized [`Result`] type.
 ///
@@ -17,8 +17,8 @@ pub(crate) type Result<T> = std::result::Result<T, Error>;
 pub struct Error {
     /// The `Kind` of error that occurred.
     kind: Kind,
-    /// Position in the source.
-    position: Position,
+    /// Byte range in the source.
+    range: ByteRange,
 }
 
 /// The kind of `Error` that can occur during tabulation.
@@ -82,70 +82,70 @@ impl Error {
     /// Creates an [`InvalidLiteral`] error.
     ///
     /// [`InvalidLiteral`]: Kind::InvalidLiteral
-    pub(crate) fn invalid_literal(position: Position) -> Self {
+    pub(crate) fn invalid_literal(range: ByteRange) -> Self {
         Self {
             kind: Kind::InvalidLiteral,
-            position,
+            range,
         }
     }
 
     /// Creates an [`Overflow`] error.
     ///
     /// [`Overflow`]: Kind::Overflow
-    pub(crate) fn overflow(position: Position) -> Self {
+    pub(crate) fn overflow(range: ByteRange) -> Self {
         Self {
             kind: Kind::Overflow,
-            position,
+            range,
         }
     }
 
     /// Creates a [`MismatchedGroupSize`] error.
     ///
     /// [`MismatchedGroupSize`]: Kind::MismatchedGroupSize
-    pub(crate) fn mismatched_group_size(position: Position) -> Self {
+    pub(crate) fn mismatched_group_size(range: ByteRange) -> Self {
         Self {
             kind: Kind::MismatchedGroupSize,
-            position,
+            range,
         }
     }
 
     /// Creates a [`MismatchedGroupDelimiter`] error.
     ///
     /// [`MismatchedGroupDelimiter`]: Kind::MismatchedGroupDelimiter
-    pub(crate) fn mismatched_group_delimiter(position: Position) -> Self {
+    pub(crate) fn mismatched_group_delimiter(range: ByteRange) -> Self {
         Self {
             kind: Kind::MismatchedGroupDelimiter,
-            position,
+            range,
         }
     }
 
     /// Creates a [`UnmatchedStringDelimiter`] error.
     ///
     /// [`UnmatchedStringDelimiter`]: Kind::UnmatchedStringDelimiter
-    pub(crate) fn unmatched_string_delimiter(position: Position) -> Self {
+    pub(crate) fn unmatched_string_delimiter(range: ByteRange) -> Self {
         Self {
             kind: Kind::UnmatchedStringDelimiter,
-            position,
+            range,
         }
     }
 
     /// Creates a [`NonSeparatedValues`] error.
     ///
     /// [`NonSeparatedValues`]: Kind::NonSeparatedValues
-    pub(crate) fn non_separated_values(position: Position) -> Self {
+    pub(crate) fn non_separated_values(range: ByteRange) -> Self {
         Self {
             kind: Kind::NonSeparatedValues,
-            position,
+            range,
         }
     }
 
     /// Creates a [`CrossLineGroup`] error.
     ///
     /// [`CrossLineGroup`]: Kind::CrossLineGroup
-    pub(crate) fn cross_line_group(position: Position) -> Self {
+    pub(crate) fn cross_line_group(range: ByteRange) -> Self {
         Self {
             kind: Kind::CrossLineGroup,
-            position,
+            range,
         }
     }
 
@@ -154,8 +154,8 @@ impl Error {
         self.kind
     }
 
-    /// Returns the position in the source that caused the error.
-    pub fn position(&self) -> Position {
-        self.position
+    /// Returns the range in the source that caused the error.
+    pub fn byte_range(&self) -> ByteRange {
+        self.range
     }
 }

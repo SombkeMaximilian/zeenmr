@@ -1,9 +1,9 @@
-use crate::error::Position;
+use crate::error::ByteRange;
 
 /// Main trait for structured parser errors.
 pub trait ParseError: std::error::Error {
     /// Primary position that triggered the error.
-    fn primary(&self) -> Position;
+    fn primary(&self) -> ByteRange;
 
     /// Short, one-line description of what went wrong.
     fn message(&self) -> String;
@@ -30,7 +30,7 @@ pub trait ParseError: std::error::Error {
     ///
     /// Requires the source to make errors as slim as possible.
     #[allow(unused_variables)]
-    fn secondary(&self, source: &str) -> Vec<(Position, String)> {
+    fn secondary(&self, source: &str) -> Vec<(ByteRange, String)> {
         Vec::new()
     }
 }
@@ -102,7 +102,7 @@ where
 
         let column = self.source[start..position.start].chars().count();
         let file = self.filename.unwrap_or("<input>");
-        let line = format!("{}", position.line + 1);
+        let line = format!("{}", todo!());
         let gutter = " ".repeat(line.len());
 
         writeln!(f, "{gutter} ---> {file}:{line}:{}", column + 1)?;

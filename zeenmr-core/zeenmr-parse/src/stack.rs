@@ -1,4 +1,4 @@
-use crate::error::Position;
+use crate::error::ByteRange;
 
 /// Stack frame for values of type `V` enclosed by delimiters of type `D`.
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -6,7 +6,7 @@ pub(crate) struct Frame<D, V> {
     /// Delimiter that opened the stack frame.
     pub(crate) delimiter: D,
     /// Position of the opening token in the source.
-    pub(crate) start: Position,
+    pub(crate) start: ByteRange,
     /// Values after the opening token.
     pub(crate) values: Vec<V>,
 }
@@ -42,7 +42,7 @@ impl<D, V> Stack<D, V> {
     }
 
     /// Pushes a new `Frame` onto the stack.
-    pub(crate) fn push(&mut self, delimiter: D, start: Position) {
+    pub(crate) fn push(&mut self, delimiter: D, start: ByteRange) {
         self.frames.push(Frame {
             delimiter,
             start,

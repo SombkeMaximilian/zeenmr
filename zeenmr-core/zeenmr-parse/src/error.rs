@@ -3,6 +3,5 @@
 mod display;
 pub use display::{Annotations, ErrorDisplay, ParseError};
 
-mod position;
-pub use position::Position;
-pub(crate) use position::{CurrentPosition, LineCounter, UpdateLineCounter};
+mod range;
+pub use range::ByteRange;

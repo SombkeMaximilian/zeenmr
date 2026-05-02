@@ -1,6 +1,5 @@
 use crate::Stack;
 use crate::data::{Dataset, ParameterTable, Value};
-use crate::error::CurrentPosition;
 use crate::jcampdx::JcampDxDataset;
 use crate::jcampdx::block_format::{FormatParser, LineLayout};
 use crate::jcampdx::decoding::Decoder;
@@ -181,7 +180,7 @@ impl<'source> ParserMode for Parser<'source, Normal> {
     /// reaching this point is always an error that cannot be recovered from,
     /// as the file is almost guaranteed to be malformed or corrupted.
     fn page(&mut self) -> Result<()> {
-        Err(Error::unexpected_page(self.lexer.position()))
+        Err(Error::unexpected_page(self.lexer.span().into()))
     }
 }
 
@@ -211,7 +210,7 @@ impl<'source> ParserMode for Parser<'source, Tuples> {
     /// reaching this point is always an error that cannot be recovered from,
     /// as the file is almost guaranteed to be malformed or corrupted.
     fn title(&mut self) -> Result<()> {
-        Err(Error::nested_tuples(self.lexer.position()))
+        Err(Error::nested_tuples(self.lexer.span().into()))
     }
 
     /// Handles [`Tuples`] tokens.
@@ -222,7 +221,7 @@ impl<'source> ParserMode for Parser<'source, Tuples> {
     /// reaching this point is always an error that cannot be recovered from,
     /// as the file is almost guaranteed to be malformed or corrupted.
     fn tuples(&mut self) -> Result<()> {
-        Err(Error::nested_tuples(self.lexer.position()))
+        Err(Error::nested_tuples(self.lexer.span().into()))
     }
 
     /// Handles [`Page`] tokens.
@@ -250,7 +249,7 @@ impl<'source> ParserMode for Parser<'source, Tuples> {
 
         match exit_status {
             KeyExit::Success => Ok(()),
-            KeyExit::EndOfInput => Err(Error::end_of_input(self.lexer.position())),
+            KeyExit::EndOfInput => Err(Error::end_of_input(self.lexer.span().into())),
             KeyExit::NextKey => unreachable!(),
         }
     }
@@ -291,7 +290,7 @@ where
             self.lexer.next().transpose()?,
         ) {
             (Some(Token::Key), Some(Token::Title), Some(Token::Equals)) => Ok(()),
-            _ => Err(Error::no_entry_point(self.lexer.position())),
+            _ => Err(Error::no_entry_point(self.lexer.span().into())),
         }
     }
 
@@ -390,7 +389,7 @@ where
         let mut special = None;
         while let Some(token) = self.lexer.next().transpose()? {
             match token {
-                Token::Key => return Err(Error::multiple_key_tokens(self.lexer.position())),
+                Token::Key => return Err(Error::multiple_key_tokens(self.lexer.span().into())),
                 Token::Equals => {
                     found_equals = true;
                     break;
@@ -407,10 +406,10 @@ where
             token_count += 1;
         }
         if !found_equals {
-            return Err(Error::end_of_input(self.lexer.position()));
+            return Err(Error::end_of_input(self.lexer.span().into()));
         }
         if token_count == 0 {
-            return Err(Error::empty_key(self.lexer.position()));
+            return Err(Error::empty_key(self.lexer.span().into()));
         }
         if token_count > 1 {
             special = None;
@@ -489,7 +488,7 @@ where
     /// [`Frame`]: crate::Frame
     fn start_bounded(&mut self, delimiter: Delimiter) {
         self.bounded_stack
-            .push(delimiter, self.lexer.position());
+            .push(delimiter, self.lexer.span().into());
     }
 
     /// Finalizes the [`Frame`] at the top of the [`Stack`].
@@ -509,7 +508,7 @@ where
     /// [`Stack`].
     fn end_bounded(&mut self, delimiter: Delimiter) -> Result<()> {
         if self.bounded_stack.top_delimiter() != Some(&delimiter) {
-            return Err(Error::mismatched_delimiter(self.lexer.position()));
+            return Err(Error::mismatched_delimiter(self.lexer.span().into()));
         }
         let frame = self
             .bounded_stack
@@ -549,7 +548,7 @@ where
                 IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
                     self.dataset
                         .errors
-                        .push(Error::overflow(self.lexer.position()));
+                        .push(Error::overflow(self.lexer.span().into()));
 
                     Value::Integer(i64::MIN)
                 }
@@ -661,7 +660,7 @@ where
                     _ => {
                         self.dataset
                             .errors
-                            .push(Error::mismatched_block_format(self.lexer.position()));
+                            .push(Error::mismatched_block_format(self.lexer.span().into()));
                     }
                 }
             }
@@ -702,7 +701,7 @@ where
         let format = format_parser.parse_format()?;
         let mut table_parser = match format.line_layout {
             LineLayout::RepeatingValue { .. } => {
-                return Err(Error::mismatched_block_format(self.lexer.position()));
+                return Err(Error::mismatched_block_format(self.lexer.span().into()));
             }
             LineLayout::GroupedValues(identifiers) => {
                 TableParser::from(format_parser.into_lexer()).with_identifiers(identifiers)
@@ -713,9 +712,12 @@ where
         }
         let tabulated_block = table_parser.tabulate_source()?;
         self.lexer = table_parser.into_lexer().morph();
-        self.dataset
-            .errors
-            .extend(tabulated_block.errors.into_iter().map(Error::from));
+        self.dataset.errors.extend(
+            tabulated_block
+                .errors
+                .into_iter()
+                .map(Error::from),
+        );
         self.dataset
             .data_tables
             .push(tabulated_block.table);
@@ -783,9 +785,12 @@ where
                 }
                 let tabulated_block = table_parser.tabulate_source()?;
                 self.lexer = table_parser.into_lexer().morph();
-                self.dataset
-                    .errors
-                    .extend(tabulated_block.errors.into_iter().map(Error::from));
+                self.dataset.errors.extend(
+                    tabulated_block
+                        .errors
+                        .into_iter()
+                        .map(Error::from),
+                );
                 self.dataset
                     .data_tables
                     .push(tabulated_block.table);

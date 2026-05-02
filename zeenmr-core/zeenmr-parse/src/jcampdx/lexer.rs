@@ -1,13 +1,11 @@
-use crate::error::{CurrentPosition, LineCounter, UpdateLineCounter};
 use crate::jcampdx::error::Error;
 use logos::{Lexer, Logos};
 
 /// JCAMP-DX lexer.
 #[derive(Clone, PartialEq, Debug, Logos)]
-#[logos(extras = LineCounter)]
 #[logos(error(Error, invalid_literal))]
 #[logos(subpattern newline = r"\n|\r\n|\r")]
-#[logos(skip(r"(?&newline)", UpdateLineCounter::newline))]
+#[logos(skip r"(?&newline)")]
 #[logos(subpattern space = r"[ \t]")]
 #[logos(skip r"(?&space)")]
 #[logos(subpattern comment = r"\$\$[^\r\n]+")]
@@ -74,7 +72,7 @@ pub(crate) enum Token {
 
 /// Literals that could not be matched to any token.
 fn invalid_literal(lexer: &Lexer<Token>) -> Error {
-    Error::invalid_literal(lexer.position())
+    Error::invalid_literal(lexer.span().into())
 }
 
 #[cfg(test)]

@@ -1,10 +1,8 @@
-use crate::error::{CurrentPosition, LineCounter, UpdateLineCounter};
 use crate::jcampdx::decoding::error::Error;
 use logos::{Lexer, Logos};
 
 /// JCAMP-DX encoded block lexer.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Logos)]
-#[logos(extras = LineCounter)]
 #[logos(error(Error, invalid_literal))]
 #[logos(subpattern newline = r"\n|\r\n|\r")]
 #[logos(subpattern space = r"[ \t]")]
@@ -13,7 +11,7 @@ use logos::{Lexer, Logos};
 #[logos(skip r"(?&comment)")]
 pub(crate) enum EncodedToken {
     /// Every new line is a checkpoint.
-    #[regex(r"(?&newline)", UpdateLineCounter::newline)]
+    #[regex(r"(?&newline)")]
     CheckPoint,
     /// Numeric values, `AFFN` in the JCAMP-DX standard.
     #[regex(r"[+-]?(0|[1-9]\d*)(\.\d+)?([eE][+-]\d+)?")]
@@ -39,7 +37,7 @@ pub(crate) enum EncodedToken {
 
 /// Literals that could not be matched to any token.
 fn invalid_literal(lexer: &Lexer<EncodedToken>) -> Error {
-    Error::invalid_literal(lexer.position())
+    Error::invalid_literal(lexer.span().into())
 }
 
 #[cfg(test)]

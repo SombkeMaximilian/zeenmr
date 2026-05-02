@@ -1,6 +1,6 @@
 //! JCAMP-DX decoding error types.
 
-use crate::error::Position;
+use crate::error::ByteRange;
 
 /// A specialized [`Result`] type.
 ///
@@ -17,8 +17,8 @@ pub(crate) type Result<T> = std::result::Result<T, Error>;
 pub struct Error {
     /// The `Kind` of error that occurred.
     kind: Kind,
-    /// Position in the source.
-    position: Position,
+    /// Byte range in the source.
+    range: ByteRange,
     /// Index of the value in the block.
     index: Option<usize>,
 }
@@ -120,10 +120,10 @@ impl Error {
     /// Creates an [`InvalidLiteral`] error.
     ///
     /// [`InvalidLiteral`]: Kind::InvalidLiteral
-    pub(crate) fn invalid_literal(position: Position) -> Self {
+    pub(crate) fn invalid_literal(range: ByteRange) -> Self {
         Self {
             kind: Kind::InvalidLiteral,
-            position,
+            range,
             index: None,
         }
     }
@@ -131,10 +131,10 @@ impl Error {
     /// Creates an [`Overflow`] error.
     ///
     /// [`Overflow`]: Kind::Overflow
-    pub(crate) fn overflow(position: Position) -> Self {
+    pub(crate) fn overflow(range: ByteRange) -> Self {
         Self {
             kind: Kind::Overflow,
-            position,
+            range,
             index: None,
         }
     }
@@ -142,10 +142,10 @@ impl Error {
     /// Creates a [`DifDupOverflow`] error.
     ///
     /// [`DifDupOverflow`]: Kind::DifDupOverflow
-    pub(crate) fn dif_dup_overflow(position: Position) -> Self {
+    pub(crate) fn dif_dup_overflow(range: ByteRange) -> Self {
         Self {
             kind: Kind::DifDupOverflow,
-            position,
+            range,
             index: None,
         }
     }
@@ -153,10 +153,10 @@ impl Error {
     /// Creates an [`IntegrityCheck`] error.
     ///
     /// [`IntegrityCheck`]: Kind::IntegrityCheck
-    pub(crate) fn integrity_check(position: Position, index: usize) -> Self {
+    pub(crate) fn integrity_check(range: ByteRange, index: usize) -> Self {
         Self {
             kind: Kind::IntegrityCheck,
-            position,
+            range,
             index: Some(index),
         }
     }
@@ -164,10 +164,10 @@ impl Error {
     /// Creates an [`InvalidValue`] error.
     ///
     /// [`InvalidValue`]: Kind::InvalidValue
-    pub(crate) fn invalid_value(position: Position) -> Self {
+    pub(crate) fn invalid_value(range: ByteRange) -> Self {
         Self {
             kind: Kind::InvalidValue,
-            position,
+            range,
             index: None,
         }
     }
@@ -175,10 +175,10 @@ impl Error {
     /// Creates a [`AsdfCheckpoint`] error.
     ///
     /// [`AsdfCheckpoint`]: Kind::AsdfCheckpoint
-    pub(crate) fn asdf_checkpoint(position: Position) -> Self {
+    pub(crate) fn asdf_checkpoint(range: ByteRange) -> Self {
         Self {
             kind: Kind::AsdfCheckpoint,
-            position,
+            range,
             index: None,
         }
     }
@@ -186,10 +186,10 @@ impl Error {
     /// Creates a [`DifDupAfterCheckPoint`] error.
     ///
     /// [`DifDupAfterCheckPoint`]: Kind::DifDupAfterCheckPoint
-    pub(crate) fn dif_dup_after_checkpoint(position: Position) -> Self {
+    pub(crate) fn dif_dup_after_checkpoint(range: ByteRange) -> Self {
         Self {
             kind: Kind::DifDupAfterCheckPoint,
-            position,
+            range,
             index: None,
         }
     }
@@ -197,10 +197,10 @@ impl Error {
     /// Creates a [`AsdfWithFloat`] error.
     ///
     /// [`AsdfWithFloat`]: Kind::AsdfWithFloat
-    pub(crate) fn asdf_with_float(position: Position) -> Self {
+    pub(crate) fn asdf_with_float(range: ByteRange) -> Self {
         Self {
             kind: Kind::AsdfWithFloat,
-            position,
+            range,
             index: None,
         }
     }
@@ -208,10 +208,10 @@ impl Error {
     /// Creates a [`CheckPointStepMismatch`] error.
     ///
     /// [`CheckPointStepMismatch`]: Kind::CheckPointStepMismatch
-    pub(crate) fn checkpoint_step_mismatch(position: Position) -> Self {
+    pub(crate) fn checkpoint_step_mismatch(range: ByteRange) -> Self {
         Self {
             kind: Kind::CheckPointStepMismatch,
-            position,
+            range,
             index: None,
         }
     }
@@ -221,9 +221,9 @@ impl Error {
         self.kind
     }
 
-    /// Returns the position in the source that caused the error.
-    pub fn position(&self) -> Position {
-        self.position
+    /// Returns the range in the source that caused the error.
+    pub fn byte_range(&self) -> ByteRange {
+        self.range
     }
 
     /// Returns the index of the value in the decoded sequence which caused the

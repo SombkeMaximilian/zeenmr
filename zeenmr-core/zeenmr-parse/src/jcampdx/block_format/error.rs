@@ -1,6 +1,6 @@
 //! JCAMP-DX block format parsing error types.
 
-use crate::error::Position;
+use crate::error::ByteRange;
 
 /// A specialized [`Result`] type.
 ///
@@ -17,8 +17,8 @@ pub(crate) type Result<T> = std::result::Result<T, Error>;
 pub struct Error {
     /// The `Kind` of error that occurred.
     kind: Kind,
-    /// Position in the source.
-    position: Position,
+    /// Byte range in the source.
+    range: ByteRange,
 }
 
 /// The kind of `Error` that can occur while parsing the block format.
@@ -93,100 +93,100 @@ impl Error {
     /// Creates an [`InvalidLiteral`] error.
     ///
     /// [`InvalidLiteral`]: Kind::InvalidLiteral
-    pub(crate) fn invalid_literal(position: Position) -> Self {
+    pub(crate) fn invalid_literal(range: ByteRange) -> Self {
         Self {
             kind: Kind::InvalidLiteral,
-            position,
+            range,
         }
     }
 
     /// Creates an [`EndOfInput`] error.
     ///
     /// [`EndOfInput`]: Kind::EndOfInput
-    pub(crate) fn end_of_input(position: Position) -> Self {
+    pub(crate) fn end_of_input(range: ByteRange) -> Self {
         Self {
             kind: Kind::EndOfInput,
-            position,
+            range,
         }
     }
 
     /// Creates an [`EmptyFormat`] error.
     ///
     /// [`EmptyFormat`]: Kind::EmptyFormat
-    pub(crate) fn empty_format(position: Position) -> Self {
+    pub(crate) fn empty_format(range: ByteRange) -> Self {
         Self {
             kind: Kind::EmptyFormat,
-            position,
+            range,
         }
     }
 
     /// Creates an [`EmptyIncrement`] error.
     ///
     /// [`EmptyIncrement`]: Kind::EmptyIncrement
-    pub(crate) fn empty_increment(position: Position) -> Self {
+    pub(crate) fn empty_increment(range: ByteRange) -> Self {
         Self {
             kind: Kind::EmptyIncrement,
-            position,
+            range,
         }
     }
 
     /// Creates an [`EmptyRepeat`] error.
     ///
     /// [`EmptyRepeat`]: Kind::EmptyRepeat
-    pub(crate) fn empty_repeat(position: Position) -> Self {
+    pub(crate) fn empty_repeat(range: ByteRange) -> Self {
         Self {
             kind: Kind::EmptyRepeat,
-            position,
+            range,
         }
     }
 
     /// Creates a [`MismatchedRepeat`] error.
     ///
     /// [`MismatchedRepeat`]: Kind::MismatchedRepeat
-    pub(crate) fn mismatched_repeat(position: Position) -> Self {
+    pub(crate) fn mismatched_repeat(range: ByteRange) -> Self {
         Self {
             kind: Kind::MismatchedRepeat,
-            position,
+            range,
         }
     }
 
     /// Creates a [`MultipleIncrement`] error.
     ///
     /// [`MultipleIncrement`]: Kind::MultipleIncrement
-    pub(crate) fn multiple_increment(position: Position) -> Self {
+    pub(crate) fn multiple_increment(range: ByteRange) -> Self {
         Self {
             kind: Kind::MultipleIncrement,
-            position,
+            range,
         }
     }
 
     /// Creates a [`MultipleRepeat`] error.
     ///
     /// [`MultipleRepeat`]: Kind::MultipleRepeat
-    pub(crate) fn multiple_repeat(position: Position) -> Self {
+    pub(crate) fn multiple_repeat(range: ByteRange) -> Self {
         Self {
             kind: Kind::MultipleRepeat,
-            position,
+            range,
         }
     }
 
     /// Creates an [`IncrementAfterRepeat`] error.
     ///
     /// [`IncrementAfterRepeat`]: Kind::IncrementAfterRepeat
-    pub(crate) fn increment_after_repeat(position: Position) -> Self {
+    pub(crate) fn increment_after_repeat(range: ByteRange) -> Self {
         Self {
             kind: Kind::IncrementAfterRepeat,
-            position,
+            range,
         }
     }
 
     /// Creates a [`MultipleIdentifierIncrement`] error.
     ///
     /// [`MultipleIdentifierIncrement`]: Kind::MultipleIdentifierIncrement
-    pub(crate) fn multiple_identifier_increment(position: Position) -> Self {
+    pub(crate) fn multiple_identifier_increment(range: ByteRange) -> Self {
         Self {
             kind: Kind::MultipleIdentifierIncrement,
-            position,
+            range,
         }
     }
 
@@ -195,8 +195,8 @@ impl Error {
         self.kind
     }
 
-    /// Returns the position in the source that caused the error.
-    pub fn position(&self) -> Position {
-        self.position
+    /// Returns the range in the source that caused the error.
+    pub fn byte_range(&self) -> ByteRange {
+        self.range
     }
 }

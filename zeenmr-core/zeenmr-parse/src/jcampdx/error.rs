@@ -1,6 +1,6 @@
 //! JCAMP-DX parsing error types.
 
-use crate::error::Position;
+use crate::error::ByteRange;
 
 pub use crate::jcampdx::block_format::error as format_error;
 pub use crate::jcampdx::decoding::error as decode_error;
@@ -21,8 +21,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct Error {
     /// The `Kind` of error that occurred.
     kind: Kind,
-    /// Position in the source.
-    position: Position,
+    /// Byte range in the source.
+    range: ByteRange,
 }
 
 /// The kind of `Error` that can occur while parsing a file.
@@ -88,7 +88,7 @@ impl From<format_error::Error> for Error {
     fn from(value: format_error::Error) -> Self {
         Self {
             kind: Kind::Format(value),
-            position: value.position(),
+            range: value.byte_range(),
         }
     }
 }
@@ -97,7 +97,7 @@ impl From<decode_error::Error> for Error {
     fn from(value: decode_error::Error) -> Self {
         Self {
             kind: Kind::Decode(value),
-            position: value.position(),
+            range: value.byte_range(),
         }
     }
 }
@@ -106,7 +106,7 @@ impl From<table_error::Error> for Error {
     fn from(value: table_error::Error) -> Self {
         Self {
             kind: Kind::Table(value),
-            position: value.position(),
+            range: value.byte_range(),
         }
     }
 }
@@ -140,110 +140,110 @@ impl Error {
     /// Creates an [`InvalidLiteral`] error.
     ///
     /// [`InvalidLiteral`]: Kind::InvalidLiteral
-    pub(crate) fn invalid_literal(position: Position) -> Self {
+    pub(crate) fn invalid_literal(range: ByteRange) -> Self {
         Self {
             kind: Kind::InvalidLiteral,
-            position,
+            range,
         }
     }
 
     /// Creates an [`EmptyKey`] error.
     ///
     /// [`EmptyKey`]: Kind::EmptyKey
-    pub(crate) fn empty_key(position: Position) -> Self {
+    pub(crate) fn empty_key(range: ByteRange) -> Self {
         Self {
             kind: Kind::EmptyKey,
-            position,
+            range,
         }
     }
 
     /// Creates a [`NoEntryPoint`] error.
     ///
     /// [`NoEntryPoint`]: Kind::NoEntryPoint
-    pub(crate) fn no_entry_point(position: Position) -> Self {
+    pub(crate) fn no_entry_point(range: ByteRange) -> Self {
         Self {
             kind: Kind::NoEntryPoint,
-            position,
+            range,
         }
     }
 
     /// Creates a [`MultipleKeyTokens`] error.
     ///
     /// [`MultipleKeyTokens`]: Kind::MultipleKeyTokens
-    pub(crate) fn multiple_key_tokens(position: Position) -> Self {
+    pub(crate) fn multiple_key_tokens(range: ByteRange) -> Self {
         Self {
             kind: Kind::MultipleKeyTokens,
-            position,
+            range,
         }
     }
 
     /// Creates a [`MismatchedDelimiter`] error.
     ///
     /// [`MismatchedDelimiter`]: Kind::MismatchedDelimiter
-    pub(crate) fn mismatched_delimiter(position: Position) -> Self {
+    pub(crate) fn mismatched_delimiter(range: ByteRange) -> Self {
         Self {
             kind: Kind::MismatchedDelimiter,
-            position,
+            range,
         }
     }
 
     /// Creates an [`UnclosedDelimiter`] error.
     ///
     /// [`UnclosedDelimiter`]: Kind::UnclosedDelimiter
-    pub(crate) fn unclosed_delimiter(position: Position) -> Self {
+    pub(crate) fn unclosed_delimiter(range: ByteRange) -> Self {
         Self {
             kind: Kind::UnclosedDelimiter,
-            position,
+            range,
         }
     }
 
     /// Creates a [`UnexpectedPage`] error.
     ///
     /// [`UnexpectedPage`]: Kind::UnexpectedPage
-    pub(crate) fn unexpected_page(position: Position) -> Self {
+    pub(crate) fn unexpected_page(range: ByteRange) -> Self {
         Self {
             kind: Kind::UnexpectedPage,
-            position,
+            range,
         }
     }
 
     /// Creates a [`NestedTuples`] error.
     ///
     /// [`NestedTuples`]: Kind::NestedTuples
-    pub(crate) fn nested_tuples(position: Position) -> Self {
+    pub(crate) fn nested_tuples(range: ByteRange) -> Self {
         Self {
             kind: Kind::NestedTuples,
-            position,
+            range,
         }
     }
 
     /// Creates a [`MismatchedBlockFormat`] error.
     ///
     /// [`MismatchedBlockFormat`]: Kind::MismatchedBlockFormat
-    pub(crate) fn mismatched_block_format(position: Position) -> Self {
+    pub(crate) fn mismatched_block_format(range: ByteRange) -> Self {
         Self {
             kind: Kind::MismatchedBlockFormat,
-            position,
+            range,
         }
     }
 
     /// Creates an [`Overflow`] error.
     ///
     /// [`Overflow`]: Kind::Overflow
-    pub(crate) fn overflow(position: Position) -> Self {
+    pub(crate) fn overflow(range: ByteRange) -> Self {
         Self {
             kind: Kind::Overflow,
-            position,
+            range,
         }
     }
 
     /// Creates an [`EndOfInput`] error.
     ///
     /// [`EndOfInput`]: Kind::EndOfInput
-    pub(crate) fn end_of_input(position: Position) -> Self {
+    pub(crate) fn end_of_input(range: ByteRange) -> Self {
         Self {
             kind: Kind::EndOfInput,
-            position,
+            range,
         }
     }
 
@@ -252,8 +252,8 @@ impl Error {
         self.kind
     }
 
-    /// Returns the position in the source that caused the error.
-    pub fn position(&self) -> Position {
-        self.position
+    /// Returns the range in the source that caused the error.
+    pub fn byte_range(&self) -> ByteRange {
+        self.range
     }
 }
