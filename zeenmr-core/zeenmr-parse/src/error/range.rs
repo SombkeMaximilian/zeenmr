@@ -20,10 +20,7 @@ impl From<Range<usize>> for ByteRange {
 
 impl From<ByteRange> for Range<usize> {
     fn from(value: ByteRange) -> Self {
-        Range::<usize> {
-            start: value.start,
-            end: value.end,
-        }
+        value.start..value.end
     }
 }
 
