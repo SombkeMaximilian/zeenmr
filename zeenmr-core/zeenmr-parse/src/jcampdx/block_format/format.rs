@@ -54,7 +54,7 @@ impl<'source> BlockFormatBuilder<'source> {
     /// [`RepeatingValue`]: LineLayout::RepeatingValue
     /// [`GroupedValues`]: LineLayout::GroupedValues
     pub(crate) fn finalize(self) -> Option<BlockFormat<'source>> {
-        if self.identifiers.len() == 0 {
+        if self.identifiers.is_empty() {
             return None;
         }
 
