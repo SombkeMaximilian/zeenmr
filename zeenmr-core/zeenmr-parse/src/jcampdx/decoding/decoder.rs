@@ -2,7 +2,7 @@ use crate::jcampdx::decoding::error::{Error, Result};
 use crate::jcampdx::decoding::{DecodedBlock, DecodedBlockBuilder, EncodedToken};
 use logos::{Lexer, Logos};
 use std::borrow::Cow;
-use std::num::{IntErrorKind, ParseIntError};
+use std::num::IntErrorKind;
 
 /// `AFFN` numeric values.
 #[derive(Copy, Clone, PartialEq, Debug)]
@@ -211,7 +211,7 @@ impl<'source> Decoder<'source> {
                             _ => {}
                         }
                     }
-                    Err(e) => match e.kind() {
+                    Err(e) => match e {
                         IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
                             self.builder.push_checkpoint_value(
                                 self.lexer
@@ -232,7 +232,7 @@ impl<'source> Decoder<'source> {
                     State::Normal | State::LastWasDifference(_) => match self.parse_affn() {
                         Ok(Affn::I64(value)) => self.builder.push_decoded_i64(value),
                         Ok(Affn::F64(value)) => self.builder.push_decoded_f64(value),
-                        Err(e) => match e.kind() {
+                        Err(e) => match e {
                             IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
                                 self.builder.push_error(
                                     Error::overflow(self.lexer.span().into())
@@ -248,7 +248,7 @@ impl<'source> Decoder<'source> {
                         Ok(Affn::F64(_)) => {
                             return Err(Error::asdf_with_float(self.lexer.span().into()));
                         }
-                        Err(e) => match e.kind() {
+                        Err(e) => match e {
                             IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
                                 self.builder.push_error(Error::integrity_check(
                                     self.lexer.span().into(),
@@ -286,7 +286,7 @@ impl<'source> Decoder<'source> {
                 match self.state {
                     State::Normal | State::LastWasDifference(_) => match self.parse_asdf() {
                         Ok(value) => self.builder.push_decoded_i64(value),
-                        Err(e) => match e.kind() {
+                        Err(e) => match e {
                             IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
                                 self.builder.push_error(
                                     Error::overflow(self.lexer.span().into())
@@ -299,7 +299,7 @@ impl<'source> Decoder<'source> {
                     },
                     State::IntegrityCheck => match self.parse_asdf() {
                         Ok(value) => self.integrity_check(value)?,
-                        Err(e) => match e.kind() {
+                        Err(e) => match e {
                             IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => {
                                 self.builder.push_error(Error::integrity_check(
                                     self.lexer.span().into(),
@@ -490,7 +490,7 @@ impl<'source> Decoder<'source> {
     /// # Panics
     ///
     /// Panics if `lexer.slice()` cannot be parsed as an `i64` or `f64`.
-    fn parse_affn(&self) -> std::result::Result<Affn, ParseIntError> {
+    fn parse_affn(&self) -> std::result::Result<Affn, IntErrorKind> {
         match self.lexer.slice().parse::<i64>() {
             Ok(int) => Ok(Affn::I64(int)),
             Err(e) => match e.kind() {
@@ -508,7 +508,7 @@ impl<'source> Decoder<'source> {
                         Ok(Affn::F64(float))
                     }
                 }
-                IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => Err(e),
+                IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => Err(*e.kind()),
                 _ => unreachable!(),
             },
         }
@@ -529,7 +529,7 @@ impl<'source> Decoder<'source> {
     /// # Panics
     ///
     /// Panics if `lexer.slice()` is not of the `ASDF` form.
-    fn parse_asdf(&self) -> std::result::Result<i64, ParseIntError> {
+    fn parse_asdf(&self) -> std::result::Result<i64, IntErrorKind> {
         let encoded = self
             .lexer
             .slice()
@@ -538,15 +538,15 @@ impl<'source> Decoder<'source> {
             .expect("lexer (regex) should have no empty ASDF tokens");
         let decoded = match encoded {
             '@' | '%' => 0,
-            'A' | 'a' | 'J' | 'j' | 'S' => 1,
-            'B' | 'b' | 'K' | 'k' | 'T' => 2,
-            'C' | 'c' | 'L' | 'l' | 'U' => 3,
-            'D' | 'd' | 'M' | 'm' | 'V' => 4,
-            'E' | 'e' | 'N' | 'n' | 'W' => 5,
-            'F' | 'f' | 'O' | 'o' | 'X' => 6,
-            'G' | 'g' | 'P' | 'p' | 'Y' => 7,
-            'H' | 'h' | 'Q' | 'q' | 'Z' => 8,
-            'I' | 'i' | 'R' | 'r' | 's' => 9,
+            'A' | 'a' | 'J' | 'j' | 'S' => 1_i64,
+            'B' | 'b' | 'K' | 'k' | 'T' => 2_i64,
+            'C' | 'c' | 'L' | 'l' | 'U' => 3_i64,
+            'D' | 'd' | 'M' | 'm' | 'V' => 4_i64,
+            'E' | 'e' | 'N' | 'n' | 'W' => 5_i64,
+            'F' | 'f' | 'O' | 'o' | 'X' => 6_i64,
+            'G' | 'g' | 'P' | 'p' | 'Y' => 7_i64,
+            'H' | 'h' | 'Q' | 'q' | 'Z' => 8_i64,
+            'I' | 'i' | 'R' | 'r' | 's' => 9_i64,
             _ => unreachable!("invalid ASDF character: {}", encoded),
         };
         let sign = match encoded {
@@ -558,10 +558,15 @@ impl<'source> Decoder<'source> {
         let order = numeric.len() as u32;
 
         match numeric.parse::<i64>() {
-            Ok(numeric) => Ok(sign * (decoded * 10_i64.pow(order) + numeric)),
+            Ok(numeric) => 10_i64
+                .checked_pow(order)
+                .and_then(|value| value.checked_mul(decoded))
+                .and_then(|value| value.checked_add(numeric))
+                .and_then(|value| value.checked_mul(sign))
+                .ok_or(IntErrorKind::PosOverflow),
             Err(e) => match e.kind() {
-                IntErrorKind::Empty => Ok(sign * (decoded * 10_i64.pow(order))),
-                IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => Err(e),
+                IntErrorKind::Empty => Ok(sign * decoded),
+                IntErrorKind::PosOverflow | IntErrorKind::NegOverflow => Err(*e.kind()),
                 _ => unreachable!(),
             },
         }
@@ -654,6 +659,7 @@ mod tests {
                 let data = $data;
                 let error = $error;
                 let decoded = Decoder::from(data).decode_source().unwrap_err();
+
                 assert_eq!(decoded, error);
             }
         };
@@ -691,6 +697,7 @@ mod tests {
                 let errors = $errors;
                 let mut decoder = Decoder::from(data);
                 let decoded = decoder.decode_source().unwrap();
+
                 assert_eq!(decoded.errors, errors);
             }
         };
@@ -703,6 +710,15 @@ mod tests {
         [
             Error::overflow(ByteRange::new(2, 22)).with_index(0),
             Error::overflow(ByteRange::new(31, 52)).with_index(4),
+        ]
+    );
+    recoverable_error_test!(
+        difdupoverflow,
+        "7 A0000000000000000000 1 1 1\n\
+         3 a0000000000000000000 1 1 1",
+        [
+            Error::overflow(ByteRange::new(2, 22)).with_index(0),
+            Error::overflow(ByteRange::new(31, 51)).with_index(4),
         ]
     );
     recoverable_error_test!(
