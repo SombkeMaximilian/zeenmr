@@ -454,6 +454,7 @@ mod tests {
                 let mut tabulator =
                     TableParser::from(data).with_identifiers(vec!["X", "Y", "M", "S", "A"]);
                 let tabulated = tabulator.tabulate_source().unwrap();
+
                 assert_eq!(tabulated, *EXPECTED);
             }
         };
@@ -541,6 +542,7 @@ mod tests {
                     .with_identifiers(identifiers)
                     .tabulate_source()
                     .unwrap_err();
+
                 assert_eq!(tabulated, error);
             }
         };
@@ -717,6 +719,7 @@ mod tests {
                 let errors = $errors;
                 let mut tabulator = TableParser::from(data).with_identifiers(identifiers);
                 let tabulated = tabulator.tabulate_source().unwrap();
+
                 assert_eq!(tabulated.errors, errors)
             }
         };
