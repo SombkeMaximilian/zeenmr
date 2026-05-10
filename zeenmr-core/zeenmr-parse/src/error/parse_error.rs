@@ -178,7 +178,7 @@ where
                     .labels
                     .iter()
                     .find(|label| label.is_cause)
-                    .map(|label| (group.line, label.range.start.saturating_sub(group.offset)))
+                    .map(|label| (group.line, label.range.start.saturating_sub(group.offset) + 1))
             })
             .map_or_else(
                 || {
