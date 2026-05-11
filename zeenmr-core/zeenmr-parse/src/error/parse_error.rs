@@ -7,7 +7,7 @@ use std::ops::ControlFlow;
 /// The [`Error`] type uses its methods to render error messages.
 pub trait ParseError: std::error::Error {
     /// Short, one-line description of what went wrong.
-    fn message(&self, source: &str) -> Cow<'static, str>;
+    fn message(&self) -> Cow<'static, str>;
 
     /// Labeled byte ranges that are relevant for the error.
     ///
@@ -16,10 +16,10 @@ pub trait ParseError: std::error::Error {
     fn labels(&self, source: &str) -> Vec<RangeLabel>;
 
     /// Optional, potentially longer explanations of the error, if any.
-    fn notes(&self, source: &str) -> impl Iterator<Item = String>;
+    fn notes(&self, source: &str) -> Vec<Cow<'static, str>>;
 
     /// Optional hints for how to fix the error, if any.
-    fn fix_hints(&self, source: &str) -> impl Iterator<Item = String>;
+    fn fix_hints(&self, source: &str) -> Vec<Cow<'static, str>>;
 }
 
 /// Trait for creating the pretty-print [`Error`].
@@ -168,7 +168,7 @@ where
     E: ParseError,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "error: {}", self.error.message(self.source))?;
+        writeln!(f, "error: {}", self.error.message())?;
 
         let label_groups = self.label_groups();
         let (cause_line, cause_column) = label_groups
@@ -178,7 +178,12 @@ where
                     .labels
                     .iter()
                     .find(|label| label.is_cause)
-                    .map(|label| (group.line, label.range.start.saturating_sub(group.offset) + 1))
+                    .map(|label| {
+                        (
+                            group.line,
+                            label.range.start.saturating_sub(group.offset) + 1,
+                        )
+                    })
             })
             .map_or_else(
                 || {
@@ -205,10 +210,10 @@ where
             group.render(f, &gutter)?;
             writeln!(f, "{gutter} |")?;
         }
-        for note in self.error.notes(self.source) {
+        for note in self.error.notes(self.source).into_iter() {
             writeln!(f, "{gutter} == note: {note}")?;
         }
-        for hint in self.error.fix_hints(self.source) {
+        for hint in self.error.fix_hints(self.source).into_iter() {
             writeln!(f, "{gutter} == hint: {hint}")?;
         }
 
