@@ -1,6 +1,9 @@
 //! JCAMP-DX decoding error types.
 
-use crate::error::ByteRange;
+use crate::error::{ByteRange, ParseError, RangeLabel};
+use crate::jcampdx::decoding::EncodedToken;
+use logos::Logos;
+use std::borrow::Cow;
 
 /// A specialized [`Result`] type.
 ///
@@ -89,23 +92,215 @@ pub enum Kind {
     CheckPointStepMismatch,
 }
 
+impl ParseError for Error {
+    fn message(&self) -> Cow<'static, str> {
+        match self.kind {
+            Kind::InvalidLiteral => "invalid literal".into(),
+            Kind::Overflow => "value magnitude too large to decode".into(),
+            Kind::DifDupOverflow => "DIF/DUP value magnitude too large to decode".into(),
+            Kind::IntegrityCheck => "integrity check failed".into(),
+            Kind::InvalidValue => "invalid or missing value".into(),
+            Kind::AsdfCheckpoint => "checkpoint value is ASDF-encoded".into(),
+            Kind::DifDupAfterCheckPoint => "first value is DIF/DUP-encoded".into(),
+            Kind::AsdfWithFloat => "DIF/DUP encoding mixed with floating point values".into(),
+            Kind::CheckPointStepMismatch => "checkpoint value spacing is inconsistent".into(),
+        }
+    }
+
+    fn labels(&self, source: &str) -> Vec<RangeLabel> {
+        match self.kind {
+            Kind::InvalidLiteral => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: Some("does not match any token".into()),
+            }],
+            Kind::Overflow | Kind::DifDupOverflow => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: Some("does not fit into 64-bit signed integer".into()),
+            }],
+            Kind::IntegrityCheck => {
+                let previous_end = source[..self.range.end].rfind("\n");
+                let previous_start = previous_end.map(|current| {
+                    source[..current]
+                        .rfind("\n")
+                        .map(|start| start + 1)
+                        .unwrap_or(0)
+                });
+
+                if let (Some(start), Some(end)) = (previous_start, previous_end) {
+                    let last_range = EncodedToken::lexer(&source[start..end])
+                        .spanned()
+                        .skip(1)
+                        .filter_map(|(token, span)| token.ok().map(|token| (token, span)))
+                        .fold(start..end, |acc, (token, span)| match token {
+                            EncodedToken::CheckPoint => (start + acc.start)..(start + acc.end),
+                            _ => span,
+                        })
+                        .into();
+
+                    vec![
+                        RangeLabel {
+                            range: self.range,
+                            is_cause: true,
+                            label: Some("integrity check failed here".into()),
+                        },
+                        RangeLabel {
+                            range: last_range,
+                            is_cause: false,
+                            label: Some(
+                                "DIF-encoded value that should be duplicated on the next line"
+                                    .into(),
+                            ),
+                        },
+                    ]
+                } else {
+                    vec![RangeLabel {
+                        range: self.range,
+                        is_cause: true,
+                        label: Some("does not match last value on previous line".into()),
+                    }]
+                }
+            }
+            Kind::InvalidValue => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: None,
+            }],
+            Kind::AsdfCheckpoint => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: Some("should not be ASDF-encoded".into()),
+            }],
+            Kind::DifDupAfterCheckPoint => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: Some("should not be DIF/DUP-encoded".into()),
+            }],
+            Kind::AsdfWithFloat => {
+                let cause_is_float = source[self.range.as_range()].contains(".");
+                let cause_label = RangeLabel {
+                    range: self.range,
+                    is_cause: true,
+                    label: Some(if cause_is_float {
+                        "should not be float".into()
+                    } else {
+                        "should not be ASDF-encoded".into()
+                    }),
+                };
+                let other_text = if cause_is_float {
+                    Some("ASDF-encoded value here".into())
+                } else {
+                    Some("float value here".into())
+                };
+                let mut start_candidate = source[..self.range.end].rfind("\n");
+                let mut line_end = self.range.end;
+                let mut other_label = None;
+                while let Some(line_start) = start_candidate {
+                    if let Some(other_range) = EncodedToken::lexer(&source[line_start..line_end])
+                        .spanned()
+                        .skip(1)
+                        .filter_map(|(token, span)| token.ok().map(|token| (token, span)))
+                        .find(|(token, span)| match token {
+                            EncodedToken::Compressed
+                            | EncodedToken::Difference
+                            | EncodedToken::Duplicate
+                                if cause_is_float =>
+                            {
+                                true
+                            }
+                            EncodedToken::Numeric
+                                if !cause_is_float && source[span.clone()].contains(".") =>
+                            {
+                                true
+                            }
+                            _ => false,
+                        })
+                        .map(|(_, span)| {
+                            ByteRange::from((line_start + span.start)..(line_start + span.end))
+                        })
+                    {
+                        other_label = Some(RangeLabel {
+                            range: other_range,
+                            is_cause: false,
+                            label: other_text,
+                        });
+                        break;
+                    } else {
+                        line_end = line_start;
+                        start_candidate = source[..line_end].rfind("\n");
+                    }
+                }
+
+                if let Some(other_label) = other_label {
+                    vec![cause_label, other_label]
+                } else {
+                    vec![cause_label]
+                }
+            }
+            Kind::CheckPointStepMismatch => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: Some("does not match prior step size".into()),
+            }],
+        }
+    }
+
+    fn notes(&self, _: &str) -> Vec<Cow<'static, str>> {
+        match self.kind {
+            Kind::InvalidLiteral => {
+                vec!["values must be a standard numeric format or ASDF-encoded".into()]
+            }
+            Kind::DifDupOverflow => vec!["overflow in DIF/DUP-encoding corrupts other data".into()],
+            Kind::IntegrityCheck => vec![
+                "if the last value on a line is DIF-encoded, it is repeated on the next".into(),
+                "a DUP preceded by a DIF also triggers an integrity check".into(),
+            ],
+            Kind::InvalidValue => {
+                vec!["missing or corrupted values are marked as `?` in the source".into()]
+            }
+            Kind::AsdfCheckpoint => {
+                vec!["ASDF encoding is not permitted as a checkpoint value".into()]
+            }
+            Kind::DifDupAfterCheckPoint => {
+                vec!["DIF/DUP encoding is not permitted as the first data value".into()]
+            }
+            Kind::AsdfWithFloat => vec![
+                "mixing ASDF encoding with floating point values is not permitted".into(),
+                "differences of floating point values accumulate errors".into(),
+            ],
+            Kind::CheckPointStepMismatch => vec![
+                "x is the value and n the data point count at checkpoints a and b".into(),
+                "expected step = (x_b - x_a) / (n_b - n_a - 1)".into(),
+            ],
+            _ => Vec::new(),
+        }
+    }
+
+    fn fix_hints(&self, _: &str) -> Vec<Cow<'static, str>> {
+        let adjacent = "adjacent values may have been combined".into();
+        let reexport = "re-exporting the file from the software might fix it".into();
+        let skipped = "a line may have been skipped or duplicated".into();
+        let standard = "the software used for exporting might not comply with the standard".into();
+
+        match self.kind {
+            Kind::InvalidLiteral => vec![standard],
+            Kind::Overflow | Kind::DifDupOverflow => vec![adjacent, reexport],
+            Kind::IntegrityCheck => vec![skipped, reexport],
+            Kind::AsdfCheckpoint | Kind::DifDupAfterCheckPoint | Kind::AsdfWithFloat => {
+                vec![standard, reexport]
+            }
+            Kind::CheckPointStepMismatch => vec![skipped, adjacent, reexport],
+            _ => Vec::new(),
+        }
+    }
+}
+
 impl std::error::Error for Error {}
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let description = match self.kind {
-            Kind::InvalidLiteral => "invalid literal",
-            Kind::Overflow => "value magnitude too large to decode",
-            Kind::DifDupOverflow => "DIF/DUP value magnitude too large to decode",
-            Kind::IntegrityCheck => "integrity check failed",
-            Kind::InvalidValue => "invalid value (parsed as `-2^63`)",
-            Kind::AsdfCheckpoint => "checkpoint is ASDF-encoded",
-            Kind::DifDupAfterCheckPoint => "first value is DIF/DUP",
-            Kind::AsdfWithFloat => "DIF/DUP encoding mixed with floating point values",
-            Kind::CheckPointStepMismatch => "checkpoint value spacing is inconsistent",
-        };
-
-        write!(f, "{description}")
+        write!(f, "{}", self.message())
     }
 }
 
