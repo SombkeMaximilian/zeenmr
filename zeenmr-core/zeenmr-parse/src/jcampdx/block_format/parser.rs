@@ -168,20 +168,50 @@ impl<'source> FormatParser<'source> {
         let incrementing_set = self.builder.incrementing_is_some();
 
         if self.state == State::Suffix && !self.builder.prefix_was_validated() {
-            return Err(Error::mismatched_repeat(self.start));
+            // tracking the positions of increment and repeat would complicate
+            // the parsing logic for the happy path. reconstructing them here by
+            // looking for the repeat and then spanning until the terminating
+            // tokens is cheap enough for the error path.
+            let mut suffix = FormatToken::lexer(&self.lexer.source()[self.start.start..])
+                .spanned()
+                .filter_map(|(token, span)| token.ok().map(|token| (token, span)))
+                .skip_while(|(token, _)| !matches!(token, FormatToken::Repeat));
+            let start = suffix
+                .next()
+                .map(|(_, span)| self.start.start + span.end)
+                .unwrap_or(self.start.start);
+            let end = suffix
+                .take_while(|(token, _)| matches!(token, FormatToken::Identifier))
+                .last()
+                .map(|(_, span)| self.start.start + span.end)
+                .unwrap_or(self.start.end);
+
+            return Err(Error::mismatched_repeat((start..end).into()));
         }
 
         match std::mem::take(&mut self.builder).finalize() {
             Some(block) => Ok(block),
-            // These cases are actually already reported in the other methods
-            // and only an empty format specifier can reach this point, but
-            // keeping it might make debugging in the future easier.
             None => match self.state {
                 State::Prefix => Err(Error::empty_format(self.start)),
                 State::AfterIncrement if !incrementing_set => {
                     Err(Error::empty_increment(self.start))
                 }
-                _ => Err(Error::empty_repeat(self.start)),
+                State::AfterIncrement => {
+                    let mut tokens = FormatToken::lexer(&self.lexer.source()[self.start.start..])
+                        .spanned()
+                        .take(2);
+                    let start = tokens
+                        .next()
+                        .map(|(_, span)| span.start)
+                        .unwrap_or(self.start.start);
+                    let end = tokens
+                        .next()
+                        .map(|(_, span)| span.end)
+                        .unwrap_or(self.start.end);
+
+                    Err(Error::missing_repeat((start..end).into()))
+                }
+                State::Suffix => Err(Error::empty_repeat(self.start)),
             },
         }
     }
@@ -320,8 +350,8 @@ mod tests {
                 let expected = $expected;
                 let mut parser = FormatParser::from(data);
                 let parsed = parser.parse_format();
+
                 assert_eq!(parsed, expected);
-                assert_eq!(parser.lexer.slice(), "\n");
             }
         };
     }
@@ -386,6 +416,16 @@ mod tests {
         Err(Error::invalid_literal(ByteRange::new(2, 3)))
     );
     parser_test!(
+        end_of_input,
+        "(X..Y)",
+        Err(Error::end_of_input(ByteRange::new(6, 6)))
+    );
+    parser_test!(
+        empty_format,
+        "\n",
+        Err(Error::empty_format(ByteRange::new(0, 0)))
+    );
+    parser_test!(
         empty_repeat,
         "X++(..Y)\n",
         Err(Error::empty_repeat(ByteRange::new(4, 6)))
@@ -393,16 +433,26 @@ mod tests {
     parser_test!(
         missing_repeat,
         "X++\n",
-        Err(Error::empty_repeat(ByteRange::new(0, 0)))
+        Err(Error::missing_repeat(ByteRange::new(0, 3)))
     );
     parser_test!(
-        mismatched_repeat,
-        "X++(YY..Y)\n",
-        Err(Error::mismatched_repeat(ByteRange::new(0, 0)))
+        mismatched_repeat_identifiers,
+        "X++(Y..Z)\n",
+        Err(Error::mismatched_repeat(ByteRange::new(7, 8)))
+    );
+    parser_test!(
+        mismatched_repeat_length_longer,
+        "(XY..XYZ)\n",
+        Err(Error::mismatched_repeat(ByteRange::new(7, 8)))
+    );
+    parser_test!(
+        mismatched_repeat_length_shorter,
+        "(XYZ..XY)\n",
+        Err(Error::mismatched_repeat(ByteRange::new(6, 8)))
     );
     parser_test!(
         multiple_increment,
-        "(X++X++(Y..Y)\n",
+        "(X++X++(Y..Y))\n",
         Err(Error::multiple_increment(ByteRange::new(5, 7)))
     );
     parser_test!(

@@ -1,6 +1,7 @@
 //! JCAMP-DX block format parsing error types.
 
-use crate::error::ByteRange;
+use crate::error::{ByteRange, ParseError, RangeLabel};
+use std::borrow::Cow;
 
 /// A specialized [`Result`] type.
 ///
@@ -46,6 +47,10 @@ pub enum Kind {
     ///
     /// Example: `X++(..)`, `X++(..Y)`
     EmptyRepeat,
+    /// No repeat pattern was encountered after an increment pattern.
+    ///
+    /// Example: `X++`
+    MissingRepeat,
     /// Repeating identifiers do not match.
     ///
     /// Example: `X++(Y..R)`
@@ -68,24 +73,154 @@ pub enum Kind {
     MultipleIdentifierIncrement,
 }
 
+impl ParseError for Error {
+    fn message(&self) -> Cow<'static, str> {
+        match self.kind {
+            Kind::InvalidLiteral => "invalid literal".into(),
+            Kind::EndOfInput => "unexpected end of input".into(),
+            Kind::EmptyFormat => "empty format specifier".into(),
+            Kind::EmptyIncrement => "increment pattern has no identifier".into(),
+            Kind::EmptyRepeat => "repeat pattern has no identifier".into(),
+            Kind::MissingRepeat => "missing repeat pattern after increment pattern".into(),
+            Kind::MismatchedRepeat => "repeat identifiers do not match prefix".into(),
+            Kind::MultipleIncrement => "multiple increment patterns in format specifier".into(),
+            Kind::MultipleRepeat => "multiple repeat patterns in format specifier".into(),
+            Kind::IncrementAfterRepeat => "increment pattern follows repeat pattern".into(),
+            Kind::MultipleIdentifierIncrement => {
+                "increment pattern contains multiple identifiers".into()
+            }
+        }
+    }
+
+    fn labels(&self, _: &str) -> Vec<RangeLabel> {
+        match self.kind {
+            Kind::InvalidLiteral => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: Some("does not match any token".into()),
+            }],
+            Kind::EndOfInput => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: Some("input source ends here".into()),
+            }],
+            Kind::EmptyFormat => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: Some("expected format specifier here".into()),
+            }],
+            Kind::EmptyIncrement => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: Some("expected an identifier before this".into()),
+            }],
+            Kind::EmptyRepeat => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: Some("expected identifier(s) before this".into()),
+            }],
+            Kind::MissingRepeat => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: Some("expected repeat pattern following this increment pattern".into()),
+            }],
+            Kind::MismatchedRepeat => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: Some("does not match prefix".into()),
+            }],
+            Kind::MultipleIncrement => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: Some("second increment pattern here".into()),
+            }],
+            Kind::MultipleRepeat => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: Some("second repeat pattern here".into()),
+            }],
+            Kind::IncrementAfterRepeat => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: Some("must appear before preceding repeat group".into()),
+            }],
+            Kind::MultipleIdentifierIncrement => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: Some("only one identifier may precede this".into()),
+            }],
+        }
+    }
+
+    fn notes(&self, _: &str) -> Vec<Cow<'static, str>> {
+        match self.kind {
+            Kind::InvalidLiteral => {
+                vec![
+                    "identifiers must be single letters optionally followed by digits".into(),
+                    "other, valid tokens are `++` and `..`".into(),
+                ]
+            }
+            Kind::EndOfInput => {
+                vec!["the format specifier must be followed by data".into()]
+            }
+            Kind::EmptyFormat => {
+                vec!["a format specifier describes the layout of the following data block".into()]
+            }
+            Kind::EmptyIncrement => {
+                vec!["the increment pattern requires an identifier before `++`".into()]
+            }
+            Kind::EmptyRepeat => {
+                vec!["the repeat pattern requires an identifier(s) on both sides of `..`".into()]
+            }
+            Kind::MissingRepeat => {
+                vec!["a repeat pattern must follow an increment pattern to fill the lines".into()]
+            }
+            Kind::MismatchedRepeat => {
+                vec!["the identifiers on both sides of `..` must be identical".into()]
+            }
+            Kind::MultipleIncrement | Kind::MultipleIdentifierIncrement => {
+                vec!["only one identifier may be marked as incrementing with `++`".into()]
+            }
+            Kind::MultipleRepeat => {
+                vec!["only one repeat group `(..)` is permitted per format specifier".into()]
+            }
+            Kind::IncrementAfterRepeat => {
+                vec!["the incrementing pattern must appear before the repeat pattern".into()]
+            }
+        }
+    }
+
+    fn fix_hints(&self, _: &str) -> Vec<Cow<'static, str>> {
+        let standard = "the software used for exporting might not comply with the standard".into();
+        let reexport = "re-exporting the file from the software might fix it".into();
+
+        match self.kind {
+            Kind::InvalidLiteral
+            | Kind::EmptyFormat
+            | Kind::EmptyIncrement
+            | Kind::EmptyRepeat
+            | Kind::MissingRepeat
+            | Kind::MultipleIncrement
+            | Kind::MultipleRepeat
+            | Kind::IncrementAfterRepeat
+            | Kind::MultipleIdentifierIncrement => vec![standard, reexport],
+            Kind::EndOfInput => {
+                vec!["the file may be truncated or corrupted".into(), reexport]
+            }
+            Kind::MismatchedRepeat => vec![
+                "the identifier(s) on the right side of `..` may contain typos".into(),
+                standard,
+                reexport,
+            ],
+        }
+    }
+}
+
 impl std::error::Error for Error {}
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let description = match self.kind() {
-            Kind::InvalidLiteral => "invalid literal",
-            Kind::EndOfInput => "end of input",
-            Kind::EmptyFormat => "empty format",
-            Kind::EmptyIncrement => "empty input",
-            Kind::EmptyRepeat => "empty group",
-            Kind::MismatchedRepeat => "mismatched repeat",
-            Kind::MultipleIncrement => "multiple increment",
-            Kind::MultipleRepeat => "multiple block kind",
-            Kind::IncrementAfterRepeat => "increment after repeat",
-            Kind::MultipleIdentifierIncrement => "multiple identifier increment",
-        };
-
-        write!(f, "{description}")
+        write!(f, "{}", self.message())
     }
 }
 
@@ -136,6 +271,16 @@ impl Error {
     pub(crate) fn empty_repeat(range: ByteRange) -> Self {
         Self {
             kind: Kind::EmptyRepeat,
+            range,
+        }
+    }
+
+    /// Creates an [`MissingRepeat`] error.
+    ///
+    /// [`MissingRepeat`]: Kind::MissingRepeat
+    pub(crate) fn missing_repeat(range: ByteRange) -> Self {
+        Self {
+            kind: Kind::MissingRepeat,
             range,
         }
     }
