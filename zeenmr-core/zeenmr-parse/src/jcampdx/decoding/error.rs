@@ -284,12 +284,12 @@ impl ParseError for Error {
         let standard = "the software used for exporting might not comply with the standard".into();
 
         match self.kind {
-            Kind::InvalidLiteral => vec![standard],
+            Kind::InvalidLiteral
+            | Kind::AsdfCheckpoint
+            | Kind::DifDupAfterCheckPoint
+            | Kind::AsdfWithFloat => vec![standard, reexport],
             Kind::Overflow | Kind::DifDupOverflow => vec![adjacent, reexport],
             Kind::IntegrityCheck => vec![skipped, reexport],
-            Kind::AsdfCheckpoint | Kind::DifDupAfterCheckPoint | Kind::AsdfWithFloat => {
-                vec![standard, reexport]
-            }
             Kind::CheckPointStepMismatch => vec![skipped, adjacent, reexport],
             _ => Vec::new(),
         }
