@@ -274,16 +274,16 @@ where
                 ControlFlow::Continue(i) | ControlFlow::Break(i) => i,
             };
             let line_range = start_offset..end_offset;
-            let count = labels
+            let labels_on_line = labels
                 .iter()
-                .position(|label| !line_range.contains(&label.range.start))
+                .position(|label| !(label.range.end <= end_offset))
                 .unwrap_or(labels.len());
-            if count > 0 {
+            if labels_on_line > 0 {
                 label_groups.push(LabelGroup {
                     offset: start_offset,
                     line,
                     text: &self.source[line_range],
-                    labels: labels.drain(..count).collect(),
+                    labels: labels.drain(..labels_on_line).collect(),
                 })
             }
             line += 1;
