@@ -81,6 +81,8 @@ impl<'source> BlockFormatBuilder<'source> {
 
     /// Returns `true` if at least one identifier was pushed and
     /// [`compare_prefix`] was called as many times as there are identifiers.
+    ///
+    /// [`compare_prefix`]: Self::compare_prefix
     pub(crate) fn prefix_was_validated(&self) -> bool {
         !self.is_empty() && self.suffix_check == self.identifiers.len()
     }
