@@ -159,7 +159,7 @@ impl<'source> TableParser<'source, HasLayout> {
             self.builder.skip_current();
         }
         if !self.at_start_of_group() {
-            return Err(Error::mismatched_group_size(self.lexer.span().into()));
+            return Err(Error::group_too_small(self.lexer.span().into()));
         }
 
         Ok(std::mem::take(&mut self.builder).finalize())
@@ -210,7 +210,7 @@ impl<'source> TableParser<'source, HasLayout> {
         match self.awaits {
             Awaits::Value if !self.at_end_of_group() => self.builder.skip_current(),
             Awaits::Comma => self.awaits = Awaits::Value,
-            _ => return Err(Error::mismatched_group_size(self.lexer.span().into())),
+            _ => return Err(Error::group_too_large(self.lexer.span().into())),
         }
 
         Ok(())
@@ -235,7 +235,7 @@ impl<'source> TableParser<'source, HasLayout> {
         match self.awaits {
             Awaits::Value if self.at_end_of_group() => self.builder.skip_current(),
             Awaits::Terminator => self.awaits = Awaits::Value,
-            _ => return Err(Error::mismatched_group_size(self.lexer.span().into())),
+            _ => return Err(Error::group_too_small(self.lexer.span().into())),
         }
 
         Ok(())
@@ -285,7 +285,7 @@ impl<'source> TableParser<'source, HasLayout> {
         match self.awaits {
             Awaits::Value if self.at_end_of_group() => self.builder.skip_current(),
             Awaits::Terminator => self.awaits = Awaits::Value,
-            _ => return Err(Error::mismatched_group_size(self.lexer.span().into())),
+            _ => return Err(Error::group_too_small(self.lexer.span().into())),
         }
         self.state = State::OutsideParentheses;
 
@@ -332,7 +332,7 @@ impl<'source> TableParser<'source, HasLayout> {
                 self.awaits = Awaits::Comma
             }
             Awaits::Terminator => {
-                return Err(Error::mismatched_group_size(self.lexer.span().into()));
+                return Err(Error::group_too_large(self.lexer.span().into()));
             }
         }
         match token {
@@ -343,7 +343,7 @@ impl<'source> TableParser<'source, HasLayout> {
                     match token {
                         GroupToken::OpenAngle => {
                             return Err(Error::unmatched_string_delimiter(
-                                self.lexer.span().into(),
+                                (start - 1..start).into(),
                             ));
                         }
                         GroupToken::CloseAngle => {
@@ -355,7 +355,7 @@ impl<'source> TableParser<'source, HasLayout> {
                     }
                 }
                 if !found_closing {
-                    return Err(Error::unmatched_string_delimiter(self.lexer.span().into()));
+                    return Err(Error::unmatched_string_delimiter((start - 1..start).into()));
                 }
                 let end = self.lexer.span().start;
                 let value = self.lexer.source()[start..end].trim();
@@ -554,7 +554,7 @@ mod tests {
         "\
             1, 1; 2, 2; 3, 3\n\
             4, 4; 5, 5, 5;",
-        Error::mismatched_group_size(ByteRange::new(27, 28))
+        Error::group_too_large(ByteRange::new(27, 28))
     );
     fatal_error_test!(
         group_too_large_whitespace,
@@ -562,7 +562,7 @@ mod tests {
         "\
             1, 1  2, 2  3, 3\n\
             4, 4  5, 5, 5",
-        Error::mismatched_group_size(ByteRange::new(27, 28))
+        Error::group_too_large(ByteRange::new(27, 28))
     );
     fatal_error_test!(
         group_too_large_parentheses,
@@ -570,7 +570,7 @@ mod tests {
         "\
             (1, 1) (2, 2) (3, 3)\n\
             (4, 4) (5, 5, 5)",
-        Error::mismatched_group_size(ByteRange::new(33, 34))
+        Error::group_too_large(ByteRange::new(33, 34))
     );
     fatal_error_test!(
         group_too_small_semicolon,
@@ -578,7 +578,7 @@ mod tests {
         "\
             1, 1, 1; 2, 2, 2; 3, 3, 3\n\
             4, 4, 4; 5, 5;",
-        Error::mismatched_group_size(ByteRange::new(39, 40))
+        Error::group_too_small(ByteRange::new(39, 40))
     );
     fatal_error_test!(
         group_too_small_whitespace,
@@ -586,7 +586,7 @@ mod tests {
         "\
             1, 1, 1  2, 2, 2  3, 3, 3\n\
             4, 4, 4  5, 5",
-        Error::mismatched_group_size(ByteRange::new(39, 39))
+        Error::group_too_small(ByteRange::new(39, 39))
     );
     fatal_error_test!(
         group_too_small_parentheses,
@@ -594,7 +594,7 @@ mod tests {
         "\
             (1, 1, 1) (2, 2, 2) (3, 3, 3)\n\
             (4, 4, 4) (5, 5)",
-        Error::mismatched_group_size(ByteRange::new(45, 46))
+        Error::group_too_small(ByteRange::new(45, 46))
     );
 
     fatal_error_test!(
@@ -619,7 +619,7 @@ mod tests {
         "\
             1, 1, <1>; 2, 2, <2>; 3, 3, <3>\n\
             4, 4, <4>; 5, 5, <5 ;",
-        Error::unmatched_string_delimiter(ByteRange::new(53, 53))
+        Error::unmatched_string_delimiter(ByteRange::new(49, 50))
     );
     fatal_error_test!(
         unmatched_string_delimiter_unopened_angle_semicolon,
@@ -635,7 +635,7 @@ mod tests {
         "\
             1, 1, <1 ; 2, 2, <2>; 3, 3, <3>\n\
             4, 4, <4>; 5, 5, <5>;",
-        Error::unmatched_string_delimiter(ByteRange::new(17, 18))
+        Error::unmatched_string_delimiter(ByteRange::new(6, 7))
     );
     fatal_error_test!(
         unmatched_string_delimiter_unclosed_angle_parentheses,
@@ -643,7 +643,7 @@ mod tests {
         "\
             (1, 1, <1>) (2, 2, <2>) (3, 3, <3>)\n\
             (4, 4, <4>) (5, 5, <5 )",
-        Error::unmatched_string_delimiter(ByteRange::new(59, 59))
+        Error::unmatched_string_delimiter(ByteRange::new(55, 56))
     );
     fatal_error_test!(
         unmatched_string_delimiter_unopened_angle_parentheses,
@@ -659,7 +659,7 @@ mod tests {
         "\
             (1, 1, <1 ) (2, 2, <2>) (3, 3, <3>)\n\
             (4, 4, <4>) (5, 5, <5>)",
-        Error::unmatched_string_delimiter(ByteRange::new(19, 20))
+        Error::unmatched_string_delimiter(ByteRange::new(7, 8))
     );
     fatal_error_test!(
         unmatched_string_delimiter_unclosed_angle_whitespace,
@@ -667,7 +667,7 @@ mod tests {
         "\
             1, 1, <1> 2, 2, <2> 3, 3, <3>\n\
             4, 4, <4> 5, 5, <5 ",
-        Error::unmatched_string_delimiter(ByteRange::new(49, 49))
+        Error::unmatched_string_delimiter(ByteRange::new(46, 47))
     );
     fatal_error_test!(
         unmatched_string_delimiter_unopened_angle_whitespace,
@@ -683,7 +683,7 @@ mod tests {
         "\
             1, 1, <1  2, 2, <2> 3, 3, <3>\n\
             4, 4, <4> 5, 5, <5>",
-        Error::unmatched_string_delimiter(ByteRange::new(16, 17))
+        Error::unmatched_string_delimiter(ByteRange::new(6, 7))
     );
     fatal_error_test!(
         non_separated_values_semicolon,
@@ -720,7 +720,7 @@ mod tests {
                 let mut tabulator = TableParser::from(data).with_identifiers(identifiers);
                 let tabulated = tabulator.tabulate_source().unwrap();
 
-                assert_eq!(tabulated.errors, errors)
+                assert_eq!(tabulated.errors, errors);
             }
         };
     }
