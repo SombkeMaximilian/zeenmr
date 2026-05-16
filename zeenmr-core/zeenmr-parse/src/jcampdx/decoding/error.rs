@@ -96,8 +96,8 @@ impl ParseError for Error {
     fn message(&self) -> Cow<'static, str> {
         match self.kind {
             Kind::InvalidLiteral => "invalid literal".into(),
-            Kind::Overflow => "value magnitude too large to decode".into(),
-            Kind::DifDupOverflow => "DIF/DUP value magnitude too large to decode".into(),
+            Kind::Overflow => "value magnitude too large to fit into i64".into(),
+            Kind::DifDupOverflow => "DIF/DUP value magnitude too large to fit into i64".into(),
             Kind::IntegrityCheck => "integrity check failed".into(),
             Kind::InvalidValue => "invalid or missing value".into(),
             Kind::AsdfCheckpoint => "checkpoint value is ASDF-encoded".into(),
@@ -251,7 +251,13 @@ impl ParseError for Error {
             Kind::InvalidLiteral => {
                 vec!["values must be a standard numeric format or ASDF-encoded".into()]
             }
-            Kind::DifDupOverflow => vec!["overflow in DIF/DUP-encoding corrupts other data".into()],
+            Kind::Overflow => {
+                vec!["a value of this magnitude is almost certainly not expected".into()]
+            }
+            Kind::DifDupOverflow => vec![
+                "a value of this magnitude is almost certainly not expected".into(),
+                "overflow in DIF/DUP-encoding corrupts other data".into(),
+            ],
             Kind::IntegrityCheck => vec![
                 "if the last value on a line is DIF-encoded, it is repeated on the next".into(),
                 "a DUP preceded by a DIF also triggers an integrity check".into(),
@@ -273,7 +279,6 @@ impl ParseError for Error {
                 "x is the value and n the data point count at checkpoints a and b".into(),
                 "expected step = (x_b - x_a) / (n_b - n_a - 1)".into(),
             ],
-            _ => Vec::new(),
         }
     }
 
