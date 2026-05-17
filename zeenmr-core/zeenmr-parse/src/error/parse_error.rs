@@ -276,7 +276,7 @@ where
             let line_range = start_offset..end_offset;
             let labels_on_line = labels
                 .iter()
-                .position(|label| !(label.range.end <= end_offset))
+                .position(|label| label.range.end > end_offset)
                 .unwrap_or(labels.len());
             if labels_on_line > 0 {
                 label_groups.push(LabelGroup {
