@@ -281,8 +281,8 @@ where
     ///
     /// # Errors
     ///
-    /// This function returns an error if there are any invalid literals or if
-    /// there isn't a valid entry point.
+    /// Returns an error if there are any invalid literals or if there isn't a
+    /// valid entry point.
     fn initialize(&mut self) -> Result<()> {
         match (
             self.lexer.next().transpose()?,
@@ -290,7 +290,7 @@ where
             self.lexer.next().transpose()?,
         ) {
             (Some(Token::Key), Some(Token::Title), Some(Token::Equals)) => Ok(()),
-            _ => Err(Error::no_entry_point(self.lexer.span().into())),
+            _ => Err(Error::no_entry_point((0..self.lexer.span().end).into())),
         }
     }
 
@@ -383,7 +383,8 @@ where
                 .expect("should always get the right delimiter");
         }
         self.insert_parameter();
-        let start = self.lexer.span().end;
+        let key_start = self.lexer.span().start;
+        let label_start = self.lexer.span().end;
         let mut token_count = 0;
         let mut found_equals = false;
         let mut special = None;
@@ -405,11 +406,11 @@ where
             }
             token_count += 1;
         }
-        if !found_equals {
+        if !found_equals && special != Some(Token::End) {
             return Err(Error::end_of_input(self.lexer.span().into()));
         }
         if token_count == 0 {
-            return Err(Error::empty_key(self.lexer.span().into()));
+            return Err(Error::empty_key((key_start..self.lexer.span().end).into()));
         }
         if token_count > 1 {
             special = None;
@@ -447,7 +448,7 @@ where
             | Some(Token::String)
             | None => {
                 let end = self.lexer.span().start;
-                self.current_key = Some(self.lexer.source()[start..end].trim());
+                self.current_key = Some(self.lexer.source()[label_start..end].trim());
             }
         }
 
@@ -813,7 +814,7 @@ mod tests {
             .join("..")
     }
 
-    macro_rules! parser_test {
+    macro_rules! file_test {
         ($name:ident, $version:tt, $file:tt) => {
             #[test]
             fn $name() {
@@ -824,26 +825,32 @@ mod tests {
                     .join($version)
                     .join($file);
                 let content = read_to_string(path).unwrap();
-                let parsed = Parser::from(content.as_str()).parse_source();
-                assert!(parsed.is_ok());
+                let parsed = Parser::from(content.as_str())
+                    .parse_source()
+                    .unwrap();
+
+                assert!(parsed.errors.is_empty());
+                for child in parsed.children {
+                    assert!(child.errors.is_empty());
+                }
             }
         };
     }
 
-    parser_test!(parser_v5_ntuples_affn, "v5", "ntuples_affn.dx");
-    parser_test!(parser_v5_ntuples_pac, "v5", "ntuples_pac.dx");
-    parser_test!(parser_v5_ntuples_sqz, "v5", "ntuples_sqz.dx");
-    parser_test!(parser_v5_ntuples_difdup, "v5", "ntuples_difdup.dx");
-    parser_test!(parser_v5_xydata_affn, "v5", "xydata_affn.dx");
-    parser_test!(parser_v5_xydata_pac, "v5", "xydata_pac.dx");
-    parser_test!(parser_v5_xydata_sqz, "v5", "xydata_sqz.dx");
-    parser_test!(parser_v5_xydata_difdup, "v5", "xydata_difdup.dx");
-    parser_test!(parser_v6_ntuples_affn, "v6", "ntuples_affn.dx");
-    parser_test!(parser_v6_ntuples_pac, "v6", "ntuples_pac.dx");
-    parser_test!(parser_v6_ntuples_sqz, "v6", "ntuples_sqz.dx");
-    parser_test!(parser_v6_ntuples_difdup, "v6", "ntuples_difdup.dx");
-    parser_test!(parser_v6_xydata_affn, "v6", "xydata_affn.dx");
-    parser_test!(parser_v6_xydata_pac, "v6", "xydata_pac.dx");
-    parser_test!(parser_v6_xydata_sqz, "v6", "xydata_sqz.dx");
-    parser_test!(parser_v6_xydata_difdup, "v6", "xydata_difdup.dx");
+    file_test!(parser_v5_ntuples_affn, "v5", "ntuples_affn.dx");
+    file_test!(parser_v5_ntuples_pac, "v5", "ntuples_pac.dx");
+    file_test!(parser_v5_ntuples_sqz, "v5", "ntuples_sqz.dx");
+    file_test!(parser_v5_ntuples_difdup, "v5", "ntuples_difdup.dx");
+    file_test!(parser_v5_xydata_affn, "v5", "xydata_affn.dx");
+    file_test!(parser_v5_xydata_pac, "v5", "xydata_pac.dx");
+    file_test!(parser_v5_xydata_sqz, "v5", "xydata_sqz.dx");
+    file_test!(parser_v5_xydata_difdup, "v5", "xydata_difdup.dx");
+    file_test!(parser_v6_ntuples_affn, "v6", "ntuples_affn.dx");
+    file_test!(parser_v6_ntuples_pac, "v6", "ntuples_pac.dx");
+    file_test!(parser_v6_ntuples_sqz, "v6", "ntuples_sqz.dx");
+    file_test!(parser_v6_ntuples_difdup, "v6", "ntuples_difdup.dx");
+    file_test!(parser_v6_xydata_affn, "v6", "xydata_affn.dx");
+    file_test!(parser_v6_xydata_pac, "v6", "xydata_pac.dx");
+    file_test!(parser_v6_xydata_sqz, "v6", "xydata_sqz.dx");
+    file_test!(parser_v6_xydata_difdup, "v6", "xydata_difdup.dx");
 }

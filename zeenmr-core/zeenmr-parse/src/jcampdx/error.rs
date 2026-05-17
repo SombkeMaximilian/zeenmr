@@ -1,6 +1,7 @@
 //! JCAMP-DX parsing error types.
 
-use crate::error::ByteRange;
+use crate::error::{ByteRange, ParseError, RangeLabel};
+use std::borrow::Cow;
 
 pub use crate::jcampdx::block_format::error as format_error;
 pub use crate::jcampdx::decoding::error as decode_error;
@@ -35,6 +36,8 @@ pub enum Kind {
     /// A literal does not match any token.
     #[default]
     InvalidLiteral,
+    /// The input ended unexpectedly early.
+    EndOfInput,
     /// An entry point could not be found for the input.
     ///
     /// In the JCAMP-DX standard, a dataset is started with `##TITLE=` and ended
@@ -80,8 +83,6 @@ pub enum Kind {
     Decode(decode_error::Error),
     /// An error was encountered while parsing a data table.
     Table(table_error::Error),
-    /// The input ended unexpectedly early.
-    EndOfInput,
 }
 
 impl From<format_error::Error> for Error {
@@ -111,28 +112,162 @@ impl From<table_error::Error> for Error {
     }
 }
 
+impl ParseError for Error {
+    fn message(&self) -> Cow<'static, str> {
+        match self.kind {
+            Kind::InvalidLiteral => "invalid literal".into(),
+            Kind::EndOfInput => "unexpected end of input".into(),
+            Kind::NoEntryPoint => "no entry point".into(),
+            Kind::EmptyKey => "empty key".into(),
+            Kind::MultipleKeyTokens => "malformed key".into(),
+            Kind::MismatchedDelimiter => "mismatched delimiter".into(),
+            Kind::UnclosedDelimiter => "unclosed delimiter".into(),
+            Kind::UnexpectedPage => "page token outside `NTUPLES` block".into(),
+            Kind::NestedTuples => "nested `NTUPLES` block".into(),
+            Kind::MismatchedBlockFormat => "block format does not match block kind".into(),
+            Kind::Overflow => "value magnitude too large to fit into i64".into(),
+            Kind::Format(inner) => inner.message(),
+            Kind::Decode(inner) => inner.message(),
+            Kind::Table(inner) => inner.message(),
+        }
+    }
+
+    fn labels(&self, source: &str) -> Vec<RangeLabel> {
+        match self.kind {
+            Kind::InvalidLiteral => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: Some("does not match any token".into()),
+            }],
+            Kind::EndOfInput => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: Some("input source ends here".into()),
+            }],
+            Kind::NoEntryPoint => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: Some("expected `##TITLE=` here".into()),
+            }],
+            Kind::EmptyKey => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: Some("no label between `##` and `=`".into()),
+            }],
+            Kind::MultipleKeyTokens => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: Some("second `##` before `=`".into()),
+            }],
+            Kind::MismatchedDelimiter => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: Some("does not match the most recent opening delimiter".into()),
+            }],
+            Kind::UnclosedDelimiter => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: Some("not closed before the next key".into()),
+            }],
+            Kind::UnexpectedPage => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: Some("only valid inside an NTUPLES block".into()),
+            }],
+            Kind::NestedTuples => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: Some("NTUPLES blocks may not be nested".into()),
+            }],
+            Kind::MismatchedBlockFormat => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: Some("format specifier does not match this block kind".into()),
+            }],
+            Kind::Overflow => vec![RangeLabel {
+                range: self.range,
+                is_cause: true,
+                label: Some("does not fit into 64-bit signed integer".into()),
+            }],
+            Kind::Format(inner) => inner.labels(source),
+            Kind::Decode(inner) => inner.labels(source),
+            Kind::Table(inner) => inner.labels(source),
+        }
+    }
+
+    fn notes(&self, source: &str) -> Vec<Cow<'static, str>> {
+        match self.kind {
+            Kind::InvalidLiteral => vec![
+                "values must be numeric, strings without whitespace, or enclosed in `<>`".into(),
+            ],
+            Kind::EndOfInput => {
+                vec!["input source ended before the current key/dataset could be processed".into()]
+            }
+            Kind::NoEntryPoint => {
+                vec!["a JCAMP-DX dataset starts with `##TITLE=` and ends with `##END=`".into()]
+            }
+            Kind::EmptyKey => vec![
+                "keys start with `##`, `##.`, or `##$` and are followed by a label and `=`".into(),
+            ],
+            Kind::MultipleKeyTokens => vec!["a key label may not itself contain `##`".into()],
+            Kind::MismatchedDelimiter => {
+                vec!["parentheses and angle brackets must be correctly nested".into()]
+            }
+            Kind::UnclosedDelimiter => vec![
+                "parentheses and angle brackets must be closed within the same key-value pair"
+                    .into(),
+            ],
+            Kind::UnexpectedPage => {
+                vec!["`##PAGE=` is only valid inside an `##NTUPLES=` block".into()]
+            }
+            Kind::NestedTuples => vec![
+                "`##NTUPLES=` blocks may not contain further `##TITLE=` or `##NTUPLES=` blocks"
+                    .into(),
+            ],
+            Kind::MismatchedBlockFormat => vec![
+                "XYDATA requires a format specifier of the form `X++(Y..Y)`".into(),
+                "others a format specifier of the form `(XY..XY)` or `(XY)`".into(),
+            ],
+            Kind::Overflow => {
+                vec!["a value of this magnitude is almost certainly not expected".into()]
+            }
+            Kind::Format(inner) => inner.notes(source),
+            Kind::Decode(inner) => inner.notes(source),
+            Kind::Table(inner) => inner.notes(source),
+        }
+    }
+
+    fn fix_hints(&self, source: &str) -> Vec<Cow<'static, str>> {
+        let standard = "the software used for exporting might not comply with the standard".into();
+        let reexport = "re-exporting the file from the software might fix it".into();
+
+        match self.kind {
+            Kind::InvalidLiteral
+            | Kind::EmptyKey
+            | Kind::MultipleKeyTokens
+            | Kind::MismatchedDelimiter
+            | Kind::UnclosedDelimiter
+            | Kind::UnexpectedPage
+            | Kind::NestedTuples
+            | Kind::MismatchedBlockFormat => vec![standard, reexport],
+            Kind::EndOfInput => vec!["the file may be truncated or corrupted".into(), reexport],
+            Kind::NoEntryPoint => vec![
+                "the file may not be a JCAMP-DX file".into(),
+                "an entry point may be further into the file".into(),
+            ],
+            Kind::Overflow => vec!["adjacent values may have been combined".into(), reexport],
+            Kind::Format(inner) => inner.fix_hints(source),
+            Kind::Decode(inner) => inner.fix_hints(source),
+            Kind::Table(inner) => inner.fix_hints(source),
+        }
+    }
+}
+
 impl std::error::Error for Error {}
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let description = match self.kind() {
-            Kind::InvalidLiteral => "invalid literal",
-            Kind::NoEntryPoint => "no entry point",
-            Kind::EmptyKey => "empty key",
-            Kind::MultipleKeyTokens => "multiple key tokens",
-            Kind::MismatchedDelimiter => "mismatched delimiter",
-            Kind::UnclosedDelimiter => "unclosed delimiter",
-            Kind::UnexpectedPage => "page outside of tuples",
-            Kind::NestedTuples => "nested tuples",
-            Kind::MismatchedBlockFormat => "mismatched block format",
-            Kind::Overflow => "overflow",
-            Kind::Format(e) => return e.fmt(f),
-            Kind::Decode(e) => return e.fmt(f),
-            Kind::Table(e) => return e.fmt(f),
-            Kind::EndOfInput => "end of input",
-        };
-
-        write!(f, "{description}")
+        write!(f, "{}", self.message())
     }
 }
 
@@ -143,6 +278,16 @@ impl Error {
     pub(crate) fn invalid_literal(range: ByteRange) -> Self {
         Self {
             kind: Kind::InvalidLiteral,
+            range,
+        }
+    }
+
+    /// Creates an [`EndOfInput`] error.
+    ///
+    /// [`EndOfInput`]: Kind::EndOfInput
+    pub(crate) fn end_of_input(range: ByteRange) -> Self {
+        Self {
+            kind: Kind::EndOfInput,
             range,
         }
     }
@@ -233,16 +378,6 @@ impl Error {
     pub(crate) fn overflow(range: ByteRange) -> Self {
         Self {
             kind: Kind::Overflow,
-            range,
-        }
-    }
-
-    /// Creates an [`EndOfInput`] error.
-    ///
-    /// [`EndOfInput`]: Kind::EndOfInput
-    pub(crate) fn end_of_input(range: ByteRange) -> Self {
-        Self {
-            kind: Kind::EndOfInput,
             range,
         }
     }
