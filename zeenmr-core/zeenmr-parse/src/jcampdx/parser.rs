@@ -263,6 +263,10 @@ where
     /// the source.
     ///
     /// [`End`]: Token::End
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if parsing fails. See [`Error`].
     pub(crate) fn parse_source(&mut self) -> Result<JcampDxDataset<'source>> {
         self.initialize()?;
         self.current_key = Some("TITLE");
