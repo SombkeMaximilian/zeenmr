@@ -57,7 +57,7 @@ impl BrukerFid {
             Some(Value::Integer(td)) => (*td) as usize,
             _ => panic!("missing TD value in acqus file"),
         };
-        let fid = read_bruker_binary(fid_path, size, data_type, endian, exponent);
+        let fid = read_bruker_binary(fid_path, size, data_type, endian, exponent).unwrap();
 
         Self { id, acqus, fid }
     }

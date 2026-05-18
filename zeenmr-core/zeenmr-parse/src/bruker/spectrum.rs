@@ -100,8 +100,8 @@ impl BrukerSpectrum {
             Some(Value::Integer(si)) => (*si) as usize,
             _ => panic!("missing TD value in procs file"),
         };
-        let real = read_bruker_binary(real_path, size, data_type, endian, exponent);
-        let imag = read_bruker_binary(imag_path, size, data_type, endian, exponent);
+        let real = read_bruker_binary(real_path, size, data_type, endian, exponent).unwrap();
+        let imag = read_bruker_binary(imag_path, size, data_type, endian, exponent).unwrap();
 
         Self {
             id,
