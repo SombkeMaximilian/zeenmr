@@ -120,13 +120,15 @@ pub(crate) trait ParserMode {
 
 impl<'source> ParserMode for Parser<'source, Normal> {
     /// Inserts the current key-value pair into the dataset's parameter table if
-    /// `current_key` is a `Some` value.
+    /// `current_key` is a `Some` value, and resets `current_value` otherwise.
     ///
     /// This will never insert a key-value pair into the data parameters.
     fn insert_parameter(&mut self) {
         if let Some(key) = self.current_key.take() {
             let value = self.take_current_value();
             self.dataset.parameters.insert(key.into(), value);
+        } else {
+            self.current_value = Value::Empty;
         }
     }
 
@@ -186,7 +188,7 @@ impl<'source> ParserMode for Parser<'source, Normal> {
 
 impl<'source> ParserMode for Parser<'source, Tuples> {
     /// Inserts the current key-value pair into the active parameter table if
-    /// `current_key` is a `Some` value.
+    /// `current_key` is a `Some` value, and resets `current_value` otherwise.
     ///
     /// If at least one [`Page`] token has been encountered in the current
     /// context (i.e., until the current parser terminates), this will be the
@@ -199,6 +201,8 @@ impl<'source> ParserMode for Parser<'source, Tuples> {
             } else {
                 self.dataset.parameters.insert(key.into(), value);
             }
+        } else {
+            self.current_value = Value::Empty;
         }
     }
 
