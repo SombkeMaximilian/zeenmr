@@ -157,7 +157,7 @@ impl ParseError for Error {
             Kind::MultipleKeyTokens => vec![RangeLabel {
                 range: self.range,
                 is_cause: true,
-                label: Some("second `##` before `=`".into()),
+                label: Some("second key token before a `=` here".into()),
             }],
             Kind::MismatchedDelimiter => vec![RangeLabel {
                 range: self.range,
@@ -174,15 +174,30 @@ impl ParseError for Error {
                 is_cause: true,
                 label: Some("only valid inside an NTUPLES block".into()),
             }],
-            Kind::NestedTuples => vec![RangeLabel {
-                range: self.range,
-                is_cause: true,
-                label: Some("NTUPLES blocks may not be nested".into()),
-            }],
+            Kind::NestedTuples => {
+                let nested_label = RangeLabel {
+                    range: self.range,
+                    is_cause: true,
+                    label: Some("nested block starts here".into()),
+                };
+                let parent_label = source[..self.range.start]
+                    .rfind("##NTUPLES=")
+                    .map(|start| RangeLabel {
+                        range: (start..(start + "##NTUPLES=".len())).into(),
+                        is_cause: false,
+                        label: Some("parent NTUPLES block starts here".into()),
+                    });
+
+                if let Some(parent_label) = parent_label {
+                    vec![parent_label, nested_label]
+                } else {
+                    vec![nested_label]
+                }
+            }
             Kind::MismatchedBlockFormat => vec![RangeLabel {
                 range: self.range,
                 is_cause: true,
-                label: Some("format specifier does not match this block kind".into()),
+                label: Some("format specifier does not match the block kind".into()),
             }],
             Kind::Overflow => vec![RangeLabel {
                 range: self.range,
@@ -206,10 +221,9 @@ impl ParseError for Error {
             Kind::NoEntryPoint => {
                 vec!["a JCAMP-DX dataset starts with `##TITLE=` and ends with `##END=`".into()]
             }
-            Kind::EmptyKey => vec![
+            Kind::EmptyKey | Kind::MultipleKeyTokens => vec![
                 "keys start with `##`, `##.`, or `##$` and are followed by a label and `=`".into(),
             ],
-            Kind::MultipleKeyTokens => vec!["a key label may not itself contain `##`".into()],
             Kind::MismatchedDelimiter => {
                 vec!["parentheses and angle brackets must be correctly nested".into()]
             }

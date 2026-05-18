@@ -182,7 +182,13 @@ impl<'source> ParserMode for Parser<'source, Normal> {
     /// reaching this point is always an error that cannot be recovered from,
     /// as the file is almost guaranteed to be malformed or corrupted.
     fn page(&mut self) -> Result<()> {
-        Err(Error::unexpected_page(self.lexer.span().into()))
+        self.lexer.source()[..self.lexer.span().end]
+            .rfind("##")
+            .map(|start| start..self.lexer.span().end)
+            .map_or_else(
+                || Err(Error::unexpected_page(self.lexer.span().into())),
+                |span| Err(Error::unexpected_page(span.into())),
+            )
     }
 }
 
@@ -214,7 +220,13 @@ impl<'source> ParserMode for Parser<'source, Tuples> {
     /// reaching this point is always an error that cannot be recovered from,
     /// as the file is almost guaranteed to be malformed or corrupted.
     fn title(&mut self) -> Result<()> {
-        Err(Error::nested_tuples(self.lexer.span().into()))
+        self.lexer.source()[..self.lexer.span().end]
+            .rfind("##")
+            .map(|start| start..self.lexer.span().end)
+            .map_or_else(
+                || Err(Error::nested_tuples(self.lexer.span().into())),
+                |span| Err(Error::nested_tuples(span.into())),
+            )
     }
 
     /// Handles [`Tuples`] tokens.
@@ -225,7 +237,13 @@ impl<'source> ParserMode for Parser<'source, Tuples> {
     /// reaching this point is always an error that cannot be recovered from,
     /// as the file is almost guaranteed to be malformed or corrupted.
     fn tuples(&mut self) -> Result<()> {
-        Err(Error::nested_tuples(self.lexer.span().into()))
+        self.lexer.source()[..self.lexer.span().end]
+            .rfind("##")
+            .map(|start| start..self.lexer.span().end)
+            .map_or_else(
+                || Err(Error::nested_tuples(self.lexer.span().into())),
+                |span| Err(Error::nested_tuples(span.into())),
+            )
     }
 
     /// Handles [`Page`] tokens.
@@ -667,9 +685,20 @@ where
                         decoder.set_repeating(repeating);
                     }
                     _ => {
-                        self.dataset
-                            .errors
-                            .push(Error::mismatched_block_format(self.lexer.span().into()));
+                        self.dataset.errors.push(
+                            self.lexer.source()[..self.lexer.span().end]
+                                .rfind("##")
+                                .map(|start| {
+                                    self.lexer.source()[self.lexer.span().end..]
+                                        .find([',', '\n', '\r'])
+                                        .map(|end| start..self.lexer.span().end + end)
+                                        .unwrap_or(start..self.lexer.span().end)
+                                })
+                                .map_or_else(
+                                    || Error::mismatched_block_format(self.lexer.span().into()),
+                                    |span| Error::mismatched_block_format(span.into()),
+                                ),
+                        );
                     }
                 }
             }
@@ -710,7 +739,18 @@ where
         let format = format_parser.parse_format()?;
         let mut table_parser = match format.line_layout {
             LineLayout::RepeatingValue { .. } => {
-                return Err(Error::mismatched_block_format(self.lexer.span().into()));
+                return self.lexer.source()[..self.lexer.span().end]
+                    .rfind("##")
+                    .map(|start| {
+                        self.lexer.source()[self.lexer.span().end..]
+                            .find([',', '\n', '\r'])
+                            .map(|end| start..self.lexer.span().end + end)
+                            .unwrap_or(start..self.lexer.span().end)
+                    })
+                    .map_or_else(
+                        || Err(Error::mismatched_block_format(self.lexer.span().into())),
+                        |span| Err(Error::mismatched_block_format(span.into())),
+                    );
             }
             LineLayout::GroupedValues(identifiers) => {
                 TableParser::from(format_parser.into_lexer()).with_identifiers(identifiers)
