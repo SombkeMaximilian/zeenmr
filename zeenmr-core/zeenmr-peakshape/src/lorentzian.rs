@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 ///
 /// [Lorentzian]: https://en.wikipedia.org/wiki/Cauchy_distribution
 ///
-/// Also known as the Cauchy distribution, Lorentz distribution or Breit-Wigner
-/// distribution.
+/// Also known as the probability density function of the Cauchy distribution,
+/// the Lorentz distribution, or the Breit-Wigner distribution.
 ///
 /// This type implements the [`Evaluate`] trait, and is a [`PeakShape`].
 ///
@@ -64,11 +64,6 @@ use serde::{Deserialize, Serialize};
 /// corrupt the data, as it involves taking the square root. This is not
 /// enforced to avoid unnecessary overhead, and any algorithms using this type
 /// must be designed to prevent negative parameters.
-///
-/// # Thread Safety
-///
-/// [`Lorentzian`] is both [`Send`] and [`Sync`], allowing safe sharing and
-/// access across threads.
 ///
 /// # Serialization with [Serde]
 ///
@@ -138,7 +133,7 @@ impl PeakShape for Lorentzian {
 }
 
 impl Lorentzian {
-    /// Creates a new [`Lorentzian`] with the specified parameters.
+    /// Creates a new `Lorentzian` with the specified parameters.
     pub fn new(amp: f64, scale: f64, center: f64) -> Self {
         Self {
             amp_scale: amp * scale,
