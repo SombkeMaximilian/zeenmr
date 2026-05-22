@@ -48,9 +48,6 @@ pub trait PeakShape: Evaluate {
     /// integral.
     fn area(&self) -> f64;
 
-    /// Returns the integral over the specified interval.
-    fn integral(&self, from: f64, to: f64) -> f64;
-
     /// Returns `true` if the current values of the parameters represent a
     /// geometrically meaningful peak shape.
     fn is_valid(&self) -> bool;

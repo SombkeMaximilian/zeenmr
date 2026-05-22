@@ -115,12 +115,6 @@ impl PeakShape for Lorentzian {
         std::f64::consts::PI * self.amp_scale / self.scale2.sqrt()
     }
 
-    fn integral(&self, from: f64, to: f64) -> f64 {
-        let scale = self.scale2.sqrt();
-
-        (self.amp_scale / scale) * (((self.center - from) / scale).atan() - ((self.center - to) / scale).atan())
-    }
-
     fn is_valid(&self) -> bool {
         self.amp_scale.is_finite() && self.amp_scale > 0.0
             && self.scale2.is_finite() && self.scale2 > 0.0
