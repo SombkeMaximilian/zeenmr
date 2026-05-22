@@ -19,3 +19,6 @@ pub mod iter {
 
 mod lorentzian;
 pub use lorentzian::Lorentzian;
+
+mod gaussian;
+pub use gaussian::Gaussian;
