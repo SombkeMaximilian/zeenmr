@@ -1,5 +1,4 @@
-use crate::estimate::ThreePointStencil;
-use crate::{Area, Center, CheckPrecision, Evaluate, Maximum, Width};
+use crate::{Evaluate, PeakShape};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -11,10 +10,7 @@ use serde::{Deserialize, Serialize};
 /// Also known as the Cauchy distribution, Lorentz distribution or Breit-Wigner
 /// distribution.
 ///
-/// This type implements the [`Evaluate`] trait, and is therefore a
-/// [`PeakShape`].
-///
-/// [PeakShape]: crate::PeakShape
+/// This type implements the [`Evaluate`] trait, and is a [`PeakShape`].
 ///
 /// # Definition
 ///
@@ -103,60 +99,41 @@ impl Evaluate for Lorentzian {
     }
 }
 
-impl Center for Lorentzian {
+impl PeakShape for Lorentzian {
     fn center(&self) -> f64 {
         self.center
     }
-}
 
-impl Maximum for Lorentzian {
     fn maximum(&self) -> f64 {
         self.amp_scale / self.scale2
-    }
-}
-
-impl Width for Lorentzian {
-    fn width(&self) -> f64 {
-        2.0 * self.scale2.sqrt()
     }
 
     fn half_width(&self) -> f64 {
         self.scale2.sqrt()
     }
-}
 
-impl Area for Lorentzian {
+    fn full_width(&self) -> f64 {
+        2.0 * self.scale2.sqrt()
+    }
+
     fn area(&self) -> f64 {
         std::f64::consts::PI * self.amp_scale / self.scale2.sqrt()
     }
-}
 
-impl CheckPrecision for Lorentzian {
-    fn parameters_below(&self, precision: f64) -> bool {
-        self.amp_scale.abs() < precision || self.scale2.abs() < precision
+    fn integral(&self, from: f64, to: f64) -> f64 {
+        let scale = self.scale2.sqrt();
+
+        (self.amp_scale / scale) * (((self.center - from) / scale).atan() - ((self.center - to) / scale).atan())
     }
-}
 
-impl ThreePointStencil for Lorentzian {
-    fn estimate_parameters(x: (f64, f64, f64), y: (f64, f64, f64)) -> Self {
-        let numerator = x.0.powi(2) * y.0 * (y.1 - y.2)
-            + x.1.powi(2) * y.1 * (y.2 - y.0)
-            + x.2.powi(2) * y.2 * (y.0 - y.1);
-        let denominator =
-            y.0 * y.1 * (x.0 - x.1) + y.1 * y.2 * (x.1 - x.2) + y.2 * y.0 * (x.2 - x.0);
-        let center = 0.5 * numerator / denominator;
+    fn is_valid(&self) -> bool {
+        self.amp_scale.is_finite() && self.amp_scale > 0.0
+            && self.scale2.is_finite() && self.scale2 > 0.0
+            && self.center.is_finite()
+    }
 
-        let left = (y.0 * (x.0 - center).powi(2) - y.1 * (x.1 - center).powi(2)) / (y.1 - y.0);
-        let right = (y.1 * (x.1 - center).powi(2) - y.2 * (x.2 - center).powi(2)) / (y.2 - y.1);
-        let scale2 = (0.5 * (left + right)).max(f64::EPSILON);
-
-        let amp_scale = y.1 * (scale2 + (x.1 - center).powi(2));
-
-        Self {
-            amp_scale,
-            scale2,
-            center,
-        }
+    fn is_significant(&self, precision: f64) -> bool {
+        self.maximum().abs() > precision && self.scale2.abs() > precision
     }
 }
 

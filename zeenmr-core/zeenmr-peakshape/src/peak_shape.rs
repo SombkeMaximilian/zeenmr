@@ -1,60 +1,61 @@
 use crate::Evaluate;
 
-/// Marker trait for types that can represent peak shapes in spectral data.
-pub trait PeakShape: Evaluate + Center + Maximum + Width + Area + CheckPrecision {}
-
-impl<P> PeakShape for P where P: Evaluate + Center + Maximum + Width + Area + CheckPrecision {}
-
-/// Trait for the center of a peak shape.
-pub trait Center {
-    /// Returns the center position of the peak shape.
+/// Trait that describes peak shapes in spectral data.
+///
+/// # Note for Implementors
+///
+/// While not technically required for a coherent definition of a structure
+/// representing a peak shape, there are a few properties that should almost
+/// always hold. In the following, let `f: S → ℝ` be our peak shape for some
+/// set `S`:
+///
+/// - peak shapes are assumed to be symmetric about `center`, i.e., for all `d`,
+///   it holds that `f(center - d) = f(center + d)`. Asymmetric shapes may
+///   produce unexpected results in some algorithms.
+/// - `center` should return the position at which the peak shape assumes its
+///   maximum, as returned by `maximum`, i.e., `f(center) = maximum` exactly.
+///   This property can be relaxed if the peak shape describes multiple peaks,
+///   e.g., for splitting patterns in NMR spectra.
+/// - `half_width` and `full_width` should be referring to the same width
+///   property, e.g., the full/half width half maximum.
+/// - `area` should correspond to the improper integral of `f` or some other
+///   sensible definition of its area, irrespective of its position.
+/// - `is_valid` should return `true` if and only if the peak shape is
+///   geometrically sensible.
+/// - `is_significant` should return `true` if and only if the internal
+///   representation of its parameters is significant relative to the threshold.
+///   This is to ensure numerical stability for its other operations. For
+///   example, a peak shape with an area close to machine epsilon would likely
+///   lead to downstream calculations producing nonsensical results.
+pub trait PeakShape: Evaluate {
+    /// Returns the center position.
     fn center(&self) -> f64;
-}
 
-/// Trait for the maximum of a peak shape.
-pub trait Maximum {
-    /// Returns the maximum value of the peak shape.
-    fn maximum(&self) -> f64;
-}
-
-/// Trait for the width of a peak shape.
-///
-/// This should be implemented with some reasonable width measure, e.g., full
-/// width at half maximum.
-pub trait Width {
-    /// Returns the width of the peak shape.
-    fn width(&self) -> f64;
-
-    /// Returns half the width of the peak shape.
-    fn half_width(&self) -> f64 {
-        0.5 * self.width()
+    /// Returns the maximum value.
+    fn maximum(&self) -> f64 {
+        self.evaluate(self.center())
     }
-}
 
-/// Trait for the area under a peak shape curve.
-pub trait Area {
-    /// Returns the area under the peak shape curve.
+    /// Returns the value of the half-width property.
+    fn half_width(&self) -> f64;
+
+    /// Returns the value of the full-width property.
+    fn full_width(&self) -> f64 {
+        self.half_width() * 2_f64
+    }
+
+    /// Returns the total area under the curve, as defined by the improper
+    /// integral.
     fn area(&self) -> f64;
-}
 
-/// Trait for checking if a peak shape's parameters are below a certain
-/// precision threshold.
-///
-/// Some algorithms may produce peak shapes with parameters whose absolute
-/// value is nearly zero due to artifacts in the data or numerical issues.
-/// This trait provides a method to filter out such artifacts.
-///
-/// # For Implementors
-///
-/// This trait should **not** check if a position parameter is below the
-/// precision, as positions can validly be near zero.
-pub trait CheckPrecision {
-    /// Checks if any of the peak shape's parameters are below the given
+    /// Returns the integral over the specified interval.
+    fn integral(&self, from: f64, to: f64) -> f64;
+
+    /// Returns `true` if the current values of the parameters represent a
+    /// geometrically meaningful peak shape.
+    fn is_valid(&self) -> bool;
+
+    /// Returns `true` if any calculations are significant relative to the given
     /// precision.
-    fn parameters_below(&self, precision: f64) -> bool;
-
-    /// Checks if all the peak shape's parameters are above the given precision.
-    fn parameters_above(&self, precision: f64) -> bool {
-        !self.parameters_below(precision)
-    }
+    fn is_significant(&self, precision: f64) -> bool;
 }
