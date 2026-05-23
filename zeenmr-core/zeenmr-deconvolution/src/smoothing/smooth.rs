@@ -1,14 +1,8 @@
 use std::borrow::Borrow;
 
 /// Trait for smoothing algorithms that process a sequence of values.
-pub trait Smooth: Sized + Send + Sync {
-    /// Settings type for the smoothing algorithm.
-    type Settings: Into<Self> + Send + Sync;
-
-    /// Returns the settings used for smoothing.
-    fn settings(&self) -> Self::Settings;
-
-    /// Smooth the provided data and return an iterator over the smoothed
+pub trait Smooth: Send + Sync {
+    /// Smooth the provided data and return an owned instance of the smoothed
     /// values.
     fn smooth<I>(&self, data: I) -> Vec<f64>
     where

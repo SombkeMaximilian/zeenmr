@@ -1,8 +1,5 @@
 //! Smoothing algorithms for the deconvolution process.
 
-mod circular_buffer;
-pub(crate) use circular_buffer::CircularBuffer;
-
 mod identity;
 pub use identity::Identity;
 

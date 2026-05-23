@@ -2,8 +2,8 @@ use crate::fitting::FitPeakShapes;
 use crate::peak_finding::Peak;
 use std::marker::PhantomData;
 use uom::si::ratio::part_per_million as ppm;
-use zeenmr_peakshape::{Lorentzian, PeakShape};
 use zeenmr_peakshape::iter::SuperpositionMap;
+use zeenmr_peakshape::{Lorentzian, PeakShape};
 use zeenmr_spectrum::Spectrum;
 
 #[cfg(feature = "rayon")]
@@ -157,12 +157,6 @@ impl<P> FitPeakShapes<P> for IterativeRefinement<P>
 where
     P: PeakShape + ThreePointStencil + Send + Sync,
 {
-    type Settings = Self;
-
-    fn settings(&self) -> Self::Settings {
-        *self
-    }
-
     fn fit_peak_shapes<I>(&self, spectrum: &Spectrum, peaks: I) -> impl Iterator<Item = P>
     where
         I: IntoIterator<Item = Peak>,
@@ -196,9 +190,7 @@ where
             }
         }
         peak_shapes.retain(|peak_shape| {
-            peak_shape.maximum() > crate::CHECK_PRECISION
-                && peak_shape.area() > crate::CHECK_PRECISION
-                && peak_shape.parameters_above(crate::CHECK_PRECISION)
+            peak_shape.is_valid() && peak_shape.is_significant(crate::CHECK_PRECISION)
         });
 
         peak_shapes.into_iter()
@@ -246,28 +238,20 @@ where
                 });
         }
         peak_shapes.retain(|peak_shape| {
-            peak_shape.maximum() > crate::CHECK_PRECISION
-                && peak_shape.area() > crate::CHECK_PRECISION
-                && peak_shape.parameters_above(crate::CHECK_PRECISION)
+            peak_shape.is_valid() && peak_shape.is_significant(crate::CHECK_PRECISION)
         });
 
         peak_shapes.into_par_iter()
     }
 }
 
-impl<P> Default for IterativeRefinement<P>
-where
-    P: PeakShape + ThreePointStencil,
-{
+impl<P> Default for IterativeRefinement<P> {
     fn default() -> Self {
         Self::new(10)
     }
 }
 
-impl<P> IterativeRefinement<P>
-where
-    P: PeakShape + ThreePointStencil,
-{
+impl<P> IterativeRefinement<P> {
     /// Creates a new `IterativeRefinement` fitter with the specified number of
     /// iterations.
     pub fn new(iterations: usize) -> Self {
@@ -275,20 +259,5 @@ where
             iterations,
             peak_shape: PhantomData,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use zeenmr_peakshape::Lorentzian;
-
-    #[test]
-    fn recover() {
-        let iterative_refinement = IterativeRefinement::<Lorentzian>::default();
-        let settings = iterative_refinement.settings();
-        #[allow(clippy::useless_conversion)] // settings type might not remain `Self`
-        let recovered = settings.into();
-        assert_eq!(iterative_refinement, recovered);
     }
 }

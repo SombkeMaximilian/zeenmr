@@ -189,12 +189,6 @@ pub struct CurvatureAnalysis {
 }
 
 impl FindPeaks for CurvatureAnalysis {
-    type Settings = Self;
-
-    fn settings(&self) -> Self::Settings {
-        *self
-    }
-
     fn find_peaks(
         &self,
         smoothed: Vec<f64>,
@@ -296,19 +290,5 @@ impl CurvatureAnalysis {
             / (scores.len() as f64);
 
         (mean, variance.sqrt())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn recover() {
-        let curvature_analysis = CurvatureAnalysis::default();
-        let settings = curvature_analysis.settings();
-        #[allow(clippy::useless_conversion)] // settings type might not remain `Self`
-        let recovered = settings.into();
-        assert_eq!(curvature_analysis, recovered);
     }
 }

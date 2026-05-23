@@ -1,7 +1,3 @@
-use crate::Deconvoluter;
-use crate::fitting::FitPeakShapes;
-use crate::peak_finding::FindPeaks;
-use crate::smoothing::Smooth;
 use std::sync::Arc;
 use zeenmr_peakshape::PeakShape;
 
@@ -28,24 +24,9 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
-    serde(bound(
-        serialize = "P: Serialize,\
-                     SMS: Serialize,\
-                     PFS: Serialize,\
-                     FTS: Serialize",
-        deserialize = "P: Deserialize<'de>,\
-                       SMS: Deserialize<'de>,\
-                       PFS: Deserialize<'de>,\
-                       FTS: Deserialize<'de>"
-    ))
+    serde(bound(serialize = "P: Serialize", deserialize = "P: Deserialize<'de>"))
 )]
-pub struct Deconvolution<P, SMS, PFS, FTS> {
-    /// Smoothing settings used.
-    smoothing_settings: SMS,
-    /// Peak finding settings used.
-    peak_finding_settings: PFS,
-    /// Fitting settings used.
-    fitting_settings: FTS,
+pub struct Deconvolution<P> {
     /// Mean squared error of the deconvolution.
     mse: f64,
     /// Deconvoluted peak shapes.
@@ -78,7 +59,7 @@ mod serialize_peak_shapes {
     }
 }
 
-impl<P, SMS, PFS, FTS> Deconvolution<P, SMS, PFS, FTS>
+impl<P> Deconvolution<P>
 where
     P: PeakShape + Send + Sync,
 {
@@ -86,39 +67,14 @@ where
     ///
     /// Normally, this type is only instantiated by the deconvolution functions
     /// of the [`Deconvoluter`] type.
-    pub fn new<I, SM, PF, FT>(
-        peak_shapes: I,
-        deconvoluter: &Deconvoluter<P, SM, PF, FT>,
-        mse: f64,
-    ) -> Self
+    pub fn new<I>(peak_shapes: I, mse: f64) -> Self
     where
         I: IntoIterator<Item = P>,
-        SM: Smooth<Settings = SMS>,
-        PF: FindPeaks<Settings = PFS>,
-        FT: FitPeakShapes<P, Settings = FTS>,
     {
         Self {
-            smoothing_settings: deconvoluter.smoothing_settings(),
-            peak_finding_settings: deconvoluter.peak_finding_settings(),
-            fitting_settings: deconvoluter.fitting_settings(),
             peak_shapes: Arc::from_iter(peak_shapes),
             mse,
         }
-    }
-
-    /// Returns the smoothing settings used in the deconvolution.
-    pub fn smoothing_settings(&self) -> &SMS {
-        &self.smoothing_settings
-    }
-
-    /// Returns the peak finding settings used in the deconvolution.
-    pub fn peak_finding_settings(&self) -> &PFS {
-        &self.peak_finding_settings
-    }
-
-    /// Returns the fitting settings used in the deconvolution.
-    pub fn fitting_settings(&self) -> &FTS {
-        &self.fitting_settings
     }
 
     /// Returns the deconvoluted peak shapes.

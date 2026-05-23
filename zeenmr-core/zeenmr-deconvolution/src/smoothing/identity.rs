@@ -5,18 +5,7 @@ use std::borrow::Borrow;
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub struct Identity;
 
-// required trait bound for associated type `Settings`
-impl From<()> for Identity {
-    fn from(_: ()) -> Self {
-        Self
-    }
-}
-
 impl Smooth for Identity {
-    type Settings = ();
-
-    fn settings(&self) -> Self::Settings {}
-
     fn smooth<I>(&self, data: I) -> Vec<f64>
     where
         I: IntoIterator,
@@ -32,19 +21,5 @@ impl Identity {
     /// Creates a new `Identity` smoother.
     pub fn new() -> Self {
         Self
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn recover() {
-        let identity = Identity;
-        #[allow(clippy::let_unit_value)] // settings type might not always stay the same
-        let settings = identity.settings();
-        let recovered = settings.into();
-        assert_eq!(identity, recovered);
     }
 }

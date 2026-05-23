@@ -1,4 +1,4 @@
-use crate::smoothing::{CircularBuffer, Smooth};
+use crate::smoothing::Smooth;
 use std::borrow::Borrow;
 
 #[cfg(feature = "serde")]
@@ -34,12 +34,6 @@ pub struct MovingAverage {
 }
 
 impl Smooth for MovingAverage {
-    type Settings = Self;
-
-    fn settings(&self) -> Self::Settings {
-        *self
-    }
-
     fn smooth<I>(&self, data: I) -> Vec<f64>
     where
         I: IntoIterator,
@@ -47,35 +41,25 @@ impl Smooth for MovingAverage {
     {
         let mut data = data
             .into_iter()
-            .map(|value| *value.borrow())
+            .map(|value| *(value.borrow()))
             .collect::<Vec<f64>>();
-        let mut cache = CircularBuffer::<f64>::new(self.window_size);
         let half_window = self.window_size / 2;
         let len = data.len();
+        let full_div = 1_f64 / (self.window_size as f64);
         for _ in 0..self.iterations {
-            let mut div = 1.0;
-            let mut sum = 0.0;
-            for value in data.iter().take(half_window) {
-                cache.push(*value);
-                sum += *value;
+            let mut sum = data.iter().take(half_window).sum::<f64>();
+            for curr in 0..half_window {
+                sum += data[curr + half_window];
+                data[curr] = sum / ((half_window + curr + 1) as f64)
             }
-            for i in 0..(len - half_window) {
-                sum += data[i + half_window];
-                if let Some(popped) = cache.push(data[i + half_window]) {
-                    sum -= popped;
-                } else {
-                    div = 1.0 / cache.len() as f64;
-                };
-                data[i] = sum * div;
+            for curr in half_window..(len - half_window) {
+                sum += data[curr + half_window] - data[curr - half_window];
+                data[curr] = sum * full_div;
             }
-            for value in data[(len - half_window)..].iter_mut() {
-                if let Some(popped) = cache.pop() {
-                    sum -= popped;
-                    div = 1.0 / cache.len() as f64;
-                    *value = sum * div;
-                }
+            for curr in (len - half_window)..len {
+                sum -= data[curr - half_window];
+                data[curr] = sum / ((len - curr + half_window) as f64)
             }
-            cache.clear();
         }
 
         data
@@ -99,19 +83,5 @@ impl MovingAverage {
             iterations,
             window_size,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn recover() {
-        let moving_average = MovingAverage::default();
-        let settings = moving_average.settings();
-        #[allow(clippy::useless_conversion)] // settings type might not remain `Self`
-        let recovered = settings.into();
-        assert_eq!(moving_average, recovered);
     }
 }

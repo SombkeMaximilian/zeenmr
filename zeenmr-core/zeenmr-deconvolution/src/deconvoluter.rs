@@ -44,7 +44,7 @@ where
     fn deconvolute(
         self,
         deconvoluter: &Deconvoluter<P, SM, PF, FT>,
-    ) -> impl Iterator<Item = Result<Deconvolution<P, SM::Settings, PF::Settings, FT::Settings>>>;
+    ) -> impl Iterator<Item = Result<Deconvolution<P>>>;
 }
 
 impl<S, I, P, SM, PF, FT> DeconvoluteMap<P, SM, PF, FT> for I
@@ -59,8 +59,7 @@ where
     fn deconvolute(
         self,
         deconvoluter: &Deconvoluter<P, SM, PF, FT>,
-    ) -> impl Iterator<Item = Result<Deconvolution<P, SM::Settings, PF::Settings, FT::Settings>>>
-    {
+    ) -> impl Iterator<Item = Result<Deconvolution<P>>> {
         self.map(move |spectrum| deconvoluter.deconvolute(spectrum.as_ref()))
     }
 }
@@ -79,9 +78,7 @@ where
     fn deconvolute(
         self,
         deconvoluter: &Deconvoluter<P, SM, PF, FT>,
-    ) -> impl IndexedParallelIterator<
-        Item = Result<Deconvolution<P, SM::Settings, PF::Settings, FT::Settings>>,
-    >;
+    ) -> impl IndexedParallelIterator<Item = Result<Deconvolution<P>>>;
 }
 
 #[cfg(feature = "rayon")]
@@ -97,9 +94,7 @@ where
     fn deconvolute(
         self,
         deconvoluter: &Deconvoluter<P, SM, PF, FT>,
-    ) -> impl IndexedParallelIterator<
-        Item = Result<Deconvolution<P, SM::Settings, PF::Settings, FT::Settings>>,
-    > {
+    ) -> impl IndexedParallelIterator<Item = Result<Deconvolution<P>>> {
         self.map(move |spectrum| deconvoluter.par_deconvolute(spectrum.as_ref()))
     }
 }
@@ -136,21 +131,6 @@ where
             ignore: None,
             peak_shape: PhantomData::<P>,
         }
-    }
-
-    /// Returns the smoothing settings used in the deconvoluter.
-    pub fn smoothing_settings(&self) -> SM::Settings {
-        self.smoother.settings()
-    }
-
-    /// Returns the peak finding settings used in the deconvoluter.
-    pub fn peak_finding_settings(&self) -> PF::Settings {
-        self.peak_finder.settings()
-    }
-
-    /// Returns the fitting settings used in the deconvoluter.
-    pub fn fitting_settings(&self) -> FT::Settings {
-        self.fitter.settings()
     }
 
     /// Returns the ignored chemical shift ranges.
@@ -264,10 +244,7 @@ where
     ///
     /// Any errors that may occur are outlined in the documentation of the
     /// individual component algorithms of the [`Deconvoluter`].
-    pub fn deconvolute<S>(
-        &self,
-        spectrum: S,
-    ) -> Result<Deconvolution<P, SM::Settings, PF::Settings, FT::Settings>>
+    pub fn deconvolute<S>(&self, spectrum: S) -> Result<Deconvolution<P>>
     where
         S: AsRef<Spectrum>,
     {
@@ -290,7 +267,6 @@ where
 
         Ok(Deconvolution::new(
             peak_shapes,
-            self,
             self.compute_mse(spectrum, superpositions),
         ))
     }
@@ -303,10 +279,7 @@ where
     /// Any errors that may occur are outlined in the documentation of the
     /// individual component algorithms of the [`Deconvoluter`].
     #[cfg(feature = "rayon")]
-    pub fn par_deconvolute<S>(
-        &self,
-        spectrum: S,
-    ) -> Result<Deconvolution<P, SM::Settings, PF::Settings, FT::Settings>>
+    pub fn par_deconvolute<S>(&self, spectrum: S) -> Result<Deconvolution<P>>
     where
         S: AsRef<Spectrum>,
     {
@@ -329,7 +302,6 @@ where
 
         Ok(Deconvolution::new(
             peak_shapes,
-            self,
             self.compute_mse(spectrum, superpositions),
         ))
     }

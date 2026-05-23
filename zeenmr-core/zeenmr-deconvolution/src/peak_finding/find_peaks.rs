@@ -3,13 +3,7 @@ use crate::peak_finding::Peak;
 use zeenmr_spectrum::IndexRange;
 
 /// Trait for finding peaks in a smoothed signal.
-pub trait FindPeaks: Sized + Send + Sync {
-    /// Settings type for the peak finding algorithm.
-    type Settings: Into<Self> + Send + Sync;
-
-    /// Returns the settings used for peak finding.
-    fn settings(&self) -> Self::Settings;
-
+pub trait FindPeaks: Send + Sync {
     /// Finds peaks in the given smoothed signal within the specified bounds,
     /// optionally ignoring certain regions.
     fn find_peaks(
