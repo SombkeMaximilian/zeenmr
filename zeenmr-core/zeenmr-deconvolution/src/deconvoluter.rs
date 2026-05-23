@@ -253,7 +253,7 @@ where
         let peaks = self.peak_finder.find_peaks(
             &intensities,
             spectrum.signal_boundaries(),
-            self.ignore_index_ranges(spectrum),
+            self.ignore_index_ranges(spectrum).as_deref(),
         )?;
         let peak_shapes = self
             .fitter
@@ -288,7 +288,7 @@ where
         let peaks = self.peak_finder.find_peaks(
             &intensities,
             spectrum.signal_boundaries(),
-            self.ignore_index_ranges(spectrum),
+            self.ignore_index_ranges(spectrum).as_deref(),
         )?;
         let peak_shapes = self
             .fitter

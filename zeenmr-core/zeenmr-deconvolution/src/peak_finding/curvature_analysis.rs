@@ -193,7 +193,7 @@ impl FindPeaks for CurvatureAnalysis {
         &self,
         smoothed: &[f64],
         signal: IndexRange,
-        ignore: Option<Vec<IndexRange>>,
+        ignore: Option<&[IndexRange]>,
     ) -> Result<Vec<Peak>> {
         let mut second_derivative = smoothed
             .windows(3)
