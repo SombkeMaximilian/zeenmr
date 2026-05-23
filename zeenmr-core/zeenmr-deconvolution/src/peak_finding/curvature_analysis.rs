@@ -191,7 +191,7 @@ pub struct CurvatureAnalysis {
 impl FindPeaks for CurvatureAnalysis {
     fn find_peaks(
         &self,
-        smoothed: Vec<f64>,
+        smoothed: &[f64],
         signal: IndexRange,
         ignore: Option<Vec<IndexRange>>,
     ) -> Result<Vec<Peak>> {

@@ -251,7 +251,7 @@ where
         let spectrum = spectrum.as_ref();
         let intensities = self.smoother.smooth(spectrum.intensities());
         let peaks = self.peak_finder.find_peaks(
-            intensities,
+            &intensities,
             spectrum.signal_boundaries(),
             self.ignore_index_ranges(spectrum),
         )?;
@@ -286,7 +286,7 @@ where
         let spectrum = spectrum.as_ref();
         let intensities = self.smoother.smooth(spectrum.intensities());
         let peaks = self.peak_finder.find_peaks(
-            intensities,
+            &intensities,
             spectrum.signal_boundaries(),
             self.ignore_index_ranges(spectrum),
         )?;
