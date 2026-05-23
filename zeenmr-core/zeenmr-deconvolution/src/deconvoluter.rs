@@ -26,7 +26,7 @@ pub struct Deconvoluter<P, SM, PF, FT> {
     /// Peak shape fitting algorithm.
     fitter: FT,
     /// Chemical shift ranges to ignore during deconvolution.
-    ignore: Option<Vec<ChemicalShiftRange>>,
+    ignore: Vec<ChemicalShiftRange>,
     /// Marker for the peak shape type.
     peak_shape: PhantomData<P>,
 }
@@ -128,14 +128,14 @@ where
             smoother,
             peak_finder,
             fitter,
-            ignore: None,
+            ignore: Vec::new(),
             peak_shape: PhantomData::<P>,
         }
     }
 
     /// Returns the ignored chemical shift ranges.
-    pub fn ignored_ranges(&self) -> Option<&[ChemicalShiftRange]> {
-        self.ignore.as_deref()
+    pub fn ignored_ranges(&self) -> &[ChemicalShiftRange] {
+        &self.ignore
     }
 
     /// Adds a [`ChemicalShiftRange`] to ignore during deconvolution.
@@ -169,11 +169,11 @@ where
     ///
     /// deconvoluter.add_ignore_range(Ratio::new::<ppm>(4.7)..=Ratio::new::<ppm>(4.9))?;
     /// deconvoluter.add_ignore_range(Ratio::new::<ppm>(5.2)..=Ratio::new::<ppm>(5.6))?;
-    /// assert_eq!(deconvoluter.ignored_ranges().unwrap().len(), 2);
+    /// assert_eq!(deconvoluter.ignored_ranges().len(), 2);
     ///
     /// // overlapping ranges are combined
     /// deconvoluter.add_ignore_range(Ratio::new::<ppm>(4.8)..=Ratio::new::<ppm>(5.4))?;
-    /// assert_eq!(deconvoluter.ignored_ranges().unwrap().len(), 1);
+    /// assert_eq!(deconvoluter.ignored_ranges().len(), 1);
     /// # Ok(())
     /// # }
     /// ```
@@ -186,22 +186,22 @@ where
             return Err(Error::invalid_ignore_region());
         }
 
-        if let Some(ignore) = self.ignore.as_mut() {
-            ignore.push(range);
-            ignore.sort_unstable_by(|a, b| a.start.partial_cmp(&b.start).unwrap());
-            while let Some(overlap) = ignore
-                .windows(2)
-                .position(|w| w[1].start <= w[0].end)
-            {
-                let combined = ChemicalShiftRange {
-                    start: ignore[overlap].start,
-                    end: ignore[overlap].end.max(ignore[overlap + 1].end),
-                };
-                ignore[overlap] = combined;
-                ignore.remove(overlap + 1);
-            }
-        } else {
-            self.ignore = Some(vec![range]);
+        self.ignore.push(range);
+        self.ignore
+            .sort_unstable_by(|a, b| a.start.partial_cmp(&b.start).unwrap());
+        while let Some(overlap) = self
+            .ignore
+            .windows(2)
+            .position(|w| w[1].start <= w[0].end)
+        {
+            let combined = ChemicalShiftRange {
+                start: self.ignore[overlap].start,
+                end: self.ignore[overlap]
+                    .end
+                    .max(self.ignore[overlap + 1].end),
+            };
+            self.ignore[overlap] = combined;
+            self.ignore.remove(overlap + 1);
         }
 
         Ok(())
@@ -229,12 +229,12 @@ where
     ///
     /// deconvoluter.add_ignore_range(Ratio::new::<ppm>(4.7)..=Ratio::new::<ppm>(4.9))?;
     /// deconvoluter.clear_ignore_ranges();
-    /// assert!(deconvoluter.ignored_ranges().is_none());
+    /// assert!(deconvoluter.ignored_ranges().is_empty());
     /// # Ok(())
     /// # }
     /// ```
     pub fn clear_ignore_ranges(&mut self) {
-        self.ignore = None;
+        self.ignore.clear();
     }
 
     /// Deconvolutes the provided [`Spectrum`] into its constituent peak shapes.
@@ -252,7 +252,7 @@ where
         let peaks = self.peak_finder.find_peaks(
             &intensities,
             spectrum.signal_boundaries(),
-            self.ignore_index_ranges(spectrum).as_deref(),
+            &self.ignore_index_ranges(spectrum),
         )?;
         let peak_shapes = self
             .fitter
@@ -287,7 +287,7 @@ where
         let peaks = self.peak_finder.find_peaks(
             &intensities,
             spectrum.signal_boundaries(),
-            self.ignore_index_ranges(spectrum).as_deref(),
+            &self.ignore_index_ranges(spectrum),
         )?;
         let peak_shapes = self
             .fitter
@@ -307,14 +307,12 @@ where
 
     /// Converts the ignored chemical shift ranges to index ranges for the
     /// provided spectrum.
-    fn ignore_index_ranges(&self, spectrum: &Spectrum) -> Option<Vec<IndexRange>> {
-        self.ignore.as_ref().map(|ignore| {
-            ignore
-                .iter()
-                .map(|range| range.try_into_index_range(spectrum))
-                .filter_map(|r| r.ok())
-                .collect()
-        })
+    fn ignore_index_ranges(&self, spectrum: &Spectrum) -> Vec<IndexRange> {
+        self.ignore
+            .iter()
+            .map(|range| range.try_into_index_range(spectrum))
+            .filter_map(|r| r.ok())
+            .collect()
     }
 
     /// Computes the mean squared error between the observed intensities and
@@ -323,7 +321,8 @@ where
     /// Ignored regions and signal-free region are excluded.
     fn compute_mse(&self, spectrum: &Spectrum, superpositions: Vec<f64>) -> f64 {
         let signal = spectrum.signal_boundaries::<IndexRange>();
-        let included = if let Some(ignore) = self.ignore_index_ranges(spectrum) {
+        let ignore = self.ignore_index_ranges(spectrum);
+        let included = if !ignore.is_empty() {
             let iter = std::iter::once(signal.start)
                 .chain(
                     ignore

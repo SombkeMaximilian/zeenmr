@@ -193,20 +193,18 @@ impl FindPeaks for CurvatureAnalysis {
         &self,
         smoothed: &[f64],
         signal: IndexRange,
-        ignore: Option<&[IndexRange]>,
+        ignore: &[IndexRange],
     ) -> Result<Vec<Peak>> {
         let mut second_derivative = smoothed
             .windows(3)
             .map(|w| w[0] - 2.0 * w[1] + w[2])
             .collect::<Vec<f64>>();
         let mut peaks = CurvatureDetector(&second_derivative).detect_peaks()?;
-        if let Some(ignore) = ignore {
-            peaks.retain(|peak| {
-                !ignore
-                    .iter()
-                    .any(|range| range.contains(&peak.left) && range.contains(&peak.right))
-            });
-        }
+        peaks.retain(|peak| {
+            !ignore
+                .iter()
+                .any(|range| range.contains(&peak.left) && range.contains(&peak.right))
+        });
         for value in second_derivative.iter_mut() {
             *value = value.abs();
         }

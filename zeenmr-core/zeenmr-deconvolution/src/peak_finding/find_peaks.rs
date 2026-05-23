@@ -15,6 +15,6 @@ pub trait FindPeaks: Send + Sync {
         &self,
         smoothed: &[f64],
         signal: IndexRange,
-        ignore: Option<&[IndexRange]>,
+        ignore: &[IndexRange],
     ) -> Result<Vec<Peak>>;
 }
