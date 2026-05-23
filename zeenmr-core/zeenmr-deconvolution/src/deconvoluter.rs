@@ -195,11 +195,10 @@ where
             {
                 let combined = ChemicalShiftRange {
                     start: ignore[overlap].start,
-                    end: ignore[overlap + 1].end,
+                    end: ignore[overlap].end.max(ignore[overlap + 1].end),
                 };
-                ignore.remove(overlap);
-                ignore.remove(overlap);
-                ignore.insert(overlap, combined);
+                ignore[overlap] = combined;
+                ignore.remove(overlap + 1);
             }
         } else {
             self.ignore = Some(vec![range]);
