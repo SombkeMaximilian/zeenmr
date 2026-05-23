@@ -84,8 +84,10 @@ impl PeakShape for Gaussian {
     }
 
     fn is_valid(&self) -> bool {
-        self.amp.is_finite() && self.amp > 0.0
-            && self.double_scale2.is_finite() && self.double_scale2 > 0.0
+        self.amp.is_finite()
+            && self.amp > 0.0
+            && self.double_scale2.is_finite()
+            && self.double_scale2 > 0.0
             && self.center.is_finite()
     }
 

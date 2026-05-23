@@ -116,8 +116,10 @@ impl PeakShape for Lorentzian {
     }
 
     fn is_valid(&self) -> bool {
-        self.amp_scale.is_finite() && self.amp_scale > 0.0
-            && self.scale2.is_finite() && self.scale2 > 0.0
+        self.amp_scale.is_finite()
+            && self.amp_scale > 0.0
+            && self.scale2.is_finite()
+            && self.scale2 > 0.0
             && self.center.is_finite()
     }
 
