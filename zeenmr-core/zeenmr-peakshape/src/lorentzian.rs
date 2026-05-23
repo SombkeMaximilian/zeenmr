@@ -128,7 +128,19 @@ impl PeakShape for Lorentzian {
 
 impl Lorentzian {
     /// Creates a new `Lorentzian` with the specified parameters.
-    pub fn new(amp: f64, scale: f64, center: f64) -> Self {
+    ///
+    /// Note that these are not the standard parameters, but the transformed
+    /// parameters as outlined in the struct documentation.
+    pub fn new(amp_scale: f64, scale2: f64, center: f64) -> Self {
+        Self {
+            amp_scale,
+            scale2,
+            center,
+        }
+    }
+
+    /// Creates a new `Lorentzian` from the untransformed parameters.
+    pub fn from_untransformed(amp: f64, scale: f64, center: f64) -> Self {
         Self {
             amp_scale: amp * scale,
             scale2: scale.powi(2),

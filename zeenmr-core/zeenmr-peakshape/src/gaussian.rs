@@ -96,7 +96,19 @@ impl PeakShape for Gaussian {
 
 impl Gaussian {
     /// Creates a new `Gaussian` with the specified parameters.
-    pub fn new(amp: f64, scale: f64, center: f64) -> Gaussian {
+    ///
+    /// Note that these are not the standard parameters, but the transformed
+    /// parameters as outlined in the struct documentation.
+    pub fn new(amp: f64, double_scale2: f64, center: f64) -> Gaussian {
+        Self {
+            amp,
+            double_scale2,
+            center,
+        }
+    }
+
+    /// Creates a new `Gaussian` from the untransformed parameters.
+    pub fn from_untransformed(amp: f64, scale: f64, center: f64) -> Gaussian {
         Self {
             amp,
             double_scale2: 2_f64 * scale.powi(2),
