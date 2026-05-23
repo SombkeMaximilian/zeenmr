@@ -167,12 +167,12 @@ where
     ///     IterativeRefinement::<Lorentzian>::default(),
     /// );
     ///
-    /// deconvoluter.add_ignore_range(Ratio::new::<ppm>(4.7)..Ratio::new::<ppm>(4.9))?;
-    /// deconvoluter.add_ignore_range(Ratio::new::<ppm>(5.2)..Ratio::new::<ppm>(5.6))?;
+    /// deconvoluter.add_ignore_range(Ratio::new::<ppm>(4.7)..=Ratio::new::<ppm>(4.9))?;
+    /// deconvoluter.add_ignore_range(Ratio::new::<ppm>(5.2)..=Ratio::new::<ppm>(5.6))?;
     /// assert_eq!(deconvoluter.ignored_ranges().unwrap().len(), 2);
     ///
     /// // overlapping ranges are combined
-    /// deconvoluter.add_ignore_range(Ratio::new::<ppm>(4.8)..Ratio::new::<ppm>(5.4))?;
+    /// deconvoluter.add_ignore_range(Ratio::new::<ppm>(4.8)..=Ratio::new::<ppm>(5.4))?;
     /// assert_eq!(deconvoluter.ignored_ranges().unwrap().len(), 1);
     /// # Ok(())
     /// # }
@@ -228,7 +228,7 @@ where
     ///     IterativeRefinement::<Lorentzian>::default(),
     /// );
     ///
-    /// deconvoluter.add_ignore_range(Ratio::new::<ppm>(4.7)..Ratio::new::<ppm>(4.9))?;
+    /// deconvoluter.add_ignore_range(Ratio::new::<ppm>(4.7)..=Ratio::new::<ppm>(4.9))?;
     /// deconvoluter.clear_ignore_ranges();
     /// assert!(deconvoluter.ignored_ranges().is_none());
     /// # Ok(())
