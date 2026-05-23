@@ -191,7 +191,7 @@ where
             ignore.sort_unstable_by(|a, b| a.start.partial_cmp(&b.start).unwrap());
             while let Some(overlap) = ignore
                 .windows(2)
-                .position(|w| w[1].start <= w[0].start)
+                .position(|w| w[1].start <= w[0].end)
             {
                 let combined = ChemicalShiftRange {
                     start: ignore[overlap].start,
