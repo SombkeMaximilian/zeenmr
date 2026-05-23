@@ -4,4 +4,4 @@ mod fit_peak_shapes;
 pub use fit_peak_shapes::FitPeakShapes;
 
 mod iterative_refinement;
-pub use iterative_refinement::IterativeRefinement;
+pub use iterative_refinement::{IterativeRefinement, ThreePointStencil};

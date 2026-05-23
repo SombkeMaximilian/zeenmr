@@ -2,8 +2,7 @@ use crate::fitting::FitPeakShapes;
 use crate::peak_finding::Peak;
 use std::marker::PhantomData;
 use uom::si::ratio::part_per_million as ppm;
-use zeenmr_peakshape::PeakShape;
-use zeenmr_peakshape::estimate::ThreePointStencil;
+use zeenmr_peakshape::{Lorentzian, PeakShape};
 use zeenmr_peakshape::iter::SuperpositionMap;
 use zeenmr_spectrum::Spectrum;
 
@@ -15,6 +14,31 @@ use zeenmr_peakshape::iter::ParSuperpositionMap;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+
+/// Trait for estimating parameters of a peak shape from three data points.
+pub trait ThreePointStencil {
+    /// Estimate the parameters of the peak shape from three data points.
+    fn estimate_parameters(x: (f64, f64, f64), y: (f64, f64, f64)) -> Self;
+}
+
+impl ThreePointStencil for Lorentzian {
+    fn estimate_parameters(x: (f64, f64, f64), y: (f64, f64, f64)) -> Self {
+        let numerator = x.0.powi(2) * y.0 * (y.1 - y.2)
+            + x.1.powi(2) * y.1 * (y.2 - y.0)
+            + x.2.powi(2) * y.2 * (y.0 - y.1);
+        let denominator =
+            y.0 * y.1 * (x.0 - x.1) + y.1 * y.2 * (x.1 - x.2) + y.2 * y.0 * (x.2 - x.0);
+        let center = 0.5 * numerator / denominator;
+
+        let left = (y.0 * (x.0 - center).powi(2) - y.1 * (x.1 - center).powi(2)) / (y.1 - y.0);
+        let right = (y.1 * (x.1 - center).powi(2) - y.2 * (x.2 - center).powi(2)) / (y.2 - y.1);
+        let scale2 = (0.5 * (left + right)).max(f64::EPSILON);
+
+        let amp_scale = y.1 * (scale2 + (x.1 - center).powi(2));
+
+        Lorentzian::new(amp_scale, scale2, center)
+    }
+}
 
 /// A reduced representation of a spectrum that only contains the data points
 /// that are part of peaks.
