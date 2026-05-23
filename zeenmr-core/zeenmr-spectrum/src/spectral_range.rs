@@ -191,7 +191,7 @@ macro_rules! try_index_range_impls {
 
 impl TryIntoIndexRange for IndexRange {
     fn try_into_index_range(self, spectrum: &Spectrum) -> Result<IndexRange> {
-        let linspace_range = 0..=spectrum.len();
+        let linspace_range = 0..spectrum.len();
 
         match linspace_range.contains(&self.start) && linspace_range.contains(&self.end) {
             true => Ok(self),
