@@ -1,6 +1,6 @@
 use crate::Deconvolution;
 use crate::error::{Error, Result};
-use crate::fitting::FitPeakShapes;
+use crate::fitting::Fit;
 use crate::peak_finding::FindPeaks;
 use crate::smoothing::Smooth;
 use std::marker::PhantomData;
@@ -38,7 +38,7 @@ where
     P: PeakShape + Send + Sync,
     SM: Smooth,
     PF: FindPeaks,
-    FT: FitPeakShapes<P>,
+    FT: Fit<P>,
 {
     /// Apply the provided `Deconvoluter` to each item in the iterator.
     fn deconvolute(
@@ -54,7 +54,7 @@ where
     P: PeakShape + Send + Sync,
     SM: Smooth,
     PF: FindPeaks,
-    FT: FitPeakShapes<P>,
+    FT: Fit<P>,
 {
     fn deconvolute(
         self,
@@ -72,7 +72,7 @@ where
     P: PeakShape + Send + Sync,
     SM: Smooth,
     PF: FindPeaks,
-    FT: FitPeakShapes<P>,
+    FT: Fit<P>,
 {
     /// Apply the provided `Deconvoluter` to each item in the parallel iterator.
     fn deconvolute(
@@ -89,7 +89,7 @@ where
     P: PeakShape + Send + Sync,
     SM: Smooth,
     PF: FindPeaks,
-    FT: FitPeakShapes<P>,
+    FT: Fit<P>,
 {
     fn deconvolute(
         self,
@@ -104,7 +104,7 @@ where
     P: PeakShape + Send + Sync,
     SM: Smooth,
     PF: FindPeaks,
-    FT: FitPeakShapes<P>,
+    FT: Fit<P>,
 {
     /// Creates a new `Deconvoluter`.
     ///
@@ -254,10 +254,7 @@ where
             spectrum.signal_boundaries(),
             &self.ignore_index_ranges(spectrum),
         )?;
-        let peak_shapes = self
-            .fitter
-            .fit_peak_shapes(spectrum, peaks)
-            .collect::<Vec<P>>();
+        let peak_shapes = self.fitter.fit(spectrum, &peaks);
         let superpositions = spectrum
             .shifts()
             .map(|shift| shift.get::<ppm>())
@@ -289,10 +286,7 @@ where
             spectrum.signal_boundaries(),
             &self.ignore_index_ranges(spectrum),
         )?;
-        let peak_shapes = self
-            .fitter
-            .par_fit_peak_shapes(spectrum, peaks)
-            .collect::<Vec<P>>();
+        let peak_shapes = self.fitter.par_fit(spectrum, &peaks);
         let superpositions = spectrum
             .par_shifts()
             .map(|shift| shift.get::<ppm>())

@@ -1,4 +1,4 @@
-use crate::fitting::FitPeakShapes;
+use crate::fitting::Fit;
 use crate::peak_finding::Peak;
 use std::marker::PhantomData;
 use uom::si::ratio::part_per_million as ppm;
@@ -53,10 +53,7 @@ struct ReducedSpectrum {
 impl ReducedSpectrum {
     /// Extracts the positions and intensities of the peaks from the spectrum
     /// and constructs a `ReducedSpectrum` from them.
-    fn new<I>(spectrum: &Spectrum, peaks: I) -> Self
-    where
-        I: IntoIterator<Item = Peak>,
-    {
+    fn new(spectrum: &Spectrum, peaks: &[Peak]) -> Self {
         let (shifts, intensities) = peaks
             .into_iter()
             .flat_map(|peak| [peak.left, peak.center, peak.right])
@@ -153,14 +150,11 @@ impl<P> Clone for IterativeRefinement<P> {
     }
 }
 
-impl<P> FitPeakShapes<P> for IterativeRefinement<P>
+impl<P> Fit<P> for IterativeRefinement<P>
 where
     P: PeakShape + ThreePointStencil + Send + Sync,
 {
-    fn fit_peak_shapes<I>(&self, spectrum: &Spectrum, peaks: I) -> impl Iterator<Item = P>
-    where
-        I: IntoIterator<Item = Peak>,
-    {
+    fn fit(&self, spectrum: &Spectrum, peaks: &[Peak]) -> Vec<P> {
         let reduced_spectrum = ReducedSpectrum::new(spectrum, peaks);
         let mut stencils = reduced_spectrum.stencils().collect::<Vec<_>>();
         let mut peak_shapes = stencils
@@ -193,18 +187,11 @@ where
             peak_shape.is_valid() && peak_shape.is_significant(crate::CHECK_PRECISION)
         });
 
-        peak_shapes.into_iter()
+        peak_shapes
     }
 
     #[cfg(feature = "rayon")]
-    fn par_fit_peak_shapes<I>(
-        &self,
-        spectrum: &Spectrum,
-        peaks: I,
-    ) -> impl IndexedParallelIterator<Item = P>
-    where
-        I: IntoIterator<Item = Peak>,
-    {
+    fn par_fit(&self, spectrum: &Spectrum, peaks: &[Peak]) -> Vec<P> {
         let reduced_spectrum = ReducedSpectrum::new(spectrum, peaks);
         let mut stencils = reduced_spectrum.stencils().collect::<Vec<_>>();
         let mut peak_shapes = stencils
@@ -241,7 +228,7 @@ where
             peak_shape.is_valid() && peak_shape.is_significant(crate::CHECK_PRECISION)
         });
 
-        peak_shapes.into_par_iter()
+        peak_shapes
     }
 }
 
