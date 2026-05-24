@@ -1,5 +1,5 @@
 use crate::smoothing::Smooth;
-use std::borrow::Borrow;
+use std::borrow::Cow;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -34,15 +34,12 @@ pub struct MovingAverage {
 }
 
 impl Smooth for MovingAverage {
-    fn smooth<I>(&self, data: I) -> Vec<f64>
-    where
-        I: IntoIterator,
-        I::Item: Borrow<f64>,
-    {
-        let mut data = data
-            .into_iter()
-            .map(|value| *(value.borrow()))
-            .collect::<Vec<f64>>();
+    fn smooth<'a>(&self, data: &'a [f64]) -> Cow<'a, [f64]> {
+        if data.len() < 2 || self.iterations == 0 || self.window_size <= 1 {
+            return data.into();
+        }
+
+        let mut data = data.iter().copied().collect::<Vec<f64>>();
         let half_window = self.window_size / 2;
         let len = data.len();
         let full_div = 1_f64 / (self.window_size as f64);
@@ -58,11 +55,11 @@ impl Smooth for MovingAverage {
             }
             for curr in (len - half_window)..len {
                 sum -= data[curr - half_window];
-                data[curr] = sum / ((len - curr + half_window) as f64)
+                data[curr] = sum / ((len - curr + half_window - 1) as f64)
             }
         }
 
-        data
+        data.into()
     }
 }
 
