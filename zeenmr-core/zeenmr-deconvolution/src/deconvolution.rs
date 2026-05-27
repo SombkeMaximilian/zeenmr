@@ -66,7 +66,7 @@ where
     /// Creates a new `Deconvolution`.
     ///
     /// Normally, this type is only instantiated by the deconvolution functions
-    /// of the [`Deconvoluter`] type.
+    /// of deconvoluters.
     pub fn new<I>(peak_shapes: I, mse: f64) -> Self
     where
         I: IntoIterator<Item = P>,
