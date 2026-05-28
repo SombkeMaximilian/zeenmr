@@ -509,10 +509,13 @@ impl ShiftReference {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use static_assertions::assert_impl_all;
+
     #[cfg(feature = "serde")]
     use float_cmp::assert_approx_eq;
+    #[cfg(feature = "serde")]
     use num_traits::Zero;
-    use static_assertions::assert_impl_all;
+    #[cfg(feature = "serde")]
     use uom::si::ratio::part_per_million as ppm;
 
     #[test]
