@@ -13,10 +13,20 @@ pub mod fitting;
 pub mod peak_finding;
 pub mod smoothing;
 
-mod deconvoluter;
+mod deconvolute;
 #[cfg(feature = "rayon")]
-pub use deconvoluter::ParDeconvoluteMap;
-pub use deconvoluter::{DeconvoluteMap, Deconvoluter};
+pub use deconvolute::ParDeconvolute;
+pub use deconvolute::{
+    Deconvolute, Deconvoluter, MissingFitter, MissingPeakFinder, MissingSmoother,
+};
+
+pub mod iter {
+    //! Iterator adapter traits for deconvolution.
+
+    pub use crate::deconvolute::DeconvoluteMap;
+    #[cfg(feature = "rayon")]
+    pub use crate::deconvolute::ParDeconvoluteMap;
+}
 
 mod deconvolution;
 pub use deconvolution::Deconvolution;
