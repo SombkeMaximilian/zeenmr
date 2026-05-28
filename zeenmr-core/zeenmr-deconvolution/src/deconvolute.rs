@@ -1,6 +1,6 @@
 use crate::Deconvolution;
 use crate::error::{Error, Result};
-use crate::fitting::Fit;
+use crate::fitting::{Fit, ParFit};
 use crate::peak_finding::FindPeaks;
 use crate::smoothing::Smooth;
 use uom::si::ratio::part_per_million as ppm;
@@ -116,7 +116,7 @@ pub struct Deconvoluter<SM, PF, FT> {
     peak_finder: PF,
     /// Fitting algorithm.
     ///
-    /// Must implement [`Fit`], or be [`MissingFitter`].
+    /// Must implement [`Fit`] or [`ParFit`], or be [`MissingFitter`].
     fitter: FT,
     /// Chemical shift ranges to ignore during deconvolution.
     ignore: Vec<ChemicalShiftRange>,
@@ -139,7 +139,7 @@ where
         let peaks =
             self.peak_finder
                 .find_peaks(&smoothed, spectrum.signal_boundaries(), &ignore)?;
-        let peak_shapes = self.fitter.par_fit(spectrum, &peaks);
+        let peak_shapes = self.fitter.fit(spectrum, &peaks);
         let superpositions = spectrum
             .shifts()
             .map(|shift| shift.get::<ppm>())
@@ -159,7 +159,7 @@ where
     P: PeakShape + Send + Sync,
     SM: Smooth,
     PF: FindPeaks,
-    FT: Fit<P>,
+    FT: ParFit<P>,
 {
     fn par_deconvolute(&self, spectrum: &Spectrum) -> Result<Deconvolution<P>> {
         let intensities = self.smoother.smooth(spectrum.intensities());
@@ -224,11 +224,26 @@ impl<SM, FT> Deconvoluter<SM, MissingPeakFinder, FT> {
 }
 
 impl<SM, PF> Deconvoluter<SM, PF, MissingFitter> {
-    /// Sets the peak shape fitting algorithm for the deconvoluter.
+    /// Sets the peak fitting algorithm for the deconvoluter.
     pub fn with_fitter<P, FT>(self, fitter: FT) -> Deconvoluter<SM, PF, FT>
     where
         P: PeakShape + Send + Sync,
         FT: Fit<P>,
+    {
+        Deconvoluter {
+            smoother: self.smoother,
+            peak_finder: self.peak_finder,
+            fitter,
+            ignore: self.ignore,
+        }
+    }
+
+    /// Sets the parallelized peak fitting algorithm for the deconvoluter.
+    #[cfg(feature = "rayon")]
+    pub fn with_par_fitter<P, FT>(self, fitter: FT) -> Deconvoluter<SM, PF, FT>
+    where
+        P: PeakShape + Send + Sync,
+        FT: ParFit<P>,
     {
         Deconvoluter {
             smoother: self.smoother,
@@ -284,8 +299,6 @@ impl<SM, PF, FT> Deconvoluter<SM, PF, FT> {
     }
 }
 
-impl<SM, PF, FT> Deconvoluter<SM, PF, FT> {}
-
 /// Computes the mean squared error between the observed intensities and
 /// the superposition of the fitted peak shapes.
 ///
@@ -299,7 +312,8 @@ fn mse(spectrum: &Spectrum, superpositions: &[f64], ignore: &[IndexRange]) -> f6
                 .flat_map(|range| [range.start, range.end]),
         )
         .chain(std::iter::once(signal.end));
-    let (residual, count) = iter.clone()
+    let (residual, count) = iter
+        .clone()
         .step_by(2)
         .zip(iter.skip(1).step_by(2))
         .fold((0.0, 0), |acc, (start, end)| {

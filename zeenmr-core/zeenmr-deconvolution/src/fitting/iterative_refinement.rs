@@ -1,4 +1,4 @@
-use crate::fitting::Fit;
+use crate::fitting::{Fit, ParFit};
 use crate::peak_finding::Peak;
 use std::marker::PhantomData;
 use uom::si::ratio::part_per_million as ppm;
@@ -189,8 +189,13 @@ where
 
         peak_shapes
     }
+}
 
-    #[cfg(feature = "rayon")]
+#[cfg(feature = "rayon")]
+impl<P> ParFit<P> for IterativeRefinement<P>
+where
+    P: PeakShape + ThreePointStencil + Send + Sync,
+{
     fn par_fit(&self, spectrum: &Spectrum, peaks: &[Peak]) -> Vec<P> {
         let reduced_spectrum = ReducedSpectrum::new(spectrum, peaks);
         let mut stencils = reduced_spectrum.stencils().collect::<Vec<_>>();
