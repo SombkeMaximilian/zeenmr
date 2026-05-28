@@ -1,6 +1,6 @@
 use crate::Deconvolution;
 use crate::error::{Error, Result};
-use crate::fitting::{Fit, ParFit};
+use crate::fitting::Fit;
 use crate::peak_finding::FindPeaks;
 use crate::smoothing::Smooth;
 use uom::si::ratio::part_per_million as ppm;
@@ -8,6 +8,8 @@ use zeenmr_peakshape::PeakShape;
 use zeenmr_peakshape::iter::SuperpositionMap;
 use zeenmr_spectrum::{ChemicalShiftRange, IndexRange, Spectrum, TryIntoIndexRange};
 
+#[cfg(feature = "rayon")]
+use crate::fitting::ParFit;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 #[cfg(feature = "rayon")]
@@ -225,25 +227,13 @@ impl<SM, FT> Deconvoluter<SM, MissingPeakFinder, FT> {
 
 impl<SM, PF> Deconvoluter<SM, PF, MissingFitter> {
     /// Sets the peak fitting algorithm for the deconvoluter.
+    ///
+    /// If the fitter also implements [`ParFit`], the deconvoluter additionally
+    /// becomes a parallelized deconvoluter.
     pub fn with_fitter<P, FT>(self, fitter: FT) -> Deconvoluter<SM, PF, FT>
     where
         P: PeakShape + Send + Sync,
         FT: Fit<P>,
-    {
-        Deconvoluter {
-            smoother: self.smoother,
-            peak_finder: self.peak_finder,
-            fitter,
-            ignore: self.ignore,
-        }
-    }
-
-    /// Sets the parallelized peak fitting algorithm for the deconvoluter.
-    #[cfg(feature = "rayon")]
-    pub fn with_par_fitter<P, FT>(self, fitter: FT) -> Deconvoluter<SM, PF, FT>
-    where
-        P: PeakShape + Send + Sync,
-        FT: ParFit<P>,
     {
         Deconvoluter {
             smoother: self.smoother,

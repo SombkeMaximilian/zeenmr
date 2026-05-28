@@ -17,7 +17,7 @@ where
 /// Some fitting algorithms can be efficiently parallelized for certain input
 /// sizes.
 #[cfg(feature = "rayon")]
-pub trait ParFit<P>: Send + Sync
+pub trait ParFit<P>: Fit<P>
 where
     P: PeakShape + Send + Sync,
 {

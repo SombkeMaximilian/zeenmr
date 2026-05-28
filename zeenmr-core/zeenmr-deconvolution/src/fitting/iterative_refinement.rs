@@ -214,7 +214,7 @@ where
             let ratios = reduced_spectrum
                 .intensities
                 .iter()
-                .zip(superpositions.into_iter())
+                .zip(superpositions)
                 .map(|(intensity, superposition)| intensity / superposition)
                 .collect::<Vec<_>>();
             for (stencil, ratios) in stencils.iter_mut().zip(ratios.chunks(3)) {
