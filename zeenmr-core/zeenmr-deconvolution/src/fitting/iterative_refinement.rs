@@ -55,7 +55,7 @@ impl ReducedSpectrum {
     /// and constructs a `ReducedSpectrum` from them.
     fn new(spectrum: &Spectrum, peaks: &[Peak]) -> Self {
         let (shifts, intensities) = peaks
-            .into_iter()
+            .iter()
             .flat_map(|peak| [peak.left, peak.center, peak.right])
             .map(|index| {
                 (

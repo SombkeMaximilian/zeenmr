@@ -39,7 +39,7 @@ impl Smooth for MovingAverage {
             return data.into();
         }
 
-        let mut data = data.iter().copied().collect::<Vec<f64>>();
+        let mut data = data.to_vec();
         let half_window = self.window_size / 2;
         let len = data.len();
         let full_div = 1_f64 / (self.window_size as f64);
