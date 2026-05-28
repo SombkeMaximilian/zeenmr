@@ -108,15 +108,15 @@ pub struct MissingFitter;
 pub struct Deconvoluter<SM, PF, FT> {
     /// Smoothing algorithm.
     ///
-    /// Must implement [`Smooth`].
+    /// Must implement [`Smooth`], or be [`MissingSmoother`].
     smoother: SM,
     /// Peak finding algorithm.
     ///
-    /// Must implement [`FindPeaks`].
+    /// Must implement [`FindPeaks`], or be [`MissingPeakFinder`].
     peak_finder: PF,
     /// Fitting algorithm.
     ///
-    /// Must implement [`Fit`].
+    /// Must implement [`Fit`], or be [`MissingFitter`].
     fitter: FT,
     /// Chemical shift ranges to ignore during deconvolution.
     ignore: Vec<ChemicalShiftRange>,
