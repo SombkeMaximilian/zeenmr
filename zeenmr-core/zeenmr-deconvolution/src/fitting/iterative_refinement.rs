@@ -1,4 +1,4 @@
-use crate::fitting::{Fit, ParFit};
+use crate::fitting::Fit;
 use crate::peak_finding::Peak;
 use std::marker::PhantomData;
 use uom::si::ratio::part_per_million as ppm;
@@ -7,8 +7,9 @@ use zeenmr_peakshape::{Lorentzian, PeakShape};
 use zeenmr_spectrum::Spectrum;
 
 #[cfg(feature = "rayon")]
+use crate::fitting::ParFit;
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
-
 #[cfg(feature = "rayon")]
 use zeenmr_peakshape::iter::ParSuperpositionMap;
 
