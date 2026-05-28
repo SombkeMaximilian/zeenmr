@@ -106,9 +106,19 @@ pub struct MissingFitter;
 /// Deconvolution config for processing spectra into their constituent signals.
 #[derive(Clone, Debug, Default)]
 pub struct Deconvoluter<SM, PF, FT> {
+    /// Smoothing algorithm.
+    ///
+    /// Must implement [`Smooth`].
     smoother: SM,
+    /// Peak finding algorithm.
+    ///
+    /// Must implement [`FindPeaks`].
     peak_finder: PF,
+    /// Fitting algorithm.
+    ///
+    /// Must implement [`Fit`].
     fitter: FT,
+    /// Chemical shift ranges to ignore during deconvolution.
     ignore: Vec<ChemicalShiftRange>,
 }
 
@@ -232,15 +242,20 @@ impl<SM, PF> Deconvoluter<SM, PF, MissingFitter> {
 impl<SM, PF, FT> Deconvoluter<SM, PF, FT> {
     /// Adds a chemical shift range to ignore during deconvolution.
     ///
-    /// Some samples contain signals that are of a shape that cannot be fitted,
-    /// such as a signal from water or stabilizing agents. Regions where these
-    /// signals are expected can be excluded from peak finding and fitting. In
-    /// general, this feature should only be used if including the regions
-    /// causes the deconvolution performance to degrade.
+    /// Some samples contain signals that cannot be fitted with the intended
+    /// peak shape, such as a signal from water or stabilizing agents. Regions
+    /// where these signals are expected can be excluded from peak finding and
+    /// fitting. In general, this feature should only be used if including the
+    /// regions causes the deconvolution performance to degrade.
     ///
     /// Overlapping ranges are automatically merged, so the input is not
     /// necessarily recoverable. For example, adding 4.7–4.9 ppm and then
     /// 4.8–5.0 ppm results in a single 4.7–5.0 ppm range.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the provided chemical shift range contains a bound
+    /// that is `INF`, `NEG_INF` or `NaN`.
     pub fn ignore(mut self, range: ChemicalShiftRange) -> Result<Self> {
         let range = range.ordered();
         if !range.start.is_finite() || !range.end.is_finite() {
@@ -268,6 +283,8 @@ impl<SM, PF, FT> Deconvoluter<SM, PF, FT> {
         Ok(self)
     }
 }
+
+impl<SM, PF, FT> Deconvoluter<SM, PF, FT> {}
 
 /// Computes the mean squared error between the observed intensities and
 /// the superposition of the fitted peak shapes.
