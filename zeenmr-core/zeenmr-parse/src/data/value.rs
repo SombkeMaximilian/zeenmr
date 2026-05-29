@@ -240,7 +240,7 @@ impl<'source> Value<'source> {
     /// let array_value = Value::from([Value::Integer(42)]);
     /// let string_value = Value::from("Hello, world!");
     ///
-    /// assert_eq!(array_value.as_slice(), Some(&[Value::Integer(42)]));
+    /// assert_eq!(array_value.as_slice(), Some([Value::Integer(42)].as_ref()));
     /// assert!(string_value.as_slice().is_none());
     /// ```
     pub fn as_slice(&self) -> Option<&[Self]> {
@@ -261,10 +261,10 @@ impl<'source> Value<'source> {
     /// let mut array_value = Value::from([Value::Integer(42)]);
     ///
     /// if let Some(slice) = array_value.as_mut_slice() {
-    ///     slice[0] = Value::Float(69.420)
+    ///     slice[0] = Value::Float(42.0)
     /// }
     ///
-    /// assert_eq!(array_value.as_slice(), Some(&[Value::Float(69.420)]));
+    /// assert_eq!(array_value.as_slice(), Some([Value::Float(42.0)].as_ref()));
     /// ```
     pub fn as_mut_slice(&mut self) -> Option<&mut [Self]> {
         match self {
