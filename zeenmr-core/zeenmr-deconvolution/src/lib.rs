@@ -16,9 +16,7 @@ pub mod smoothing;
 mod deconvolute;
 #[cfg(feature = "rayon")]
 pub use deconvolute::ParDeconvolute;
-pub use deconvolute::{
-    Deconvolute, Deconvoluter, MissingFitter, MissingPeakFinder, MissingSmoother,
-};
+pub use deconvolute::{Deconvolute, Deconvoluter, MissingFinder, MissingFitter, MissingSmoother};
 
 pub mod iter {
     //! Iterator adapter traits for deconvolution.

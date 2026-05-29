@@ -1,5 +1,5 @@
 use crate::error::{Error, Result};
-use crate::peak_finding::{FindPeaks, Peak};
+use crate::peak_finding::{Find, Peak};
 use std::ops::RangeBounds;
 use zeenmr_spectrum::IndexRange;
 
@@ -188,8 +188,8 @@ pub struct CurvatureAnalysis {
     pub threshold: Option<f64>,
 }
 
-impl FindPeaks for CurvatureAnalysis {
-    fn find_peaks(
+impl Find for CurvatureAnalysis {
+    fn find(
         &self,
         smoothed: &[f64],
         signal: IndexRange,

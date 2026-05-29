@@ -1,7 +1,7 @@
 use crate::Deconvolution;
 use crate::error::{Error, Result};
 use crate::fitting::Fit;
-use crate::peak_finding::FindPeaks;
+use crate::peak_finding::Find;
 use crate::smoothing::Smooth;
 use uom::si::ratio::part_per_million as ppm;
 use zeenmr_peakshape::PeakShape;
@@ -93,15 +93,15 @@ where
     }
 }
 
-/// Used to indicate that the deconvoluter is missing a smoother.
+/// Used to indicate that the deconvoluter is missing a smoothing algorithm.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub struct MissingSmoother;
 
-/// Used to indicate that the deconvoluter is missing a peak finder.
+/// Used to indicate that the deconvoluter is missing a peak finding algorithm.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
-pub struct MissingPeakFinder;
+pub struct MissingFinder;
 
-/// Used to indicate that the deconvoluter is missing a fitter.
+/// Used to indicate that the deconvoluter is missing a peak fitting algorithm.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub struct MissingFitter;
 
@@ -114,9 +114,9 @@ pub struct Deconvoluter<SM, PF, FT> {
     smoother: SM,
     /// Peak finding algorithm.
     ///
-    /// Must implement [`FindPeaks`], or be [`MissingPeakFinder`].
-    peak_finder: PF,
-    /// Fitting algorithm.
+    /// Must implement [`Find`], or be [`MissingFinder`].
+    finder: PF,
+    /// Peak fitting algorithm.
     ///
     /// Must implement [`Fit`] or [`ParFit`], or be [`MissingFitter`].
     fitter: FT,
@@ -128,7 +128,7 @@ impl<P, SM, PF, FT> Deconvolute<P> for Deconvoluter<SM, PF, FT>
 where
     P: PeakShape + Send + Sync,
     SM: Smooth,
-    PF: FindPeaks,
+    PF: Find,
     FT: Fit<P>,
 {
     fn deconvolute(&self, spectrum: &Spectrum) -> Result<Deconvolution<P>> {
@@ -138,9 +138,9 @@ where
             .iter()
             .filter_map(|range| range.try_into_index_range(spectrum).ok())
             .collect::<Vec<IndexRange>>();
-        let peaks =
-            self.peak_finder
-                .find_peaks(&smoothed, spectrum.signal_boundaries(), &ignore)?;
+        let peaks = self
+            .finder
+            .find(&smoothed, spectrum.signal_boundaries(), &ignore)?;
         let peak_shapes = self.fitter.fit(spectrum, &peaks);
         let superpositions = spectrum
             .shifts()
@@ -160,7 +160,7 @@ impl<P, SM, PF, FT> ParDeconvolute<P> for Deconvoluter<SM, PF, FT>
 where
     P: PeakShape + Send + Sync,
     SM: Smooth,
-    PF: FindPeaks,
+    PF: Find,
     FT: ParFit<P>,
 {
     fn par_deconvolute(&self, spectrum: &Spectrum) -> Result<Deconvolution<P>> {
@@ -170,9 +170,9 @@ where
             .iter()
             .filter_map(|range| range.try_into_index_range(spectrum).ok())
             .collect::<Vec<IndexRange>>();
-        let peaks =
-            self.peak_finder
-                .find_peaks(&intensities, spectrum.signal_boundaries(), &ignore)?;
+        let peaks = self
+            .finder
+            .find(&intensities, spectrum.signal_boundaries(), &ignore)?;
         let peak_shapes = self.fitter.par_fit(spectrum, &peaks);
         let superpositions = spectrum
             .par_shifts()
@@ -187,7 +187,7 @@ where
     }
 }
 
-impl Deconvoluter<MissingSmoother, MissingPeakFinder, MissingFitter> {
+impl Deconvoluter<MissingSmoother, MissingFinder, MissingFitter> {
     /// Creates a new, unconfigured deconvoluter that can be configured using
     /// the builder pattern.
     pub fn new() -> Self {
@@ -203,22 +203,22 @@ impl<PF, FT> Deconvoluter<MissingSmoother, PF, FT> {
     {
         Deconvoluter {
             smoother,
-            peak_finder: self.peak_finder,
+            finder: self.finder,
             fitter: self.fitter,
             ignore: self.ignore,
         }
     }
 }
 
-impl<SM, FT> Deconvoluter<SM, MissingPeakFinder, FT> {
+impl<SM, FT> Deconvoluter<SM, MissingFinder, FT> {
     /// Sets the peak finding algorithm for the deconvoluter.
-    pub fn with_peak_finder<PF>(self, peak_finder: PF) -> Deconvoluter<SM, PF, FT>
+    pub fn with_finder<PF>(self, peak_finder: PF) -> Deconvoluter<SM, PF, FT>
     where
-        PF: FindPeaks,
+        PF: Find,
     {
         Deconvoluter {
             smoother: self.smoother,
-            peak_finder,
+            finder: peak_finder,
             fitter: self.fitter,
             ignore: self.ignore,
         }
@@ -237,7 +237,7 @@ impl<SM, PF> Deconvoluter<SM, PF, MissingFitter> {
     {
         Deconvoluter {
             smoother: self.smoother,
-            peak_finder: self.peak_finder,
+            finder: self.finder,
             fitter,
             ignore: self.ignore,
         }

@@ -8,10 +8,10 @@ use zeenmr_spectrum::IndexRange;
 ///
 /// A peak finding algorithm should specify in its documentation what the bounds
 /// of a peak represent (e.g., inflection points).
-pub trait FindPeaks: Send + Sync {
+pub trait Find: Send + Sync {
     /// Finds peaks in the given smoothed signal within the specified bounds,
     /// optionally ignoring certain regions.
-    fn find_peaks(
+    fn find(
         &self,
         smoothed: &[f64],
         signal: IndexRange,
