@@ -6,9 +6,3 @@ pub(crate) use binary::{DataType, Endian, read_bruker_binary};
 mod parser;
 pub(crate) use parser::Parser;
 pub use parser::Value;
-
-mod fid;
-pub use fid::BrukerFid;
-
-mod spectrum;
-pub use spectrum::BrukerSpectrum;
