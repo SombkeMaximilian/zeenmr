@@ -1,7 +1,7 @@
 use crate::error::{Error, Result};
 use crate::{
-    ChemicalShiftRange, FrequencyRange, IndexRange, Nucleus, ReferencingMethod, ShiftReference,
-    SpectralLinspace, SpectralRange, TryFromIndexRange, TryIntoIndexRange,
+    ChemicalShiftRange, FrequencyRange, IndexRange, Nucleus, ShiftReference, SpectralLinspace,
+    SpectralRange, TryFromIndexRange, TryIntoIndexRange,
 };
 use std::sync::Arc;
 use uom::si::f64::{Frequency, MagneticFluxDensity, Ratio};
@@ -200,7 +200,7 @@ impl Spectrum {
     {
         let intensities = Self::validate_intensities(intensities)?;
         let range = range.into();
-        let reference = range.start / larmor;
+        let reference = ShiftReference::new(range.start / larmor, 0);
         let spectral_linspace = SpectralLinspace::new(larmor, range, intensities.len(), reference)?;
         let signal_boundaries = (
             ((intensities.len() - 1) as f64 * 0.1).ceil() as usize,
@@ -1364,112 +1364,6 @@ impl Spectrum {
         self.linspace.set_shift_reference_index(index)?;
 
         Ok(())
-    }
-
-    /// Sets the name of the chemical shift reference of the `Spectrum`.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use num_traits::Zero;
-    /// use uom::si::f64::Frequency;
-    /// use uom::si::frequency::{hertz, megahertz};
-    /// use zeenmr_spectrum::Spectrum;
-    ///
-    /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let mut spectrum = Spectrum::new(
-    ///     vec![1.0, 2.0, 3.0],
-    ///     Frequency::new::<megahertz>(600.0),
-    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
-    /// )?;
-    /// spectrum.set_shift_reference_name("new ref name");
-    /// assert_eq!(spectrum.shift_reference().name(), Some("new ref name"));
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn set_shift_reference_name<T: Into<String>>(&mut self, name: T) {
-        self.linspace.set_shift_reference_name(name);
-    }
-
-    /// Clears the name of the chemical shift reference.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use num_traits::Zero;
-    /// use uom::si::f64::Frequency;
-    /// use uom::si::frequency::{hertz, megahertz};
-    /// use zeenmr_spectrum::Spectrum;
-    ///
-    /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let mut spectrum = Spectrum::new(
-    ///     vec![1.0, 2.0, 3.0],
-    ///     Frequency::new::<megahertz>(600.0),
-    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
-    /// )?;
-    /// spectrum.set_shift_reference_name("example ref");
-    /// spectrum.clear_shift_reference_name();
-    /// assert!(spectrum.shift_reference().name().is_none());
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn clear_shift_reference_name(&mut self) {
-        self.linspace.clear_shift_reference_name();
-    }
-
-    /// Sets the referencing method of the chemical shift reference.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use num_traits::Zero;
-    /// use uom::si::f64::Frequency;
-    /// use uom::si::frequency::{hertz, megahertz};
-    /// use zeenmr_spectrum::{ReferencingMethod, Spectrum};
-    ///
-    /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let mut spectrum = Spectrum::new(
-    ///     vec![1.0, 2.0, 3.0],
-    ///     Frequency::new::<megahertz>(600.0),
-    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
-    /// )?;
-    /// spectrum.set_shift_reference_method("external");
-    /// assert_eq!(
-    ///     spectrum.shift_reference().method(),
-    ///     Some(&ReferencingMethod::External)
-    /// );
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn set_shift_reference_method<T: Into<ReferencingMethod>>(&mut self, method: T) {
-        self.linspace.set_shift_reference_method(method);
-    }
-
-    /// Clears the referencing method of the chemical shift reference of the
-    /// `Spectrum`.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use num_traits::Zero;
-    /// use uom::si::f64::Frequency;
-    /// use uom::si::frequency::{hertz, megahertz};
-    /// use zeenmr_spectrum::Spectrum;
-    ///
-    /// # fn main() -> zeenmr_spectrum::error::Result<()> {
-    /// let mut spectrum = Spectrum::new(
-    ///     vec![1.0, 2.0, 3.0],
-    ///     Frequency::new::<megahertz>(600.0),
-    ///     (Frequency::zero(), Frequency::new::<hertz>(12000.0)),
-    /// )?;
-    /// spectrum.set_shift_reference_method("external");
-    /// spectrum.clear_shift_reference_method();
-    /// assert!(spectrum.shift_reference().method().is_none());
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn clear_shift_reference_method(&mut self) {
-        self.linspace.clear_shift_reference_method();
     }
 
     /// Sets the signal boundaries of the `Spectrum`.

@@ -1,5 +1,5 @@
 use crate::error::{Error, Result};
-use crate::{ChemicalShiftRange, FrequencyRange, ReferencingMethod, ShiftReference};
+use crate::{ChemicalShiftRange, FrequencyRange, ShiftReference};
 use std::ops::RangeBounds;
 use uom::si::f64::{Frequency, Ratio};
 use uom::si::frequency::hertz;
@@ -102,7 +102,7 @@ impl SpectralLinspace {
 
     /// Calculates the offset from the chemical shift reference.
     pub(crate) fn reference_offset(&self) -> Ratio {
-        self.reference.shift() - self.reference.index() as f64 * self.shift_step()
+        self.reference.shift - self.reference.index as f64 * self.shift_step()
     }
 
     /// Returns the frequency range of the spectral axis.
@@ -364,7 +364,7 @@ impl SpectralLinspace {
     /// Returns an error if the chemical shift is not a finite float.
     pub(crate) fn set_shift_reference_value(&mut self, shift: Ratio) -> Result<()> {
         Self::validate_shift_value(shift)?;
-        self.reference.set_shift(shift);
+        self.reference.shift = shift;
 
         Ok(())
     }
@@ -377,35 +377,9 @@ impl SpectralLinspace {
     /// of the spectral axis.
     pub(crate) fn set_shift_reference_index(&mut self, index: usize) -> Result<()> {
         Self::validate_index(index, self.size)?;
-        self.reference.set_index(index);
+        self.reference.index = index;
 
         Ok(())
-    }
-
-    /// Sets the chemical shift reference name.
-    pub(crate) fn set_shift_reference_name<T>(&mut self, name: T)
-    where
-        T: Into<String>,
-    {
-        self.reference.set_name(name);
-    }
-
-    /// Clears the chemical shift reference name.
-    pub(crate) fn clear_shift_reference_name(&mut self) {
-        self.reference.clear_name();
-    }
-
-    /// Sets the chemical shift reference method.
-    pub(crate) fn set_shift_reference_method<T>(&mut self, method: T)
-    where
-        T: Into<ReferencingMethod>,
-    {
-        self.reference.set_method(method);
-    }
-
-    /// Clears the chemical shift reference method.
-    pub(crate) fn clear_shift_reference_method(&mut self) {
-        self.reference.clear_method();
     }
 
     /// Validates the frequency range and returns an error if either frequency
@@ -476,8 +450,8 @@ impl SpectralLinspace {
     /// The following errors can occur:
     /// - [`InvalidShiftReference`](crate::error::Kind::InvalidShiftReference)
     fn validate_reference(reference: &ShiftReference, size: usize) -> Result<()> {
-        match Self::validate_index(reference.index(), size) {
-            Ok(_) => match Self::validate_shift_value(reference.shift()) {
+        match Self::validate_index(reference.index, size) {
+            Ok(_) => match Self::validate_shift_value(reference.shift) {
                 Ok(_) => Ok(()),
                 Err(error) => Err(Error::invalid_shift_reference(error)),
             },
@@ -490,7 +464,6 @@ impl SpectralLinspace {
 mod tests {
     use super::*;
     use crate::error::Kind;
-    use float_cmp::assert_approx_eq;
     use num_traits::Zero;
     use static_assertions::assert_impl_all;
     use uom::si::frequency::{hertz, megahertz};
@@ -500,7 +473,7 @@ mod tests {
         let larmor = Frequency::new::<megahertz>(600.0);
         let range = (Frequency::new::<hertz>(12000.0), Frequency::zero());
         let size = 2_usize.pow(17);
-        let reference = (range.0 / larmor).into();
+        let reference = ShiftReference::new(range.0 / larmor, 0);
 
         (larmor, range, size, reference)
     }
@@ -520,6 +493,7 @@ mod tests {
     fn new() {
         let (larmor, range, size, reference) = valid_parameters();
         let linspace = SpectralLinspace::new(larmor, range, size, reference);
+
         assert!(linspace.is_ok());
     }
 
@@ -539,6 +513,7 @@ mod tests {
             Some(Error::non_finite_float()),
             Some(Error::non_finite_float()),
         ];
+
         errors
             .into_iter()
             .zip(expected_sources.clone())
@@ -548,6 +523,7 @@ mod tests {
             });
 
         let mut linspace = valid_linspace();
+
         invalid_ranges
             .iter()
             .zip(expected_sources)
@@ -577,6 +553,7 @@ mod tests {
             Some(Error::non_finite_float()),
             Some(Error::non_finite_float()),
         ];
+
         errors
             .into_iter()
             .zip(expected_sources.clone())
@@ -586,6 +563,7 @@ mod tests {
             });
 
         let mut linspace = valid_linspace();
+
         invalid_larmor
             .iter()
             .zip(expected_sources)
@@ -611,6 +589,7 @@ mod tests {
                 .index_to_relative(2_usize.pow(18))
                 .unwrap_err(),
         ];
+
         errors
             .into_iter()
             .for_each(|error| assert_eq!(error, Error::out_of_bounds()));
@@ -620,8 +599,8 @@ mod tests {
     fn invalid_shift_reference() {
         let (larmor, range, size, _) = valid_parameters();
         let invalid_references = [
-            ShiftReference::from((range.0 / larmor, size)),
-            ShiftReference::from((Ratio::new::<ratio>(f64::NAN), size / 2)),
+            ShiftReference::new(range.0 / larmor, size),
+            ShiftReference::new(Ratio::new::<ratio>(f64::NAN), size / 2),
         ];
         let errors = invalid_references
             .clone()
@@ -630,6 +609,7 @@ mod tests {
             Some(Error::out_of_bounds()),
             Some(Error::non_finite_float()),
         ];
+
         errors
             .into_iter()
             .zip(expected_sources)
@@ -642,32 +622,30 @@ mod tests {
     #[test]
     fn mutators() {
         let mut linspace = valid_linspace();
+
         assert!(
             linspace
                 .set_range((Frequency::new::<hertz>(24000.0), Frequency::zero()))
                 .is_ok()
         );
-        assert_approx_eq!(f64, linspace.freq_range().start.get::<hertz>(), 24000.0);
-        assert_approx_eq!(f64, linspace.freq_range().end.get::<hertz>(), 0.0);
+        assert_eq!(linspace.freq_range().start.get::<hertz>(), 24000.0);
+        assert_eq!(linspace.freq_range().end.get::<hertz>(), 0.0);
         assert!(
             linspace
                 .set_larmor(Frequency::new::<megahertz>(800.0))
                 .is_ok()
         );
-        assert_approx_eq!(f64, linspace.larmor().get::<megahertz>(), 800.0);
+        assert_eq!(linspace.larmor().get::<megahertz>(), 800.0);
         assert!(
             linspace
-                .set_shift_reference((Ratio::new::<ppm>(24000.0 / 800.0), 0))
+                .set_shift_reference(ShiftReference::new(Ratio::new::<ppm>(24000.0 / 800.0), 0))
                 .is_ok()
         );
-        assert_approx_eq!(
-            f64,
-            linspace.shift_reference().shift().get::<ppm>(),
-            24000.0 / 800.0
+        assert_eq!(
+            linspace.shift_reference().shift,
+            Ratio::new::<ppm>(24000.0 / 800.0)
         );
-        assert_eq!(linspace.shift_reference().index(), 0);
-        assert!(linspace.shift_reference().name().is_none());
-        assert!(linspace.shift_reference().method().is_none());
+        assert_eq!(linspace.shift_reference().index, 0);
     }
 
     #[cfg(feature = "serde")]
@@ -676,33 +654,15 @@ mod tests {
         let larmor = Frequency::new::<megahertz>(600.25);
         let range = (Frequency::new::<hertz>(12000.0), Frequency::zero());
         let size = 2_usize.pow(15);
-        let reference = range.0 / larmor;
+        let reference = ShiftReference::new(range.0 / larmor, 0);
         let linspace = SpectralLinspace::new(larmor, range, size, reference).unwrap();
         let serialized = serde_json::to_string(&linspace).unwrap();
         let deserialized = serde_json::from_str::<SpectralLinspace>(&serialized).unwrap();
-        assert_approx_eq!(
-            f64,
-            linspace.range.start.get::<hertz>(),
-            deserialized.range.start.get::<hertz>()
-        );
-        assert_approx_eq!(
-            f64,
-            linspace.range.end.get::<hertz>(),
-            deserialized.range.end.get::<hertz>()
-        );
-        assert_approx_eq!(
-            f64,
-            linspace.larmor.get::<megahertz>(),
-            deserialized.larmor.get::<megahertz>()
-        );
+
+        assert_eq!(linspace.range.start, deserialized.range.start);
+        assert_eq!(linspace.range.end, deserialized.range.end);
+        assert_eq!(linspace.larmor, deserialized.larmor);
         assert_eq!(linspace.size, deserialized.size);
-        assert_approx_eq!(
-            f64,
-            linspace.reference.shift().get::<ppm>(),
-            deserialized.reference.shift().get::<ppm>()
-        );
-        assert_eq!(linspace.reference.index(), deserialized.reference.index());
-        assert_eq!(linspace.reference.name(), deserialized.reference.name());
-        assert_eq!(linspace.reference.method(), deserialized.reference.method());
+        assert_eq!(linspace.reference, deserialized.reference);
     }
 }
