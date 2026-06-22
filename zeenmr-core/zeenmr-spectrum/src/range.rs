@@ -202,6 +202,11 @@ where
     pub fn width(&self) -> T {
         self.max() - self.min()
     }
+
+    /// Returns the signed width of the range by computing `end - start`.
+    pub fn signed_width(&self) -> T {
+        self.end - self.start
+    }
 }
 
 impl<T> Range<T>
