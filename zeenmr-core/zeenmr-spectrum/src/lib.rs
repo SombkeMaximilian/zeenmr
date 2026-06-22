@@ -6,5 +6,7 @@
 mod nucleus;
 pub use nucleus::Nucleus;
 
+pub mod range;
+
 mod reference;
 pub use reference::ShiftReference;
