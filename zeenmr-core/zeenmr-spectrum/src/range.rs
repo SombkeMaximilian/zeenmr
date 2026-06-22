@@ -168,9 +168,9 @@ where
     /// Returns the greater of `start` and `end`.
     pub fn max(&self) -> T {
         if self.is_descending() {
-            self.end
-        } else {
             self.start
+        } else {
+            self.end
         }
     }
 
