@@ -67,6 +67,13 @@ impl ShiftReference {
     /// dividing frequencies by the larmor frequency.
     ///
     /// Returns `None` if `larmor` is zero, one of the infinities, or `NaN`.
+    ///
+    /// In order to calculate the chemical shift of a frequency value, divide it
+    /// by the larmor frequency and add the offset to it:
+    ///
+    /// ```text
+    /// shift = offset + frequency / larmor
+    /// ```
     pub fn offset(&self, larmor: Frequency) -> Option<Ratio> {
         if !larmor.is_finite() || larmor.is_zero() {
             return None;
@@ -78,6 +85,13 @@ impl ShiftReference {
     /// Returns the offset to apply to chemical shift values obtained by
     /// dividing frequencies by the larmor frequency, without validating
     /// `larmor`.
+    ///
+    /// In order to calculate the chemical shift of a frequency value, divide it
+    /// by the larmor frequency and add the offset to it:
+    ///
+    /// ```text
+    /// shift = offset + frequency / larmor
+    /// ```
     pub fn offset_unchecked(&self, larmor: Frequency) -> Ratio {
         self.shift - self.frequency / larmor
     }
