@@ -8,5 +8,8 @@ pub use nucleus::Nucleus;
 
 pub mod range;
 
+mod axis;
+pub use axis::Axis;
+
 mod reference;
 pub use reference::ShiftReference;
