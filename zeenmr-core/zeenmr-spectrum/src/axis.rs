@@ -95,22 +95,14 @@ impl Axis {
 
     /// Returns the frequency step size given a number of data points.
     ///
-    /// If `size` is 1, the returned step size is not meaningful.
-    ///
-    /// # Panics
-    ///
-    /// Panics in debug builds due to overflow if `size` is 0.
+    /// If `size <= 1`, the returned step size is not meaningful.
     pub fn freq_step(&self, size: usize) -> Frequency {
-        self.range.signed_width() / ((size - 1) as f64)
+        self.range.signed_width() / (size.saturating_sub(1) as f64)
     }
 
     /// Returns the chemical shift step size given a number of data points.
     ///
-    /// If `size` is 1, the returned step size is not meaningful.
-    ///
-    /// # Panics
-    ///
-    /// Panics in debug builds due to overflow if `size` is 0.
+    /// If `size <= 1`, the returned step size is not meaningful.
     pub fn shift_step(&self, size: usize) -> Ratio {
         self.freq_step(size) / self.larmor
     }
@@ -186,17 +178,13 @@ impl Axis {
     /// Returns an iterator over `size` equally spaced frequencies from the
     /// start to the end of the frequency range.
     ///
-    /// If `size` is 1, the returned iterator does not contain any meaningful
+    /// If `size <= 1`, the returned iterator does not contain any meaningful
     /// values.
     ///
     /// Due to floating point errors when adding and multiplying, the end value
     /// will not be exactly identical to the end of the frequency range.
     ///
     /// Each call to this method will recompute the frequency values on the fly.
-    ///
-    /// # Panics
-    ///
-    /// Panics in debug builds due to overflow if `size` is 0.
     pub fn freqs(&self, size: usize) -> impl Iterator<Item = Frequency> + use<> {
         let step = self.freq_step(size);
         let start = self.range.start();
@@ -209,17 +197,13 @@ impl Axis {
     /// Returns a parallel iterator over `size` equally spaced frequencies from
     /// the start to the end of the frequency range.
     ///
-    /// If `size` is 1, the returned iterator does not contain any meaningful
+    /// If `size <= 1`, the returned iterator does not contain any meaningful
     /// values.
     ///
     /// Due to floating point errors when adding and multiplying, the end value
     /// will not be exactly identical to the end of the frequency range.
     ///
     /// Each call to this method will recompute the frequency values on the fly.
-    ///
-    /// # Panics
-    ///
-    /// Panics in debug builds due to overflow if `size` is 0.
     #[cfg(feature = "rayon")]
     pub fn par_freqs(&self, size: usize) -> impl IndexedParallelIterator<Item = Frequency> + use<> {
         let step = self.freq_step(size);
@@ -233,17 +217,13 @@ impl Axis {
     /// Returns an iterator over `size` equally spaced chemical shifts from the
     /// start to the end of the chemical shift range.
     ///
-    /// If `size` is 1, the returned iterator does not contain any meaningful
+    /// If `size <= 1`, the returned iterator does not contain any meaningful
     /// values.
     ///
     /// Due to floating point errors when adding and multiplying, the end value
     /// will not be exactly identical to the end of the frequency range.
     ///
     /// Each call to this method will recompute the frequency values on the fly.
-    ///
-    /// # Panics
-    ///
-    /// Panics in debug builds due to overflow if `size` is 0.
     pub fn shifts(&self, size: usize) -> impl Iterator<Item = Ratio> + use<> {
         let step = self.shift_step(size);
         let start = self.shift_range().start();
@@ -256,17 +236,13 @@ impl Axis {
     /// Returns a parallel iterator over `size` equally spaced chemical shifts
     /// from the start to the end of the chemical shift range.
     ///
-    /// If `size` is 1, the returned iterator does not contain any meaningful
+    /// If `size <= 1`, the returned iterator does not contain any meaningful
     /// values.
     ///
     /// Due to floating point errors when adding and multiplying, the end value
     /// will not be exactly identical to the end of the frequency range.
     ///
     /// Each call to this method will recompute the frequency values on the fly.
-    ///
-    /// # Panics
-    ///
-    /// Panics in debug builds due to overflow if `size` is 0.
     #[cfg(feature = "rayon")]
     pub fn par_shifts(&self, size: usize) -> impl IndexedParallelIterator<Item = Ratio> + use<> {
         let step = self.shift_step(size);
@@ -351,50 +327,29 @@ mod tests {
                     let axis = Axis::new(range, larmor, reference).unwrap();
                     let sizes = std::iter::once(0).chain((0..18).map(|i| 2_usize.pow(i)));
 
-                    sizes.for_each(|size| {
-                        match size {
-                            0 => {
-                                // should panic in debug builds
-                                #[cfg(debug_assertions)]
-                                {
-                                    assert!(
-                                        std::panic::catch_unwind(|| axis.freq_step(0)).is_err()
-                                    );
-                                    assert!(
-                                        std::panic::catch_unwind(|| axis.shift_step(0)).is_err()
-                                    );
-                                }
-                                #[cfg(not(debug_assertions))]
-                                {
-                                    assert!(axis.freq_step(0).is_finite());
-                                    assert!(axis.shift_step(0).is_finite());
-                                }
-                            }
-                            1 => {
-                                assert!(!axis.freq_step(1).is_nan());
-                                assert!(!axis.shift_step(1).is_nan());
-                            }
-                            _ => {
-                                let freq_range = axis.freq_range();
-                                let freq_step = axis.freq_step(size);
-                                let shift_range = axis.shift_range();
-                                let shift_step = axis.shift_step(size);
+                    sizes.for_each(|size| match size {
+                        0 | 1 => {
+                            assert!(!axis.freq_step(size).is_nan());
+                            assert!(!axis.shift_step(size).is_nan());
+                        }
+                        _ => {
+                            let freq_range = axis.freq_range();
+                            let freq_step = axis.freq_step(size);
+                            let shift_range = axis.shift_range();
+                            let shift_step = axis.shift_step(size);
 
-                                assert_approx_eq!(
-                                    f64,
-                                    (freq_range.start() + freq_step * (size - 1) as f64)
-                                        .get::<hertz>(),
-                                    freq_range.end().get::<hertz>(),
-                                    epsilon = 1e-12
-                                );
-                                assert_approx_eq!(
-                                    f64,
-                                    (shift_range.start() + shift_step * (size - 1) as f64)
-                                        .get::<ppm>(),
-                                    shift_range.end().get::<ppm>(),
-                                    epsilon = 1e-12
-                                );
-                            }
+                            assert_approx_eq!(
+                                f64,
+                                (freq_range.start() + freq_step * (size - 1) as f64).get::<hertz>(),
+                                freq_range.end().get::<hertz>(),
+                                epsilon = 1e-12
+                            );
+                            assert_approx_eq!(
+                                f64,
+                                (shift_range.start() + shift_step * (size - 1) as f64).get::<ppm>(),
+                                shift_range.end().get::<ppm>(),
+                                epsilon = 1e-12
+                            );
                         }
                     })
                 }
