@@ -3,13 +3,7 @@
 
 //! Data structures for representing NMR spectra and their properties.
 
+pub mod frequency_axis;
+
 mod nucleus;
 pub use nucleus::Nucleus;
-
-pub mod range;
-
-mod axis;
-pub use axis::Axis;
-
-mod reference;
-pub use reference::ShiftReference;

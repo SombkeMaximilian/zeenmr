@@ -1,5 +1,5 @@
-use crate::range::{FrequencyRange, ShiftRange};
-use crate::reference::ShiftReference;
+use crate::frequency_axis::range::{FrequencyRange, ShiftRange};
+use crate::frequency_axis::reference::ShiftReference;
 use num_traits::Zero;
 use uom::si::f64::{Frequency, Ratio};
 use uom::si::ratio::ratio;
