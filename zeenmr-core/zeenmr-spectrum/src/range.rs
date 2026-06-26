@@ -7,12 +7,6 @@ use uom::si::f64::{Frequency, Ratio};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-/// Index range on a spectral axis.
-///
-/// This is an alias of [`core::ops::Range`] for compatibility with index
-/// slicing, which uses `[start, end)` unlike the other ranges in this module.
-pub type IndexRange = core::ops::Range<usize>;
-
 /// Frequency range on a spectral axis.
 ///
 /// # Invariants
