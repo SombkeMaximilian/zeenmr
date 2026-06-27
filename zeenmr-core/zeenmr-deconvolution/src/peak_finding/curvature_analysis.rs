@@ -19,12 +19,13 @@ use serde::{Deserialize, Serialize};
 /// signal is concave down (curving downwards).
 ///
 /// The indices are offset by +2 to align with the corresponding signal data
-/// points, as the second derivative can only be computed for inner points of
-/// the signal intensities, and the conditions for a peak center can only be
-/// checked for a second derivative data point with neighbors on both sides. For
-/// example, with 10 signal intensity data points, the second derivative is
-/// computed for the 8 inner points, and the peak centers can be found at
-/// indices 2 to 7. The peak centers are then scanned with a sliding window.
+/// points. This is because the second derivative can only be computed for inner
+/// points of the signal intensities, and the conditions for a peak center can
+/// only be checked for a second derivative data point with neighbors on both
+/// sides. For example, with 10 signal intensity data points, the second
+/// derivative is computed for the 8 inner points, and the peak centers can be
+/// found at indices 2 to 7. The peak centers are then scanned with a sliding
+/// window.
 ///
 /// | Signal Intensities Index | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
 /// | ------------------------ | - | - | - | - | - | - | - | - | - | - |
