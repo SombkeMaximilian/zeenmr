@@ -30,3 +30,17 @@ impl<T> Array1D for Rc<[T]> {
 impl<T> Array1D for Arc<[T]> {
     type Elem = T;
 }
+
+impl<A> Array1D for &A
+where
+    A: Array1D,
+{
+    type Elem = A::Elem;
+}
+
+impl<A> Array1D for &mut A
+where
+    A: Array1D,
+{
+    type Elem = A::Elem;
+}
