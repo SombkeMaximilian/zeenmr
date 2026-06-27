@@ -106,7 +106,7 @@ impl<T> FindSignalRange<T> for Range<usize> {
 /// This test statistic relies on there being noise at the edges of the array.
 /// If there is no or extremely little noise, division by zero will occur.
 #[derive(Copy, Clone, PartialEq, Debug)]
-pub struct CumulativeSum<F, M> {
+pub struct CumulativeSum<F, K> {
     /// Flagging limit above which to mark a position as signal start or end.
     limit: F,
     /// Penalty for each term.
@@ -116,7 +116,7 @@ pub struct CumulativeSum<F, M> {
     /// Padding around the start and end points to avoid cutting off signals.
     padding: usize,
     /// Real channel or magnitude.
-    intensity_kind: PhantomData<M>,
+    intensity_kind: PhantomData<K>,
 }
 
 impl<F> FindSignalRange<F> for CumulativeSum<F, Magnitude>
@@ -174,7 +174,7 @@ where
     }
 }
 
-impl<F, M> CumulativeSum<F, M>
+impl<F, K> CumulativeSum<F, K>
 where
     F: Copy + iter::Sum<F> + Float + FromPrimitive,
 {
