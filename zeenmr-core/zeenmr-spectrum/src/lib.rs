@@ -11,3 +11,12 @@ pub mod intensity_array;
 
 mod nucleus;
 pub use nucleus::Nucleus;
+
+mod spectrum;
+pub use spectrum::{DualChannel1D, Spectrum1D};
+
+pub mod builder_1d {
+    //! Builder pattern for spectra.
+
+    pub use crate::spectrum::{Builder1D, HasAxis, HasRange, NeedsAxis, NeedsRange};
+}
