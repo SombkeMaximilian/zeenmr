@@ -1,4 +1,4 @@
-//! Error types for creating and validation intensity arrays.
+//! Error types for working with NMR spectra.
 
 /// A specialized [`Result`] type.
 ///
@@ -8,7 +8,7 @@
 /// broadly used across the library.
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// An `Error` that occurred during construction or validation.
+/// An `Error` that occurred while working with NMR spectra.
 ///
 /// See the [`Kind`] enum for the different kinds of errors that can occur.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -17,7 +17,7 @@ pub struct Error {
     kind: Kind,
 }
 
-/// The kind of `Error` that can occur during construction and validation.
+/// The kind of `Error` that can occur while working with NMR spectra.
 ///
 /// Marked as non-exhaustive to allow for new variants to be added in the future
 /// without breaking compatibility.

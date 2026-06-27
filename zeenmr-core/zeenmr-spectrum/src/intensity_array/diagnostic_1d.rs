@@ -1,7 +1,7 @@
 //! Intensity diagnostics for detecting 1D spectral properties.
 
 use crate::intensity_array::Array1D;
-use crate::intensity_array::error::{Error, Result};
+use crate::error::{Error, Result};
 use num_traits::{Float, FromPrimitive};
 use std::iter;
 use std::marker::PhantomData;

@@ -3,6 +3,8 @@
 
 //! Data structures for representing NMR spectra and their properties.
 
+pub mod error;
+
 pub mod frequency_axis;
 
 pub mod intensity_array;
