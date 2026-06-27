@@ -11,8 +11,8 @@ pub use crate::jcampdx::tabulation::error as table_error;
 ///
 /// [`Result`]: std::result::Result
 ///
-/// This type alias avoids writing out `Result<T, zeenmr_parse::Error>`
-/// directly.
+/// This type alias avoids writing out the full type name directly, and is
+/// broadly used across the library.
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// An `Error` that occurred while parsing a file.

@@ -7,8 +7,8 @@ use std::borrow::Cow;
 ///
 /// [`Result`]: std::result::Result
 ///
-/// This type alias avoids writing out
-/// `Result<T, zeenmr_parse::jcampdx::tabulation::error::Error>` directly.
+/// This type alias avoids writing out the full type name directly, and is
+/// broadly used across the library.
 pub(crate) type Result<T> = std::result::Result<T, Error>;
 
 /// An `Error` that occurred during tabulation of a block.

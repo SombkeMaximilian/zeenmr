@@ -6,8 +6,8 @@ use std::sync::Arc;
 ///
 /// [`Result`]: std::result::Result
 ///
-/// This type alias avoids writing out `Result<T, zeenmr_deconvolution::Error>`
-/// directly, and is broadly used across the library.
+/// This type alias avoids writing out the full type name directly, and is
+/// broadly used across the library.
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// An `Error` that occurred during the deconvolution process.
