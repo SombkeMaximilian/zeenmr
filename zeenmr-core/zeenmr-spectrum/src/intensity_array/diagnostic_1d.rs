@@ -1,19 +1,19 @@
 //! Intensity diagnostics for detecting 1D spectral properties.
 
-use crate::intensity_array::Array1D;
 use crate::error::{Error, Result};
+use crate::intensity_array::Array1D;
 use num_traits::{Float, FromPrimitive};
 use std::iter;
 use std::marker::PhantomData;
 use std::ops::Range;
 
 /// Intensities are magnitude transformed, i.e., `s = sqrt(r^2 + i^2)`.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct Magnitude;
 
-/// Intensities are the phase-corrected real channel.
-#[derive(Copy, Clone, Debug)]
-pub struct RealChannel;
+/// Intensities are the real or imaginary channel.
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub struct SingleChannel;
 
 /// Trait for validating intensities.
 pub trait ValidateIntensities<T> {
@@ -34,7 +34,7 @@ where
 {
     fn validate<A>(array: A) -> Result<()>
     where
-        A: Array1D<Elem=F>,
+        A: Array1D<Elem = F>,
     {
         let array = array.as_ref();
 
@@ -50,13 +50,13 @@ where
     }
 }
 
-impl<F> ValidateIntensities<F> for RealChannel
+impl<F> ValidateIntensities<F> for SingleChannel
 where
     F: Float,
 {
     fn validate<A>(array: A) -> Result<()>
     where
-        A: Array1D<Elem=F>,
+        A: Array1D<Elem = F>,
     {
         let array = array.as_ref();
 
@@ -71,7 +71,7 @@ where
 }
 
 /// Trait for finding the range within which signals are found.
-pub trait FindSignalRange<T> {
+pub trait FindSignalRange<T, K> {
     /// Computes the signal range.
     ///
     /// May perform expensive computations.
@@ -80,7 +80,7 @@ pub trait FindSignalRange<T> {
         A: Array1D<Elem = T>;
 }
 
-impl<T> FindSignalRange<T> for Range<usize> {
+impl<T, K> FindSignalRange<T, K> for Range<usize> {
     /// Returns a copy of `self`.
     ///
     /// # Errors
@@ -91,7 +91,7 @@ impl<T> FindSignalRange<T> for Range<usize> {
     where
         A: Array1D<Elem = T>,
     {
-        if self.start >= array.as_ref().len() || self.end >= array.as_ref().len() {
+        if self.start > array.as_ref().len() || self.end > array.as_ref().len() {
             Err(Error::out_of_bounds())
         } else if self.is_empty() {
             Err(Error::no_signal())
@@ -115,11 +115,11 @@ pub struct CumulativeSum<F, K> {
     edges: f64,
     /// Padding around the start and end points to avoid cutting off signals.
     padding: usize,
-    /// Real channel or magnitude.
+    /// Single channel or magnitude.
     intensity_kind: PhantomData<K>,
 }
 
-impl<F> FindSignalRange<F> for CumulativeSum<F, Magnitude>
+impl<F> FindSignalRange<F, Magnitude> for CumulativeSum<F, Magnitude>
 where
     F: Copy + iter::Sum<F> + Float + FromPrimitive,
 {
@@ -149,7 +149,7 @@ where
     }
 }
 
-impl<F> FindSignalRange<F> for CumulativeSum<F, RealChannel>
+impl<F> FindSignalRange<F, SingleChannel> for CumulativeSum<F, SingleChannel>
 where
     F: Copy + iter::Sum<F> + Float + FromPrimitive,
 {
@@ -316,12 +316,14 @@ where
     /// Returns an error if the length of the edges is zero.
     fn edge_stats(&self, array: &[F]) -> Result<(F, F)> {
         let edge_width = (array.len() as f64 * self.edges) as usize;
+
+        if edge_width == 0 {
+            return Err(Error::divide_by_zero());
+        }
+
         let right_edge = array.len() - edge_width;
         let num =
             F::from_usize(2 * edge_width).expect("conversion from usize to F must never fail");
-        if num <= F::from_u8(100).expect("conversion from u8 to F must never fail") * F::epsilon() {
-            return Err(Error::divide_by_zero());
-        }
 
         let left_sum = array[..edge_width].iter().copied().sum::<F>();
         let right_sum = array[right_edge..].iter().copied().sum::<F>();
