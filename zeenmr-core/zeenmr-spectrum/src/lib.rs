@@ -5,5 +5,7 @@
 
 pub mod frequency_axis;
 
+pub mod intensity_array;
+
 mod nucleus;
 pub use nucleus::Nucleus;
