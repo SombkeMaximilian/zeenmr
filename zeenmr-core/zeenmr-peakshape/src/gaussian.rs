@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// # Definition
 ///
-/// The Gaussian function is typically defined as:
+/// The [Gaussian] function is typically defined as:
 ///
 /// [Gaussian]: https://en.wikipedia.org/wiki/Gaussian_function
 ///
@@ -29,7 +29,8 @@ use serde::{Deserialize, Serialize};
 ///
 /// Since `c` does not directly need to be absorbed, we can absorb both the
 /// square and the factor into a single term, `double_scale2`, saving two
-/// multiplications during every evaluation. The Gaussian function then becomes:
+/// multiplications during every evaluation. The [Gaussian] function then
+/// becomes:
 ///
 /// ```text
 /// f(x) = amp * exp(-(x - center)² / double_scale2)
