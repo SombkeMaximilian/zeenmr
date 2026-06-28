@@ -16,13 +16,3 @@ workspace = true
 name = "deconvoluter"
 path = "deconvoluter.rs"
 harness = false
-
-[[bench]]
-name = "read_bruker"
-path = "read_bruker.rs"
-harness = false
-
-[[bench]]
-name = "read_jcampdx"
-path = "read_jcampdx.rs"
-harness = false
