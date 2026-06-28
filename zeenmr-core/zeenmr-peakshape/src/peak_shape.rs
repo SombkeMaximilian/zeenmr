@@ -27,7 +27,7 @@ use crate::Evaluate;
 ///   This is to ensure numerical stability for its other operations. For
 ///   example, a peak shape with an area close to machine epsilon would likely
 ///   lead to downstream calculations producing nonsensical results.
-pub trait PeakShape<T = f64>: Evaluate<T> {
+pub trait PeakShape<T>: Evaluate<T> {
     /// Returns the center position.
     fn center(&self) -> T;
 

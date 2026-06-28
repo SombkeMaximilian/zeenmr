@@ -26,7 +26,7 @@ use rayon::prelude::*;
 ///
 /// assert_approx_eq!(f64, Power(2).evaluate(3.0), 9.0);
 /// ```
-pub trait Evaluate<T = f64> {
+pub trait Evaluate<T> {
     /// Evaluate the function at the specified point.
     fn evaluate(&self, at: T) -> T;
 }
