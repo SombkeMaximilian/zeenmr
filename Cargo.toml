@@ -21,7 +21,7 @@ num-traits = { version = "0.2.19" }
 uom = { git = "https://github.com/SombkeMaximilian/uom", branch = "gyromagnetic_ratio", default-features = false, features = ["autoconvert", "std", "si", "f64"] }
 
 byteorder = { version = "1.5.0" }
-logos = { version = "0.15.1" }
+logos = { version = "0.16.1" }
 regex = { version = "1.11.2" }
 
 rayon = { version = "1.10.0" }

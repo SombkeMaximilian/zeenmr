@@ -23,19 +23,12 @@ categories = [
 
 [features]
 default = []
-serde = ["dep:serde", "zeenmr-spectrum/serde"]
+serde = ["dep:serde"]
 
 [dependencies]
-zeenmr-spectrum = { workspace = true }
-
 byteorder = { workspace = true }
 logos = { workspace = true }
-regex = { workspace = true }
-uom = { workspace = true }
 serde = { workspace = true, optional = true }
-
-[dev-dependencies]
-serde_json = { workspace = true }
 
 [lints]
 workspace = true

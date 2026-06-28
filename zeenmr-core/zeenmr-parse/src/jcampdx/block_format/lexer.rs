@@ -28,7 +28,7 @@ pub(crate) enum FormatToken {
     #[token("..")]
     Repeat,
     /// A `DATA TABLE` data block contains the exact type of data after a comma.
-    #[regex(r",[^\n\r]+")]
+    #[regex(r",[^\n\r]+", allow_greedy = true)]
     DataBlockKind,
     /// A new line ends a data block format specifier.
     #[regex(r"(?&newline)")]
