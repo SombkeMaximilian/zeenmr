@@ -6,6 +6,7 @@ use uom::si::ratio::part_per_million as ppm;
 use zeenmr_peakshape::iter::SuperpositionMap;
 use zeenmr_peakshape::{Lorentzian, PeakShape};
 use zeenmr_spectrum::Spectrum1D;
+use zeenmr_spectrum::intensity_array::Array1D;
 
 #[cfg(feature = "rayon")]
 use crate::fitting::ParFit;
@@ -16,7 +17,6 @@ use zeenmr_peakshape::iter::ParSuperpositionMap;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use zeenmr_spectrum::intensity_array::Array1D;
 
 /// Trait for estimating parameters of a peak shape from three data points.
 pub trait ThreePointStencil<T> {
