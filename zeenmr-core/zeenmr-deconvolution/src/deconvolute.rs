@@ -54,10 +54,10 @@ pub trait DeconvoluteMap<T, P>: Iterator {
         D: Deconvolute<T, P>;
 }
 
-impl<S, I, P> DeconvoluteMap<S::Elem, P> for I
+impl<'s, S, I, P> DeconvoluteMap<S::Elem, P> for I
 where
-    S: Array1D,
-    I: Iterator<Item = Spectrum1D<S>>,
+    S: Array1D + 's,
+    I: Iterator<Item = &'s Spectrum1D<S>>,
     P: PeakShape<S::Elem>,
 {
     fn deconvolute<D>(
@@ -67,7 +67,7 @@ where
     where
         D: Deconvolute<S::Elem, P>,
     {
-        self.map(move |spectrum| deconvoluter.deconvolute(&spectrum))
+        self.map(move |spectrum| deconvoluter.deconvolute(spectrum))
     }
 }
 
@@ -86,11 +86,11 @@ pub trait ParDeconvoluteMap<T, P>: IndexedParallelIterator {
 }
 
 #[cfg(feature = "rayon")]
-impl<S, I, P> ParDeconvoluteMap<S::Elem, P> for I
+impl<'s, S, I, P> ParDeconvoluteMap<S::Elem, P> for I
 where
-    S: Array1D,
+    S: Array1D + 's,
     S::Elem: Send + Sync,
-    I: IndexedParallelIterator<Item = Spectrum1D<S>>,
+    I: IndexedParallelIterator<Item = &'s Spectrum1D<S>>,
     P: PeakShape<S::Elem> + Send + Sync,
 {
     fn deconvolute<D>(
@@ -100,7 +100,7 @@ where
     where
         D: ParDeconvolute<S::Elem, P> + Send + Sync,
     {
-        self.map(move |spectrum| deconvoluter.par_deconvolute(&spectrum))
+        self.map(move |spectrum| deconvoluter.par_deconvolute(spectrum))
     }
 }
 
