@@ -7,17 +7,16 @@ use num_traits::Float;
 use std::ops::Range;
 use uom::si::ratio::part_per_million as ppm;
 use zeenmr_peakshape::PeakShape;
-use zeenmr_peakshape::iter::SuperpositionMap;
+use zeenmr_peakshape::iter::{ParSuperpositionMap, SuperpositionMap};
 use zeenmr_spectrum::Spectrum1D;
 use zeenmr_spectrum::frequency_axis::range::ShiftRange;
+use zeenmr_spectrum::intensity_array::Array1D;
 
 #[cfg(feature = "rayon")]
 use crate::fitting::ParFit;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 #[cfg(feature = "rayon")]
-use zeenmr_peakshape::iter::ParSuperpositionMap;
-use zeenmr_spectrum::intensity_array::Array1D;
 
 /// Trait for deconvoluting a [`Spectrum`] into its constituent signals.
 ///
