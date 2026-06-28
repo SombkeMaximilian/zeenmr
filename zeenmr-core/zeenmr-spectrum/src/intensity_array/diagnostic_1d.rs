@@ -259,7 +259,7 @@ where
             flagging = (flagging + std_int - self.penalty).max(T::zero());
 
             if flagging >= self.limit {
-                end = end - pos.saturating_sub(self.padding);
+                end -= pos.saturating_sub(self.padding);
                 break;
             }
         }
@@ -300,7 +300,7 @@ where
             flagging_n = (flagging_n - std_int - self.penalty).max(T::zero());
 
             if flagging_p >= self.limit || flagging_n >= self.limit {
-                end = end - pos.saturating_sub(self.padding);
+                end -= pos.saturating_sub(self.padding);
                 break;
             }
         }

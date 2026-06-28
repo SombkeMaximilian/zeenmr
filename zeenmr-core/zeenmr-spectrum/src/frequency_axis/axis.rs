@@ -189,9 +189,7 @@ impl Axis {
         let step = self.freq_step(size);
         let start = self.range.start();
 
-        (0..size)
-            .into_iter()
-            .map(move |i| start + step * i as f64)
+        (0..size).map(move |i| start + step * i as f64)
     }
 
     /// Returns a parallel iterator over `size` equally spaced frequencies from
@@ -228,9 +226,7 @@ impl Axis {
         let step = self.shift_step(size);
         let start = self.shift_range().start();
 
-        (0..size)
-            .into_iter()
-            .map(move |i| start + step * i as f64)
+        (0..size).map(move |i| start + step * i as f64)
     }
 
     /// Returns a parallel iterator over `size` equally spaced chemical shifts
