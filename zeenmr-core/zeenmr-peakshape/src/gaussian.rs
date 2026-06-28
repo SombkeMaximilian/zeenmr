@@ -1,4 +1,5 @@
 use crate::{Evaluate, PeakShape};
+use num_traits::{Float, FloatConst};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -8,6 +9,9 @@ use serde::{Deserialize, Serialize};
 /// [Gaussian]: https://en.wikipedia.org/wiki/Gaussian_function
 ///
 /// Also known as the normal distribution.
+///
+/// This type implements the [`Evaluate`] trait and is a [`PeakShape`], if its
+/// type parameter is [`Float`] + [`FloatConst`].
 ///
 /// # Definition
 ///
@@ -46,62 +50,75 @@ use serde::{Deserialize, Serialize};
 /// deserialized using `serde`.
 #[derive(Copy, Clone, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Gaussian {
+pub struct Gaussian<T> {
     /// Amplitude of the Gaussian function.
     ///
     /// Must be positive.
-    amp: f64,
+    amp: T,
     /// Doubled square of the standard deviation of the Gaussian function.
     ///
     /// Absorbed doubled, squared scale in the denominator of the exponential.
     /// Must be positive.
-    double_scale2: f64,
+    double_scale2: T,
     /// Center of the Gaussian function.
-    center: f64,
+    center: T,
 }
 
-impl Evaluate for Gaussian {
-    fn evaluate(&self, at: f64) -> f64 {
+impl<T> Evaluate<T> for Gaussian<T>
+where
+    T: Float,
+{
+    fn evaluate(&self, at: T) -> T {
         self.amp * (-(at - self.center).powi(2) / self.double_scale2).exp()
     }
 }
 
-impl PeakShape for Gaussian {
-    fn center(&self) -> f64 {
+impl<T> PeakShape<T> for Gaussian<T>
+where
+    T: Float + FloatConst,
+{
+    fn center(&self) -> T {
         self.center
     }
 
-    fn maximum(&self) -> f64 {
+    fn maximum(&self) -> T {
         self.amp
     }
 
-    fn half_width(&self) -> f64 {
-        (std::f64::consts::LN_2 * self.double_scale2).sqrt()
+    fn half_width(&self) -> T {
+        (T::LN_2() * self.double_scale2).sqrt()
     }
 
-    fn area(&self) -> f64 {
-        self.amp * (std::f64::consts::PI * self.double_scale2).sqrt()
+    fn full_width(&self) -> T {
+        T::from(2_u8).unwrap() * self.half_width()
+    }
+
+    fn area(&self) -> T {
+        self.amp * (T::PI() * self.double_scale2).sqrt()
     }
 
     fn is_valid(&self) -> bool {
         self.amp.is_finite()
-            && self.amp > 0.0
+            && self.amp > T::zero()
             && self.double_scale2.is_finite()
-            && self.double_scale2 > 0.0
+            && self.double_scale2 > T::zero()
             && self.center.is_finite()
     }
 
-    fn is_significant(&self, precision: f64) -> bool {
+    fn is_significant(&self, precision: T) -> bool {
         self.maximum().abs() > precision && self.half_width().abs() > precision
     }
 }
 
-impl Gaussian {
+impl<T> Gaussian<T>
+where
+    T: Float,
+{
     /// Creates a new `Gaussian` with the specified parameters.
     ///
     /// Note that these are not the standard parameters, but the transformed
     /// parameters as outlined in the struct documentation.
-    pub fn new(amp: f64, double_scale2: f64, center: f64) -> Gaussian {
+    pub fn new(amp: T, double_scale2: T, center: T) -> Self {
         Self {
             amp,
             double_scale2,
@@ -110,10 +127,10 @@ impl Gaussian {
     }
 
     /// Creates a new `Gaussian` from the untransformed parameters.
-    pub fn from_untransformed(amp: f64, scale: f64, center: f64) -> Gaussian {
+    pub fn from_untransformed(amp: T, scale: T, center: T) -> Self {
         Self {
             amp,
-            double_scale2: 2_f64 * scale.powi(2),
+            double_scale2: T::from(2_u8).unwrap() * scale.powi(2),
             center,
         }
     }

@@ -27,26 +27,24 @@ use crate::Evaluate;
 ///   This is to ensure numerical stability for its other operations. For
 ///   example, a peak shape with an area close to machine epsilon would likely
 ///   lead to downstream calculations producing nonsensical results.
-pub trait PeakShape: Evaluate {
+pub trait PeakShape<T = f64>: Evaluate<T> {
     /// Returns the center position.
-    fn center(&self) -> f64;
+    fn center(&self) -> T;
 
     /// Returns the maximum value.
-    fn maximum(&self) -> f64 {
+    fn maximum(&self) -> T {
         self.evaluate(self.center())
     }
 
     /// Returns the value of the half-width property.
-    fn half_width(&self) -> f64;
+    fn half_width(&self) -> T;
 
     /// Returns the value of the full-width property.
-    fn full_width(&self) -> f64 {
-        self.half_width() * 2_f64
-    }
+    fn full_width(&self) -> T;
 
     /// Returns the total area under the curve, as defined by the improper
     /// integral.
-    fn area(&self) -> f64;
+    fn area(&self) -> T;
 
     /// Returns `true` if the current values of the parameters represent a
     /// geometrically meaningful peak shape.
@@ -54,5 +52,5 @@ pub trait PeakShape: Evaluate {
 
     /// Returns `true` if any calculations are significant relative to the given
     /// precision.
-    fn is_significant(&self, precision: f64) -> bool;
+    fn is_significant(&self, precision: T) -> bool;
 }

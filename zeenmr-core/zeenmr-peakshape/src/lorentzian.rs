@@ -1,4 +1,5 @@
 use crate::{Evaluate, PeakShape};
+use num_traits::{Float, FloatConst};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -10,7 +11,8 @@ use serde::{Deserialize, Serialize};
 /// Also known as the probability density function of the Cauchy distribution,
 /// the Lorentz distribution, or the Breit-Wigner distribution.
 ///
-/// This type implements the [`Evaluate`] trait, and is a [`PeakShape`].
+/// This type implements the [`Evaluate`] trait and is a [`PeakShape`], if its
+/// type parameter is [`Float`] + [`FloatConst`].
 ///
 /// # Definition
 ///
@@ -58,7 +60,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// # Negative Parameters
 ///
-/// For a [`Lorentzian`] to represent a peak shape, its `amp` and `scale` must
+/// For a `Lorentzian` to represent a peak shape, its `amp` and `scale` must
 /// be positive. Further, if the transformed parameters `amp_scale` and
 /// `scale2` are negative, attempting to recover the `scale` parameter will
 /// corrupt the data, as it involves taking the square root. This is not
@@ -73,67 +75,76 @@ use serde::{Deserialize, Serialize};
 /// deserialized using `serde`.
 #[derive(Copy, Clone, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Lorentzian {
+pub struct Lorentzian<T> {
     /// Numerator of the Lorentzian function.
     ///
     /// Absorbed product of amplitude parameter and scale. Proportional to the
     /// height of the peak. Must be positive.
-    amp_scale: f64,
+    amp_scale: T,
     /// Scale parameter, or half-width at half-maximum (HWHM), squared.
     ///
     /// Absorbed squared scale in the denominator of the Lorentzian function.
     /// Must be positive.
-    scale2: f64,
+    scale2: T,
     /// Center of the Lorentzian function.
-    center: f64,
+    center: T,
 }
 
-impl Evaluate for Lorentzian {
-    fn evaluate(&self, at: f64) -> f64 {
+impl<T> Evaluate<T> for Lorentzian<T>
+where
+    T: Float,
+{
+    fn evaluate(&self, at: T) -> T {
         self.amp_scale / (self.scale2 + (at - self.center).powi(2))
     }
 }
 
-impl PeakShape for Lorentzian {
-    fn center(&self) -> f64 {
+impl<T> PeakShape<T> for Lorentzian<T>
+where
+    T: Float + FloatConst,
+{
+    fn center(&self) -> T {
         self.center
     }
 
-    fn maximum(&self) -> f64 {
+    fn maximum(&self) -> T {
         self.amp_scale / self.scale2
     }
 
-    fn half_width(&self) -> f64 {
+    fn half_width(&self) -> T {
         self.scale2.sqrt()
     }
 
-    fn full_width(&self) -> f64 {
-        2.0 * self.scale2.sqrt()
+    fn full_width(&self) -> T {
+        T::from(2_u8).unwrap() * self.scale2.sqrt()
     }
 
-    fn area(&self) -> f64 {
-        std::f64::consts::PI * self.amp_scale / self.scale2.sqrt()
+    fn area(&self) -> T {
+        T::PI() * self.amp_scale / self.scale2.sqrt()
     }
 
     fn is_valid(&self) -> bool {
         self.amp_scale.is_finite()
-            && self.amp_scale > 0.0
+            && self.amp_scale > T::zero()
             && self.scale2.is_finite()
-            && self.scale2 > 0.0
+            && self.scale2 > T::zero()
             && self.center.is_finite()
     }
 
-    fn is_significant(&self, precision: f64) -> bool {
+    fn is_significant(&self, precision: T) -> bool {
         self.maximum().abs() > precision && self.scale2.abs() > precision
     }
 }
 
-impl Lorentzian {
+impl<T> Lorentzian<T>
+where
+    T: Float,
+{
     /// Creates a new `Lorentzian` with the specified parameters.
     ///
     /// Note that these are not the standard parameters, but the transformed
     /// parameters as outlined in the struct documentation.
-    pub fn new(amp_scale: f64, scale2: f64, center: f64) -> Self {
+    pub fn new(amp_scale: T, scale2: T, center: T) -> Self {
         Self {
             amp_scale,
             scale2,
@@ -142,7 +153,7 @@ impl Lorentzian {
     }
 
     /// Creates a new `Lorentzian` from the untransformed parameters.
-    pub fn from_untransformed(amp: f64, scale: f64, center: f64) -> Self {
+    pub fn from_untransformed(amp: T, scale: T, center: T) -> Self {
         Self {
             amp_scale: amp * scale,
             scale2: scale.powi(2),
