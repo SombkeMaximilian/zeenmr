@@ -5,7 +5,9 @@
 //! constituent component signals.
 
 /// Small constant to check for non-zero parameters.
-pub(crate) const CHECK_PRECISION: f64 = 1.0e+3 * f64::EPSILON;
+pub(crate) fn precision<T: num_traits::Float>() -> T {
+    T::epsilon() * T::from(1.0e3).expect("conversion from f64 to T must never fail")
+}
 
 pub mod error;
 

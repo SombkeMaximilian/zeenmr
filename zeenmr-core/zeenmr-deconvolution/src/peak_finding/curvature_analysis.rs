@@ -1,7 +1,7 @@
 use crate::error::{Error, Result};
 use crate::peak_finding::{Find, Peak};
-use std::ops::RangeBounds;
-use zeenmr_spectrum::IndexRange;
+use num_traits::Float;
+use std::ops::Range;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -76,9 +76,12 @@ use serde::{Deserialize, Serialize};
 /// | Step 4                   |    | -  | x  | -  |    |    |   |
 /// | Step 5                   | -  | x  | -  |    |    |    |   |
 #[derive(Debug)]
-struct CurvatureDetector<'a>(&'a [f64]);
+struct CurvatureDetector<'a, T>(&'a [T]);
 
-impl CurvatureDetector<'_> {
+impl<T> CurvatureDetector<'_, T>
+where
+    T: Float,
+{
     /// Detects peaks in the signal based on the second derivative.
     ///
     /// # Errors
@@ -91,7 +94,7 @@ impl CurvatureDetector<'_> {
             .windows(3)
             .enumerate()
             .filter_map(|(i, w)| {
-                if w[1] < 0.0 && w[1] < w[0] && w[1] < w[2] {
+                if w[1] < T::zero() && w[1] < w[0] && w[1] < w[2] {
                     let center = i + 2;
                     let left = center - self.find_left_offset(&self.0[..center]);
                     let right = center + self.find_right_offset(&self.0[center - 1..]);
@@ -120,21 +123,21 @@ impl CurvatureDetector<'_> {
     /// Finds the left bound's offset from the peak center.
     ///
     /// See also: [Left Bound](CurvatureDetector#left)
-    fn find_left_offset(&self, second_derivative_left: &[f64]) -> usize {
+    fn find_left_offset(&self, second_derivative_left: &[T]) -> usize {
         second_derivative_left
             .windows(3)
             .rev()
-            .position(|w| w[1] > w[2] && (w[1] >= w[0] || (w[1] < 0.0 && w[0] >= 0.0)))
+            .position(|w| w[1] > w[2] && (w[1] >= w[0] || (w[1] < T::zero() && w[0] >= T::zero())))
             .map_or(second_derivative_left.len(), |left| left + 1)
     }
 
     /// Finds the right bound's offset from the peak center.
     ///
     /// See also: [Right Bound](CurvatureDetector#right)
-    fn find_right_offset(&self, second_derivative_right: &[f64]) -> usize {
+    fn find_right_offset(&self, second_derivative_right: &[T]) -> usize {
         second_derivative_right
             .windows(3)
-            .position(|w| w[1] > w[0] && (w[1] >= w[2] || (w[1] < 0.0 && w[2] >= 0.0)))
+            .position(|w| w[1] > w[0] && (w[1] >= w[2] || (w[1] < T::zero() && w[2] >= T::zero())))
             .map_or(second_derivative_right.len(), |right| right + 1)
     }
 }
@@ -147,17 +150,20 @@ impl CurvatureDetector<'_> {
 /// The score is computed as the minimum of the sums of the absolute second
 /// derivative values within bounds on both sides of the peak center.
 #[derive(Debug)]
-struct CurvatureScore<'a>(&'a [f64]);
+struct CurvatureScore<'a, T>(&'a [T]);
 
-impl CurvatureScore<'_> {
+impl<T> CurvatureScore<'_, T>
+where
+    T: Float,
+{
     /// Scores the given peak.
-    fn score_peak(&self, peak: &Peak) -> f64 {
+    fn score_peak(&self, peak: &Peak) -> T {
         let left_sum = self.0[peak.left - 1..peak.center]
             .iter()
-            .sum::<f64>();
+            .fold(T::zero(), |acc, &x| acc + x);
         let right_sum = self.0[peak.center - 1..peak.right]
             .iter()
-            .sum::<f64>();
+            .fold(T::zero(), |acc, &x| acc + x);
 
         left_sum.min(right_sum)
     }
@@ -184,22 +190,25 @@ impl CurvatureScore<'_> {
 /// derivative values within bounds on both sides of the peak center.
 #[derive(Copy, Clone, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct CurvatureAnalysis {
+pub struct CurvatureAnalysis<T> {
     /// Score threshold for peak filtering.
-    pub threshold: Option<f64>,
+    pub threshold: Option<T>,
 }
 
-impl Find for CurvatureAnalysis {
+impl<T> Find<T> for CurvatureAnalysis<T>
+where
+    T: Float + Send + Sync,
+{
     fn find(
         &self,
-        smoothed: &[f64],
-        signal: IndexRange,
-        ignore: &[IndexRange],
+        smoothed: &[T],
+        signal: &Range<usize>,
+        ignore: &[Range<usize>],
     ) -> Result<Vec<Peak>> {
         let mut second_derivative = smoothed
             .windows(3)
-            .map(|w| w[0] - 2.0 * w[1] + w[2])
-            .collect::<Vec<f64>>();
+            .map(|w| w[0] - w[1] - w[1] + w[2])
+            .collect::<Vec<T>>();
         let mut peaks = CurvatureDetector(&second_derivative).detect_peaks()?;
         peaks.retain(|peak| {
             !ignore
@@ -210,7 +219,7 @@ impl Find for CurvatureAnalysis {
             *value = value.abs();
         }
         let scorer = CurvatureScore(&second_derivative);
-        let bounds = Self::peak_region_boundaries(&peaks, signal);
+        let bounds = peak_region_boundaries(&peaks, signal);
 
         if peaks[..bounds.start].is_empty() && peaks[bounds.end..].is_empty() {
             return Err(Error::empty_signal_free_region());
@@ -223,8 +232,8 @@ impl Find for CurvatureAnalysis {
             .iter()
             .chain(peaks[bounds.end..].iter())
             .map(|peak| scorer.score_peak(peak))
-            .collect::<Vec<f64>>();
-        let (mean, std_dev) = Self::mean_sd_scores(scores_sfr);
+            .collect::<Vec<T>>();
+        let (mean, std_dev) = mean_sd_scores(scores_sfr);
         if let Some(threshold) = self.threshold {
             peaks = peaks
                 .drain(bounds.start..bounds.end)
@@ -241,15 +250,18 @@ impl Find for CurvatureAnalysis {
     }
 }
 
-impl Default for CurvatureAnalysis {
+impl<T> Default for CurvatureAnalysis<T>
+where
+    T: Float,
+{
     fn default() -> Self {
         Self {
-            threshold: Some(5.0),
+            threshold: Some(T::from(5_u8).expect("conversion from u8 to T must never fail")),
         }
     }
 }
 
-impl CurvatureAnalysis {
+impl<T> CurvatureAnalysis<T> {
     /// Creates a new `CurvatureAnalysis` with the given score threshold.
     ///
     /// # Example
@@ -260,34 +272,38 @@ impl CurvatureAnalysis {
     /// let finder_with_filter = CurvatureAnalysis::new(Some(5.0));
     /// let finder_without_filter = CurvatureAnalysis::new(None);
     /// ```
-    pub fn new(threshold: Option<f64>) -> Self {
+    pub fn new(threshold: Option<T>) -> Self {
         Self { threshold }
     }
+}
 
-    /// Determines the range of peaks that fall within the specified signal
-    /// boundaries.
-    fn peak_region_boundaries(peaks: &[Peak], signal: IndexRange) -> IndexRange {
-        let left = peaks
-            .iter()
-            .position(|peak| peak.center > signal.start)
-            .unwrap_or(0);
-        let right = peaks[left..]
-            .iter()
-            .position(|peak| peak.center > signal.end)
-            .map_or(peaks.len() - 1, |offset| left + offset);
+/// Determines the range of peaks that fall within the specified signal
+/// boundaries.
+fn peak_region_boundaries(peaks: &[Peak], signal: &Range<usize>) -> Range<usize> {
+    let left = peaks
+        .iter()
+        .position(|peak| peak.center > signal.start)
+        .unwrap_or(0);
+    let right = peaks[left..]
+        .iter()
+        .position(|peak| peak.center > signal.end)
+        .map_or(peaks.len() - 1, |offset| left + offset);
 
-        (left, right).into()
-    }
+    left..right
+}
 
-    /// Computes the mean and standard deviation of a vector of scores.
-    fn mean_sd_scores(scores: Vec<f64>) -> (f64, f64) {
-        let mean = scores.iter().sum::<f64>() / (scores.len() as f64);
-        let variance = scores
-            .iter()
-            .map(|score| (*score - mean).powi(2))
-            .sum::<f64>()
-            / (scores.len() as f64);
+/// Computes the mean and standard deviation of a vector of scores.
+fn mean_sd_scores<T>(scores: Vec<T>) -> (T, T)
+where
+    T: Float,
+{
+    let len = T::from(scores.len()).expect("conversion from usize to T must never fail");
+    let mean = scores.iter().fold(T::zero(), |acc, &x| acc + x) / len;
+    let variance = scores
+        .iter()
+        .map(|score| (*score - mean).powi(2))
+        .fold(T::zero(), |acc, x| acc + x)
+        / len;
 
-        (mean, variance.sqrt())
-    }
+    (mean, variance.sqrt())
 }

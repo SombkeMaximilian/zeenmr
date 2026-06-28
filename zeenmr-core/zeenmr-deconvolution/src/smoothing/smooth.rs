@@ -6,8 +6,8 @@ use std::borrow::Cow;
 ///
 /// [`Smooth::smooth`] should return the borrowed data in cases where no
 /// smoothing is applied.
-pub trait Smooth: Send + Sync {
+pub trait Smooth<T: Clone>: Send + Sync {
     /// Smooth the provided data and return an owned instance of the smoothed
     /// values.
-    fn smooth<'a>(&self, data: &'a [f64]) -> Cow<'a, [f64]>;
+    fn smooth<'a>(&self, data: &'a [T]) -> Cow<'a, [T]>;
 }

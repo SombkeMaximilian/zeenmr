@@ -1,4 +1,5 @@
 use crate::smoothing::Smooth;
+use num_traits::Float;
 use std::borrow::Cow;
 
 #[cfg(feature = "serde")]
@@ -33,8 +34,11 @@ pub struct MovingAverage {
     pub window_size: usize,
 }
 
-impl Smooth for MovingAverage {
-    fn smooth<'a>(&self, data: &'a [f64]) -> Cow<'a, [f64]> {
+impl<T> Smooth<T> for MovingAverage
+where
+    T: Clone + Float,
+{
+    fn smooth<'a>(&self, data: &'a [T]) -> Cow<'a, [T]> {
         if data.len() < 2 || self.iterations == 0 || self.window_size <= 1 {
             return data.into();
         }
@@ -42,20 +46,28 @@ impl Smooth for MovingAverage {
         let mut data = data.to_vec();
         let half_window = self.window_size / 2;
         let len = data.len();
-        let full_div = 1_f64 / (self.window_size as f64);
+        let full_div = T::one()
+            / T::from(self.window_size).expect("conversion from usize to T must never fail");
         for _ in 0..self.iterations {
-            let mut sum = data.iter().take(half_window).sum::<f64>();
+            let mut sum = data
+                .iter()
+                .take(half_window)
+                .fold(T::zero(), |acc, x| acc + *x);
             for curr in 0..half_window {
-                sum += data[curr + half_window];
-                data[curr] = sum / ((half_window + curr + 1) as f64)
+                sum = sum + data[curr + half_window];
+                data[curr] = sum
+                    / T::from(half_window + curr + 1)
+                        .expect("conversion from usize to T must never fail");
             }
             for curr in half_window..(len - half_window) {
-                sum += data[curr + half_window] - data[curr - half_window];
+                sum = sum + data[curr + half_window] - data[curr - half_window];
                 data[curr] = sum * full_div;
             }
             for curr in (len - half_window)..len {
-                sum -= data[curr - half_window];
-                data[curr] = sum / ((len - curr + half_window - 1) as f64)
+                sum = sum - data[curr - half_window];
+                data[curr] = sum
+                    / T::from(len - curr + half_window - 1)
+                        .expect("conversion from usize to T must never fail");
             }
         }
 

@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use zeenmr_peakshape::PeakShape;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -24,11 +23,14 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
-    serde(bound(serialize = "P: Serialize", deserialize = "P: Deserialize<'de>"))
+    serde(bound(
+        serialize = "T: Serialize, P: Serialize",
+        deserialize = "T: Deserialize<'de>, P: Deserialize<'de>"
+    ))
 )]
-pub struct Deconvolution<P> {
+pub struct Deconvolution<T, P> {
     /// Mean squared error of the deconvolution.
-    mse: f64,
+    mse: T,
     /// Deconvoluted peak shapes.
     #[cfg_attr(feature = "serde", serde(with = "serialize_peak_shapes"))]
     peak_shapes: Arc<[P]>,
@@ -59,15 +61,12 @@ mod serialize_peak_shapes {
     }
 }
 
-impl<P> Deconvolution<P>
-where
-    P: PeakShape + Send + Sync,
-{
+impl<T, P> Deconvolution<T, P> {
     /// Creates a new `Deconvolution`.
     ///
     /// Normally, this type is only instantiated by the deconvolution functions
     /// of deconvoluters.
-    pub fn new<I>(peak_shapes: I, mse: f64) -> Self
+    pub fn new<I>(peak_shapes: I, mse: T) -> Self
     where
         I: IntoIterator<Item = P>,
     {
@@ -83,7 +82,7 @@ where
     }
 
     /// Returns the mean squared error of the deconvolution.
-    pub fn mse(&self) -> f64 {
-        self.mse
+    pub fn mse(&self) -> &T {
+        &self.mse
     }
 }

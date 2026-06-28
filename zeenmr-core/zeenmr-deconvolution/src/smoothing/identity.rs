@@ -5,8 +5,11 @@ use std::borrow::Cow;
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub struct Identity;
 
-impl Smooth for Identity {
-    fn smooth<'a>(&self, data: &'a [f64]) -> Cow<'a, [f64]> {
+impl<T> Smooth<T> for Identity
+where
+    T: Clone,
+{
+    fn smooth<'a>(&self, data: &'a [T]) -> Cow<'a, [T]> {
         data.into()
     }
 }

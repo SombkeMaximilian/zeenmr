@@ -1,6 +1,6 @@
 use crate::error::Result;
 use crate::peak_finding::Peak;
-use zeenmr_spectrum::IndexRange;
+use std::ops::Range;
 
 /// Trait for finding peaks in a smoothed signal.
 ///
@@ -8,13 +8,13 @@ use zeenmr_spectrum::IndexRange;
 ///
 /// A peak finding algorithm should specify in its documentation what the bounds
 /// of a peak represent (e.g., inflection points).
-pub trait Find: Send + Sync {
+pub trait Find<T>: Send + Sync {
     /// Finds peaks in the given smoothed signal within the specified bounds,
     /// optionally ignoring certain regions.
     fn find(
         &self,
-        smoothed: &[f64],
-        signal: IndexRange,
-        ignore: &[IndexRange],
+        smoothed: &[T],
+        signal: &Range<usize>,
+        ignore: &[Range<usize>],
     ) -> Result<Vec<Peak>>;
 }
