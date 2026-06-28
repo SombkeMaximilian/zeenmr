@@ -3,7 +3,6 @@
 use crate::error::{Error, Result};
 use crate::intensity_array::Array1D;
 use num_traits::{Float, FromPrimitive};
-use std::iter;
 use std::marker::PhantomData;
 use std::ops::Range;
 
@@ -28,13 +27,13 @@ pub trait ValidateIntensities<T> {
         A: Array1D<Elem = T>;
 }
 
-impl<F> ValidateIntensities<F> for Magnitude
+impl<T> ValidateIntensities<T> for Magnitude
 where
-    F: Float,
+    T: Float,
 {
     fn validate<A>(array: A) -> Result<()>
     where
-        A: Array1D<Elem = F>,
+        A: Array1D<Elem = T>,
     {
         let array = array.as_ref();
 
@@ -50,13 +49,13 @@ where
     }
 }
 
-impl<F> ValidateIntensities<F> for SingleChannel
+impl<T> ValidateIntensities<T> for SingleChannel
 where
-    F: Float,
+    T: Float,
 {
     fn validate<A>(array: A) -> Result<()>
     where
-        A: Array1D<Elem = F>,
+        A: Array1D<Elem = T>,
     {
         let array = array.as_ref();
 
@@ -106,11 +105,11 @@ impl<T, K> FindSignalRange<T, K> for Range<usize> {
 /// This test statistic relies on there being noise at the edges of the array.
 /// If there is no or extremely little noise, division by zero will occur.
 #[derive(Copy, Clone, PartialEq, Debug)]
-pub struct CumulativeSum<F, K> {
+pub struct CumulativeSum<T, K> {
     /// Flagging limit above which to mark a position as signal start or end.
-    limit: F,
+    limit: T,
     /// Penalty for each term.
-    penalty: F,
+    penalty: T,
     /// Edges to use for mean and standard deviation estimate.
     edges: f64,
     /// Padding around the start and end points to avoid cutting off signals.
@@ -119,23 +118,23 @@ pub struct CumulativeSum<F, K> {
     intensity_kind: PhantomData<K>,
 }
 
-impl<F> FindSignalRange<F, Magnitude> for CumulativeSum<F, Magnitude>
+impl<T> FindSignalRange<T, Magnitude> for CumulativeSum<T, Magnitude>
 where
-    F: Copy + iter::Sum<F> + Float + FromPrimitive,
+    T: Copy + Float + FromPrimitive,
 {
     fn find_signal_range<A>(&self, array: A) -> Result<Range<usize>>
     where
-        A: Array1D<Elem = F>,
+        A: Array1D<Elem = T>,
     {
         let array = array
             .as_ref()
             .iter()
             .copied()
-            .map(F::sqrt)
-            .collect::<Vec<F>>();
+            .map(T::sqrt)
+            .collect::<Vec<T>>();
         let (mean, std) = self.edge_stats(&array)?;
         if std.abs()
-            <= F::from_u8(100).expect("conversion from u8 to F must never fail") * F::epsilon()
+            <= T::from_u8(100).expect("conversion from u8 to T must never fail") * T::epsilon()
         {
             return Err(Error::divide_by_zero());
         }
@@ -149,18 +148,18 @@ where
     }
 }
 
-impl<F> FindSignalRange<F, SingleChannel> for CumulativeSum<F, SingleChannel>
+impl<T> FindSignalRange<T, SingleChannel> for CumulativeSum<T, SingleChannel>
 where
-    F: Copy + iter::Sum<F> + Float + FromPrimitive,
+    T: Copy + Float + FromPrimitive,
 {
     fn find_signal_range<A>(&self, array: A) -> Result<Range<usize>>
     where
-        A: Array1D<Elem = F>,
+        A: Array1D<Elem = T>,
     {
         let array = array.as_ref();
         let (mean, std) = self.edge_stats(array)?;
         if std.abs()
-            <= F::from_u8(100).expect("conversion from u8 to F must never fail") * F::epsilon()
+            <= T::from_u8(100).expect("conversion from u8 to T must never fail") * T::epsilon()
         {
             return Err(Error::divide_by_zero());
         }
@@ -174,12 +173,12 @@ where
     }
 }
 
-impl<F, K> CumulativeSum<F, K>
+impl<T, K> CumulativeSum<T, K>
 where
-    F: Copy + iter::Sum<F> + Float + FromPrimitive,
+    T: Copy + Float + FromPrimitive,
 {
     /// Creates a new `CumulativeSum`.
-    pub fn new(limit: F, penalty: F) -> Self {
+    pub fn new(limit: T, penalty: T) -> Self {
         Self {
             limit,
             penalty,
@@ -222,8 +221,8 @@ where
     }
 
     /// Sets the intensity kind from `M` to `N`.
-    pub fn intensity_kind<N>(self) -> CumulativeSum<F, N> {
-        CumulativeSum::<F, N> {
+    pub fn intensity_kind<N>(self) -> CumulativeSum<T, N> {
+        CumulativeSum::<T, N> {
             limit: self.limit,
             penalty: self.penalty,
             edges: self.edges,
@@ -233,15 +232,15 @@ where
     }
 
     /// Performs a one-sided scan which only checks for positive deviance.
-    fn one_sided_scan(&self, array: &[F], mean: F, std: F) -> Range<usize> {
+    fn one_sided_scan(&self, array: &[T], mean: T, std: T) -> Range<usize> {
         let mut start = 0;
-        let mut flagging = F::zero();
+        let mut flagging = T::zero();
         for (pos, std_int) in array
             .iter()
             .map(|x| (*x - mean) / std)
             .enumerate()
         {
-            flagging = (flagging + std_int - self.penalty).max(F::zero());
+            flagging = (flagging + std_int - self.penalty).max(T::zero());
 
             if flagging >= self.limit {
                 start = pos.saturating_sub(self.padding);
@@ -250,14 +249,14 @@ where
         }
 
         let mut end = array.len();
-        let mut flagging = F::zero();
+        let mut flagging = T::zero();
         for (pos, std_int) in array
             .iter()
             .rev()
             .map(|x| (*x - mean) / std)
             .enumerate()
         {
-            flagging = (flagging + std_int - self.penalty).max(F::zero());
+            flagging = (flagging + std_int - self.penalty).max(T::zero());
 
             if flagging >= self.limit {
                 end = end - pos.saturating_sub(self.padding);
@@ -270,17 +269,17 @@ where
 
     /// Performs a two-sided scan which checks for positive and negative
     /// deviance.
-    fn two_sided_scan(&self, array: &[F], mean: F, std: F) -> Range<usize> {
+    fn two_sided_scan(&self, array: &[T], mean: T, std: T) -> Range<usize> {
         let mut start = 0;
-        let mut flagging_p = F::zero();
-        let mut flagging_n = F::zero();
+        let mut flagging_p = T::zero();
+        let mut flagging_n = T::zero();
         for (pos, std_int) in array
             .iter()
             .map(|x| (*x - mean) / std)
             .enumerate()
         {
-            flagging_p = (flagging_p + std_int - self.penalty).max(F::zero());
-            flagging_n = (flagging_n - std_int - self.penalty).max(F::zero());
+            flagging_p = (flagging_p + std_int - self.penalty).max(T::zero());
+            flagging_n = (flagging_n - std_int - self.penalty).max(T::zero());
 
             if flagging_p >= self.limit || flagging_n >= self.limit {
                 start = pos.saturating_sub(self.padding);
@@ -289,16 +288,16 @@ where
         }
 
         let mut end = array.len();
-        let mut flagging_p = F::zero();
-        let mut flagging_n = F::zero();
+        let mut flagging_p = T::zero();
+        let mut flagging_n = T::zero();
         for (pos, std_int) in array
             .iter()
             .rev()
             .map(|x| (*x - mean) / std)
             .enumerate()
         {
-            flagging_p = (flagging_p + std_int - self.penalty).max(F::zero());
-            flagging_n = (flagging_n - std_int - self.penalty).max(F::zero());
+            flagging_p = (flagging_p + std_int - self.penalty).max(T::zero());
+            flagging_n = (flagging_n - std_int - self.penalty).max(T::zero());
 
             if flagging_p >= self.limit || flagging_n >= self.limit {
                 end = end - pos.saturating_sub(self.padding);
@@ -314,7 +313,7 @@ where
     /// # Error
     ///
     /// Returns an error if the length of the edges is zero.
-    fn edge_stats(&self, array: &[F]) -> Result<(F, F)> {
+    fn edge_stats(&self, array: &[T]) -> Result<(T, T)> {
         let edge_width = (array.len() as f64 * self.edges) as usize;
 
         if edge_width == 0 {
@@ -323,23 +322,27 @@ where
 
         let right_edge = array.len() - edge_width;
         let num =
-            F::from_usize(2 * edge_width).expect("conversion from usize to F must never fail");
+            T::from_usize(2 * edge_width).expect("conversion from usize to T must never fail");
 
-        let left_sum = array[..edge_width].iter().copied().sum::<F>();
-        let right_sum = array[right_edge..].iter().copied().sum::<F>();
+        let left_sum = array[..edge_width]
+            .iter()
+            .fold(T::zero(), |acc, x| acc + *x);
+        let right_sum = array[right_edge..]
+            .iter()
+            .fold(T::zero(), |acc, x| acc + *x);
         let edge_mean = (left_sum + right_sum) / num;
 
         let left_dev = array[..edge_width]
             .iter()
             .copied()
             .map(|x| (x - edge_mean).powi(2))
-            .sum::<F>();
+            .fold(T::zero(), |acc, x| acc + x);
         let right_dev = array[right_edge..]
             .iter()
             .copied()
             .map(|x| (x - edge_mean).powi(2))
-            .sum::<F>();
-        let edge_std = ((left_dev + right_dev) / (num - F::one())).sqrt();
+            .fold(T::zero(), |acc, x| acc + x);
+        let edge_std = ((left_dev + right_dev) / (num - T::one())).sqrt();
 
         Ok((edge_mean, edge_std))
     }

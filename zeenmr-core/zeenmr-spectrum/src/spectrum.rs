@@ -75,18 +75,18 @@ where
     }
 }
 
-impl<T, S1, S2> Spectrum1D<DualChannel1D<S1, S2>>
+impl<S1, S2> Spectrum1D<DualChannel1D<S1, S2>>
 where
-    S1: Array1D<Elem = T>,
-    S2: Array1D<Elem = T>,
+    S1: Array1D,
+    S2: Array1D,
 {
     /// Returns a slice containing the real channel intensities.
-    pub fn real(&self) -> &[T] {
+    pub fn real(&self) -> &[S1::Elem] {
         self.intensities.real.as_ref()
     }
 
     /// Returns a slice containing the imaginary channel intensities.
-    pub fn imag(&self) -> &[T] {
+    pub fn imag(&self) -> &[S2::Elem] {
         self.intensities.imag.as_ref()
     }
 }
