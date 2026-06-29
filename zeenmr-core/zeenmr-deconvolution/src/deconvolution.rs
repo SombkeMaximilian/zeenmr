@@ -7,9 +7,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// A `Deconvolution` contains the deconvoluted signals as peak shapes, the
 /// settings used for deconvolution, and the mean squared error of between the
-/// original [`Spectrum`] and the superposition of peak shapes.
-///
-/// [`Spectrum`]: zeenmr_spectrum::Spectrum
+/// original spectrum and the superposition of peak shapes.
 ///
 /// # Serialization with [Serde]
 ///
