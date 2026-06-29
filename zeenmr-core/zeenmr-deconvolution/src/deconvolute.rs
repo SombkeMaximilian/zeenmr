@@ -4,6 +4,7 @@ use crate::fitting::Fit;
 use crate::peak_finding::Find;
 use crate::smoothing::Smooth;
 use num_traits::Float;
+use std::marker::PhantomData;
 use std::ops::Range;
 use uom::si::ratio::part_per_million as ppm;
 use zeenmr_peakshape::PeakShape;
@@ -18,7 +19,7 @@ use crate::fitting::ParFit;
 use rayon::prelude::*;
 #[cfg(feature = "rayon")]
 
-/// Trait for deconvoluting a [`Spectrum`] into its constituent signals.
+/// Trait for deconvoluting a spectrum into its constituent signals.
 ///
 /// Implementors of this trait are called 'deconvoluters'.
 pub trait Deconvolute<T, P> {
@@ -30,7 +31,7 @@ pub trait Deconvolute<T, P> {
         S: Array1D<Elem = T>;
 }
 
-/// Trait for deconvoluting a [`Spectrum`] into its constituent signals in
+/// Trait for deconvoluting a spectrum into its constituent signals in
 /// parallel.
 ///
 /// Implementors of this trait are called 'parallelized deconvoluters'.
@@ -104,38 +105,40 @@ where
     }
 }
 
-/// Used to indicate that the deconvoluter is missing a smoothing algorithm.
+/// Initialization marker for the smoothing algorithm.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
-pub struct MissingSmoother;
+pub struct NeedsSmoother;
 
-/// Used to indicate that the deconvoluter is missing a peak finding algorithm.
+/// Initialization marker for the peak finding algorithm.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
-pub struct MissingFinder;
+pub struct NeedsFinder;
 
-/// Used to indicate that the deconvoluter is missing a peak fitting algorithm.
+/// Initialization marker for the peak fitting algorithm.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
-pub struct MissingFitter;
+pub struct NeedsFitter;
 
 /// Deconvolution config for processing spectra into their constituent signals.
-#[derive(Clone, Debug, Default)]
-pub struct Deconvoluter<SM, PF, FT> {
+#[derive(Clone, Debug)]
+pub struct Deconvoluter<T, SM, PF, FT> {
     /// Smoothing algorithm.
     ///
-    /// Must implement [`Smooth`], or be [`MissingSmoother`].
+    /// Must implement [`Smooth`], or be [`NeedsSmoother`].
     smoother: SM,
     /// Peak finding algorithm.
     ///
-    /// Must implement [`Find`], or be [`MissingFinder`].
+    /// Must implement [`Find`], or be [`NeedsFinder`].
     finder: PF,
     /// Peak fitting algorithm.
     ///
-    /// Must implement [`Fit`] or [`ParFit`], or be [`MissingFitter`].
+    /// Must implement [`Fit`] or [`ParFit`], or be [`NeedsFitter`].
     fitter: FT,
     /// Chemical shift ranges to ignore during deconvolution.
     ignore: Vec<ShiftRange>,
+    /// Numeric type this deconvoluter can process.
+    numeric: PhantomData<T>,
 }
 
-impl<T, P, SM, PF, FT> Deconvolute<T, P> for Deconvoluter<SM, PF, FT>
+impl<T, P, SM, PF, FT> Deconvolute<T, P> for Deconvoluter<T, SM, PF, FT>
 where
     T: Float,
     P: PeakShape<T>,
@@ -181,7 +184,7 @@ where
 }
 
 #[cfg(feature = "rayon")]
-impl<T, P, SM, PF, FT> ParDeconvolute<T, P> for Deconvoluter<SM, PF, FT>
+impl<T, P, SM, PF, FT> ParDeconvolute<T, P> for Deconvoluter<T, SM, PF, FT>
 where
     T: Float + Send + Sync,
     P: PeakShape<T> + Send + Sync,
@@ -226,19 +229,42 @@ where
     }
 }
 
-impl Deconvoluter<MissingSmoother, MissingFinder, MissingFitter> {
+impl Deconvoluter<(), NeedsSmoother, NeedsFinder, NeedsFitter> {
     /// Creates a new, unconfigured deconvoluter that can be configured using
     /// the builder pattern.
-    pub fn new() -> Self {
-        Self::default()
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use zeenmr_deconvolution::deconvoluter;
+    /// use zeenmr_deconvolution::fitting::IterativeRefinement;
+    /// use zeenmr_deconvolution::peak_finding::CurvatureAnalysis;
+    /// use zeenmr_deconvolution::smoothing::MovingAverage;
+    /// use zeenmr_peakshape::Lorentzian;
+    ///
+    /// let deconvoluter = deconvoluter::<f64>()
+    ///     .with_smoother(MovingAverage::default())
+    ///     .with_finder(CurvatureAnalysis::default())
+    ///     .with_fitter(IterativeRefinement::<Lorentzian<_>>::default());
+    /// ```
+    pub fn new<T>() -> Deconvoluter<T, NeedsSmoother, NeedsFinder, NeedsFitter> {
+        Deconvoluter {
+            smoother: NeedsSmoother,
+            finder: NeedsFinder,
+            fitter: NeedsFitter,
+            ignore: Vec::new(),
+            numeric: PhantomData,
+        }
     }
 }
 
-impl<PF, FT> Deconvoluter<MissingSmoother, PF, FT> {
+impl<T, PF, FT> Deconvoluter<T, NeedsSmoother, PF, FT>
+where
+    T: Clone,
+{
     /// Sets the smoothing algorithm for the deconvoluter.
-    pub fn with_smoother<T, SM>(self, smoother: SM) -> Deconvoluter<SM, PF, FT>
+    pub fn with_smoother<SM>(self, smoother: SM) -> Deconvoluter<T, SM, PF, FT>
     where
-        T: Clone,
         SM: Smooth<T>,
     {
         Deconvoluter {
@@ -246,13 +272,14 @@ impl<PF, FT> Deconvoluter<MissingSmoother, PF, FT> {
             finder: self.finder,
             fitter: self.fitter,
             ignore: self.ignore,
+            numeric: self.numeric,
         }
     }
 }
 
-impl<SM, FT> Deconvoluter<SM, MissingFinder, FT> {
+impl<T, SM, FT> Deconvoluter<T, SM, NeedsFinder, FT> {
     /// Sets the peak finding algorithm for the deconvoluter.
-    pub fn with_finder<T, PF>(self, peak_finder: PF) -> Deconvoluter<SM, PF, FT>
+    pub fn with_finder<PF>(self, peak_finder: PF) -> Deconvoluter<T, SM, PF, FT>
     where
         PF: Find<T>,
     {
@@ -261,16 +288,17 @@ impl<SM, FT> Deconvoluter<SM, MissingFinder, FT> {
             finder: peak_finder,
             fitter: self.fitter,
             ignore: self.ignore,
+            numeric: self.numeric,
         }
     }
 }
 
-impl<SM, PF> Deconvoluter<SM, PF, MissingFitter> {
+impl<T, SM, PF> Deconvoluter<T, SM, PF, NeedsFitter> {
     /// Sets the peak fitting algorithm for the deconvoluter.
     ///
     /// If the fitter also implements [`ParFit`], the deconvoluter additionally
     /// becomes a parallelized deconvoluter.
-    pub fn with_fitter<T, P, FT>(self, fitter: FT) -> Deconvoluter<SM, PF, FT>
+    pub fn with_fitter<P, FT>(self, fitter: FT) -> Deconvoluter<T, SM, PF, FT>
     where
         P: PeakShape<T> + Send + Sync,
         FT: Fit<T, P>,
@@ -280,11 +308,12 @@ impl<SM, PF> Deconvoluter<SM, PF, MissingFitter> {
             finder: self.finder,
             fitter,
             ignore: self.ignore,
+            numeric: self.numeric,
         }
     }
 }
 
-impl<SM, PF, FT> Deconvoluter<SM, PF, FT> {
+impl<T, SM, PF, FT> Deconvoluter<T, SM, PF, FT> {
     /// Adds a chemical shift range to ignore during deconvolution.
     ///
     /// Some samples contain signals that cannot be fitted with the intended
@@ -363,4 +392,21 @@ where
         });
 
     residual / T::from(count).expect("conversion from usize to T must never fail")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fitting::IterativeRefinement;
+    use crate::peak_finding::CurvatureAnalysis;
+    use crate::smoothing::MovingAverage;
+    use zeenmr_peakshape::Lorentzian;
+
+    #[test]
+    fn type_inference() {
+        let _ = Deconvoluter::new::<f64>()
+            .with_smoother(MovingAverage::default())
+            .with_finder(CurvatureAnalysis::default())
+            .with_fitter(IterativeRefinement::<Lorentzian<_>>::default());
+    }
 }
