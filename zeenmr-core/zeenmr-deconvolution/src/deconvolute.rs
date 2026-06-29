@@ -236,6 +236,7 @@ impl Deconvoluter<(), NeedsSmoother, NeedsFinder, NeedsFitter> {
     /// # Example
     ///
     /// ```
+    /// use zeenmr_deconvolution::Deconvoluter;
     /// use zeenmr_deconvolution::fitting::IterativeRefinement;
     /// use zeenmr_deconvolution::peak_finding::CurvatureAnalysis;
     /// use zeenmr_deconvolution::smoothing::MovingAverage;
