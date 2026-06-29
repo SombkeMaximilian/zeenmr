@@ -242,10 +242,17 @@ impl Deconvoluter<(), NeedsSmoother, NeedsFinder, NeedsFitter> {
     /// use zeenmr_deconvolution::smoothing::MovingAverage;
     /// use zeenmr_peakshape::Lorentzian;
     ///
+    /// // setting the numeric type first helps with type inference
     /// let deconvoluter = Deconvoluter::new::<f64>()
     ///     .with_smoother(MovingAverage::default())
     ///     .with_finder(CurvatureAnalysis::default())
     ///     .with_fitter(IterativeRefinement::<Lorentzian<_>>::default());
+    ///
+    /// // alternatively, set the fitter first for the same effect
+    /// let deconvoluter = Deconvoluter::new()
+    ///     .with_fitter(IterativeRefinement::<Lorentzian<f64>>::default())
+    ///     .with_finder(CurvatureAnalysis::default())
+    ///     .with_smoother(MovingAverage::default());
     /// ```
     pub fn new<T>() -> Deconvoluter<T, NeedsSmoother, NeedsFinder, NeedsFitter> {
         Deconvoluter {
