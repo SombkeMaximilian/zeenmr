@@ -7,7 +7,7 @@ members = [
     "zeenmr-python",
 
     # Internal crates
-    "benches",
+    #"benches",
 ]
 
 [workspace.dependencies]

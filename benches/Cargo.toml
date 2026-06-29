@@ -6,13 +6,7 @@ edition = "2021"
 license = "MIT"
 
 [dependencies]
-zeenmr = { path = "../zeenmr", features = ["full"] }
 criterion = "0.8.2"
 
 [lints]
 workspace = true
-
-[[bench]]
-name = "deconvoluter"
-path = "deconvoluter.rs"
-harness = false
