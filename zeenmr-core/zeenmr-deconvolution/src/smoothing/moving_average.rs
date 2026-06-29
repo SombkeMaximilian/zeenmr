@@ -85,8 +85,7 @@ impl Default for MovingAverage {
 }
 
 impl MovingAverage {
-    /// Creates a new `MovingAverage` filter with the specified number of
-    /// iterations and window size.
+    /// Creates a new `MovingAverage` filter.
     pub fn new(iterations: usize, window_size: usize) -> Self {
         Self {
             iterations,

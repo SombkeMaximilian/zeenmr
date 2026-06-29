@@ -236,13 +236,12 @@ impl Deconvoluter<(), NeedsSmoother, NeedsFinder, NeedsFitter> {
     /// # Example
     ///
     /// ```
-    /// use zeenmr_deconvolution::deconvoluter;
     /// use zeenmr_deconvolution::fitting::IterativeRefinement;
     /// use zeenmr_deconvolution::peak_finding::CurvatureAnalysis;
     /// use zeenmr_deconvolution::smoothing::MovingAverage;
     /// use zeenmr_peakshape::Lorentzian;
     ///
-    /// let deconvoluter = deconvoluter::<f64>()
+    /// let deconvoluter = Deconvoluter::new::<f64>()
     ///     .with_smoother(MovingAverage::default())
     ///     .with_finder(CurvatureAnalysis::default())
     ///     .with_fitter(IterativeRefinement::<Lorentzian<_>>::default());

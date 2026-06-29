@@ -262,16 +262,7 @@ where
 }
 
 impl<T> CurvatureAnalysis<T> {
-    /// Creates a new `CurvatureAnalysis` with the given score threshold.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use zeenmr_deconvolution::peak_finding::CurvatureAnalysis;
-    ///
-    /// let finder_with_filter = CurvatureAnalysis::new(Some(5.0));
-    /// let finder_without_filter = CurvatureAnalysis::new(None);
-    /// ```
+    /// Creates a new `CurvatureAnalysis`.
     pub fn new(threshold: Option<T>) -> Self {
         Self { threshold }
     }

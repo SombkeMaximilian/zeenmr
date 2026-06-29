@@ -278,8 +278,7 @@ impl<P> Default for IterativeRefinement<P> {
 }
 
 impl<P> IterativeRefinement<P> {
-    /// Creates a new `IterativeRefinement` fitter with the specified number of
-    /// iterations.
+    /// Creates a new `IterativeRefinement` fitter.
     pub fn new(iterations: usize) -> Self {
         Self {
             iterations,
