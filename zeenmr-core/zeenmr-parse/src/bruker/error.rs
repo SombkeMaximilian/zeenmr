@@ -1,0 +1,61 @@
+//! Bruker parsing error types.
+
+use crate::jcampdx;
+
+/// An `Error` that occurred while parsing a dataset.
+///
+/// See the [`Kind`] enum for the different kinds of errors that can occur.
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub struct Error {
+    /// `Kind` of error that occurred.
+    kind: Kind,
+}
+
+/// The kind of `Error` that can occur while parsing a dataset.
+///
+/// Marked as non-exhaustive to allow for new variants to be added in the future
+/// without breaking compatibility.
+#[non_exhaustive]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum Kind {
+    /// General I/O errors while reading files.
+    IoError(std::io::ErrorKind),
+    /// An error occurred while parsing the parameter files.
+    ///
+    /// See [`crate::error::Error`] for how to display these nicely.
+    JcampDx(jcampdx::error::Error),
+}
+
+impl From<std::io::Error> for Error {
+    fn from(value: std::io::Error) -> Self {
+        Self {
+            kind: Kind::IoError(value.kind()),
+        }
+    }
+}
+
+impl From<jcampdx::error::Error> for Error {
+    fn from(value: jcampdx::error::Error) -> Self {
+        Self {
+            kind: Kind::JcampDx(value),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self.kind {
+            Kind::IoError(e) => e.fmt(f),
+            Kind::JcampDx(e) => e.fmt(f),
+        }
+    }
+}
+
+impl Error {
+    /// Returns the `Kind` of error that occurred.
+    pub fn kind(&self) -> Kind {
+        self.kind
+    }
+}
