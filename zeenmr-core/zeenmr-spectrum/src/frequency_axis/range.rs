@@ -1,151 +1,137 @@
 //! Types for representing ranges in spectral axes.
 
-use num_traits::Zero;
-use std::ops::{Add, Mul, Sub};
-use uom::si::f64::{Frequency, Ratio};
+use num_traits::Float;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+
+/// Trait for ranges that enforce finite bounds at construction.
+pub trait FiniteBounds<T> {
+    /// Returns the `start` bound.
+    fn start(&self) -> T;
+
+    /// Returns the `end` bound.
+    fn end(&self) -> T;
+}
+
+/// Trait of ranges of values in spectral axes.
+pub trait SpectralRange<T> {
+    /// Returns `true` if `start < end`.
+    fn is_ascending(&self) -> bool;
+
+    /// Returns `true` if `start > end`.
+    fn is_descending(&self) -> bool;
+
+    /// Returns the greater of `start` and `end`.
+    fn max(&self) -> T;
+
+    /// Returns the lesser of `start` and `end`.
+    fn min(&self) -> T;
+
+    /// Returns `true` if the value lies within the range.
+    ///
+    /// Unlike the standard library's range types, it does not check for
+    /// `v ∈ [start, end]` but `v ∈ [min(start, end), max(start, end)]`.
+    fn contains(&self, value: T) -> bool;
+
+    /// Returns the width of the range.
+    ///
+    /// The result is always a positive value.
+    fn width(&self) -> T;
+
+    /// Returns the signed width of the range.
+    ///
+    /// The result is negative if `end < start`, and positive otherwise.
+    fn signed_width(&self) -> T;
+
+    /// Returns the center of the range.
+    fn center(&self) -> T;
+}
+
+impl<T, R> SpectralRange<T> for R
+where
+    T: Float,
+    R: FiniteBounds<T>,
+{
+    fn is_ascending(&self) -> bool {
+        self.start() < self.end()
+    }
+
+    fn is_descending(&self) -> bool {
+        self.start() > self.end()
+    }
+
+    fn max(&self) -> T {
+        self.start().max(self.end())
+    }
+
+    fn min(&self) -> T {
+        self.start().min(self.end())
+    }
+
+    fn contains(&self, value: T) -> bool {
+        self.min() <= value && value <= self.max()
+    }
+
+    fn width(&self) -> T {
+        self.signed_width().abs()
+    }
+
+    fn signed_width(&self) -> T {
+        self.end() - self.start()
+    }
+
+    fn center(&self) -> T {
+        (self.start() + self.end()) / (T::one() + T::one())
+    }
+}
 
 /// Frequency range on a spectral axis.
 ///
 /// # Invariants
 ///
 /// The bounds are non-negative, finite, and not `NaN`.
-pub type FrequencyRange = Range<Frequency>;
-
-impl FrequencyRange {
-    /// Creates a new `FrequencyRange`.
-    ///
-    /// Returns `None` if either `start` or `end` is negative or non-finite.
-    pub fn new(start: Frequency, end: Frequency) -> Option<Self> {
-        if start.is_finite()
-            && start >= Frequency::zero()
-            && end.is_finite()
-            && end >= Frequency::zero()
-        {
-            Some(Range { start, end })
-        } else {
-            None
-        }
-    }
-}
-
-/// Chemical shift range on a spectral axis.
-///
-/// # Invariants
-///
-/// The bounds are finite and not `NaN`.
-pub type ShiftRange = Range<Ratio>;
-
-impl ShiftRange {
-    /// Creates a new `ShiftRange`.
-    ///
-    /// Returns `None` if either `start` or `end` is non-finite.
-    pub fn new(start: Ratio, end: Ratio) -> Option<Self> {
-        if start.is_finite() && end.is_finite() {
-            Some(Range { start, end })
-        } else {
-            None
-        }
-    }
-}
-
-/// Relative range on a spectral axis.
-///
-/// The range bounds represent the offset from the start of a frequency axis in
-/// terms of its total width.
-///
-/// # Invariants
-///
-/// The bounds are within `[0, 1]`.
-pub type RelativeRange = Range<f64>;
-
-impl RelativeRange {
-    /// Creates a new `RelativeRange`.
-    ///
-    /// Returns `None` if `start, end ∉ [0, 1]`.
-    pub fn new(start: f64, end: f64) -> Option<Self> {
-        if (0.0..=1.0).contains(&start) && (0.0..=1.0).contains(&end) {
-            Some(RelativeRange { start, end })
-        } else {
-            None
-        }
-    }
-}
-
-/// A generic range with a start and end value.
-///
-/// This range type is intended to be used for chemical shift, frequency, or
-/// relative ranges. For index ranges (e.g., into slices), [`core::range`]
-/// should be used.
-///
-/// # Serialization with [Serde]
-///
-/// [Serde]: https://serde.rs
-///
-/// When the `serde` feature is enabled, `Range` implements the [`Serialize`]
-/// and [`Deserialize`] traits provided the type `T` also implements them. For
-/// the type aliases mentioned above, this is the case.
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Range<T> {
+#[derive(Copy, Clone, PartialEq, PartialOrd, Debug)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(rename_all = "camelCase")
+)]
+pub struct FrequencyRange<T> {
     /// Start of the range (inclusive).
     start: T,
     /// End of the range (inclusive).
     end: T,
 }
 
-impl<T> Range<T> {
-    /// Returns a reference to the `start` bound.
-    ///
-    /// Prefer using [`Range::start`] if `T` is [`Copy`].
-    pub fn start_ref(&self) -> &T {
-        &self.start
-    }
-
-    /// Returns a reference to the `end` bound.
-    ///
-    /// Prefer using [`Range::end`] if `T` is [`Copy`].
-    pub fn end_ref(&self) -> &T {
-        &self.end
-    }
-}
-
-impl<T> Range<T>
+impl<T> FiniteBounds<T> for FrequencyRange<T>
 where
     T: Copy,
 {
-    /// Returns the `start` bound.
-    pub fn start(&self) -> T {
+    fn start(&self) -> T {
         self.start
     }
 
-    /// Returns the `end` bound.
-    pub fn end(&self) -> T {
+    fn end(&self) -> T {
         self.end
     }
 }
 
-impl<T> Range<T>
+impl<T> FrequencyRange<T>
 where
-    T: PartialOrd,
+    T: Float,
 {
-    /// Returns `true` if `start < end`.
-    pub fn is_ascending(&self) -> bool {
-        self.start < self.end
+    /// Creates a new `FrequencyRange`.
+    ///
+    /// Returns `None` if either `start` or `end` is negative or non-finite.
+    pub fn new(start: T, end: T) -> Option<Self> {
+        if start.is_finite() && start >= T::zero() && end.is_finite() && end >= T::zero() {
+            Some(Self { start, end })
+        } else {
+            None
+        }
     }
 
-    /// Returns `true` if `start > end`.
-    pub fn is_descending(&self) -> bool {
-        self.start > self.end
-    }
-}
-
-impl<T> Range<T>
-where
-    T: Copy + PartialOrd,
-{
     /// Returns an equivalent range with `start <= end`, swapping bounds if
     /// necessary.
     pub fn normalized(&self) -> Self {
@@ -158,57 +144,127 @@ where
             }
         }
     }
+}
 
-    /// Returns the greater of `start` and `end`.
-    pub fn max(&self) -> T {
-        if self.is_descending() {
-            self.start
-        } else {
-            self.end
-        }
+/// Chemical shift range on a spectral axis.
+///
+/// # Invariants
+///
+/// The bounds are finite and not `NaN`.
+#[derive(Copy, Clone, PartialEq, PartialOrd, Debug)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(rename_all = "camelCase")
+)]
+pub struct ShiftRange<T> {
+    /// Start of the range (inclusive).
+    start: T,
+    /// End of the range (inclusive).
+    end: T,
+}
+
+impl<T> FiniteBounds<T> for ShiftRange<T>
+where
+    T: Copy,
+{
+    fn start(&self) -> T {
+        self.start
     }
 
-    /// Returns the lesser of `start` and `end`.
-    pub fn min(&self) -> T {
-        if self.is_ascending() {
-            self.start
-        } else {
-            self.end
-        }
-    }
-
-    /// Returns `true` if the value lies within the range.
-    ///
-    /// Unlike the standard library's range type, it does not check for
-    /// `v ∈ [start, end]` but `v ∈ [min(start, end), max(start, end)]`.
-    pub fn contains(&self, value: T) -> bool {
-        self.min() <= value && value <= self.max()
+    fn end(&self) -> T {
+        self.end
     }
 }
 
-impl<T> Range<T>
+impl<T> ShiftRange<T>
 where
-    T: Copy + PartialOrd + Sub<Output = T>,
+    T: Float,
 {
-    /// Returns the width of the range.
+    /// Creates a new `ShiftRange`.
     ///
-    /// The result is always a positive value.
-    pub fn width(&self) -> T {
-        self.max() - self.min()
+    /// Returns `None` if either `start` or `end` is non-finite.
+    pub fn new(start: T, end: T) -> Option<Self> {
+        if start.is_finite() && end.is_finite() {
+            Some(Self { start, end })
+        } else {
+            None
+        }
     }
 
-    /// Returns the signed width of the range by computing `end - start`.
-    pub fn signed_width(&self) -> T {
-        self.end - self.start
+    /// Returns an equivalent range with `start <= end`, swapping bounds if
+    /// necessary.
+    pub fn normalized(&self) -> Self {
+        if self.start <= self.end {
+            *self
+        } else {
+            Self {
+                start: self.end,
+                end: self.start,
+            }
+        }
     }
 }
 
-impl<T> Range<T>
+/// Relative range on a spectral axis.
+///
+/// The range bounds represent the offset from the start of a frequency axis in
+/// terms of its total width.
+///
+/// # Invariants
+///
+/// The bounds are within `[0, 1]`.
+#[derive(Copy, Clone, PartialEq, PartialOrd, Debug)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(rename_all = "camelCase")
+)]
+pub struct RelativeRange<T> {
+    /// Start of the range (inclusive).
+    start: T,
+    /// End of the range (inclusive).
+    end: T,
+}
+
+impl<T> FiniteBounds<T> for RelativeRange<T>
 where
-    T: Copy + Add<Output = T> + Mul<f64, Output = T>,
+    T: Copy,
 {
-    /// Returns the center of the range.
-    pub fn center(&self) -> T {
-        (self.start + self.end) * 0.5
+    fn start(&self) -> T {
+        self.start
+    }
+
+    fn end(&self) -> T {
+        self.end
+    }
+}
+
+impl<T> RelativeRange<T>
+where
+    T: Float,
+{
+    /// Creates a new `RelativeRange`.
+    ///
+    /// Returns `None` if `start, end ∉ [0, 1]`.
+    pub fn new(start: T, end: T) -> Option<Self> {
+        if (T::zero()..=T::one()).contains(&start) && (T::zero()..=T::one()).contains(&end) {
+            Some(Self { start, end })
+        } else {
+            None
+        }
+    }
+
+    /// Returns an equivalent range with `start <= end`, swapping bounds if
+    /// necessary.
+    pub fn normalized(&self) -> Self {
+        if self.start <= self.end {
+            *self
+        } else {
+            Self {
+                start: self.end,
+                end: self.start,
+            }
+        }
     }
 }

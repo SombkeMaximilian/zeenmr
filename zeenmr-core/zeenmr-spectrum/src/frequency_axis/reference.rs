@@ -1,5 +1,4 @@
-use num_traits::Zero;
-use uom::si::f64::{Frequency, Ratio};
+use num_traits::Float;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -22,26 +21,23 @@ use serde::{Deserialize, Serialize};
     derive(Serialize, Deserialize),
     serde(rename_all = "camelCase")
 )]
-pub struct ShiftReference {
+pub struct ShiftReference<T> {
     /// Chemical shift of the reference.
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "Ratio::is_zero")
-    )]
-    shift: Ratio,
+    shift: T,
     /// Frequency that the chemical shift is anchored to.
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "Frequency::is_zero")
-    )]
-    frequency: Frequency,
+    frequency: T,
 }
 
-impl ShiftReference {
-    /// Maps the provided frequency to the provided chemical shift
+impl<T> ShiftReference<T>
+where
+    T: Float,
+{
+    /// Creates a new `ShiftReference`.
     ///
     /// Returns `None` if either input is one of the infinities or `NaN`.
-    pub fn new(shift: Ratio, frequency: Frequency) -> Option<Self> {
+    ///
+    /// Maps the provided frequency to the provided chemical shift
+    pub fn new(shift: T, frequency: T) -> Option<Self> {
         if !(shift.is_finite() && frequency.is_finite()) {
             return None;
         }
@@ -49,18 +45,22 @@ impl ShiftReference {
         Some(Self { shift, frequency })
     }
 
-    /// Maps zero on the frequency scale to the provided chemical shift.
+    /// Creates a new `ShiftReference`.
     ///
     /// Returns `None` if `shift` is one of the infinities or `NaN`.
-    pub fn from_shift(shift: Ratio) -> Option<Self> {
-        Self::new(shift, Frequency::zero())
+    ///
+    /// Maps zero on the frequency scale to the provided chemical shift.
+    pub fn from_shift(shift: T) -> Option<Self> {
+        Self::new(shift, T::zero())
     }
 
-    /// Maps the provided frequency to zero on the chemical shift scale.
+    /// Creates a new `ShiftReference`.
     ///
     /// Returns `None` if `frequency` is one of the infinities or `NaN`.
-    pub fn from_freq(frequency: Frequency) -> Option<Self> {
-        Self::new(Ratio::zero(), frequency)
+    ///
+    /// Maps the provided frequency to zero on the chemical shift scale.
+    pub fn from_freq(frequency: T) -> Option<Self> {
+        Self::new(T::zero(), frequency)
     }
 
     /// Returns the offset to apply to chemical shift values obtained by
@@ -68,13 +68,15 @@ impl ShiftReference {
     ///
     /// Returns `None` if `larmor` is zero, one of the infinities, or `NaN`.
     ///
+    /// `larmor` is in units of megahertz.
+    ///
     /// In order to calculate the chemical shift of a frequency value, divide it
     /// by the larmor frequency and add the offset to it:
     ///
     /// ```text
     /// shift = offset + frequency / larmor
     /// ```
-    pub fn offset(&self, larmor: Frequency) -> Option<Ratio> {
+    pub fn offset(&self, larmor: T) -> Option<T> {
         if !larmor.is_finite() || larmor.is_zero() {
             return None;
         }
@@ -86,13 +88,15 @@ impl ShiftReference {
     /// dividing frequencies by the larmor frequency, without validating
     /// `larmor`.
     ///
+    /// `larmor` is in units of megahertz.
+    ///
     /// In order to calculate the chemical shift of a frequency value, divide it
     /// by the larmor frequency and add the offset to it:
     ///
     /// ```text
     /// shift = offset + frequency / larmor
     /// ```
-    pub fn offset_unchecked(&self, larmor: Frequency) -> Ratio {
+    pub fn offset_unchecked(&self, larmor: T) -> T {
         self.shift - self.frequency / larmor
     }
 }
@@ -104,6 +108,7 @@ mod tests {
 
     #[test]
     fn thread_safety() {
-        assert_impl_all!(ShiftReference: Send, Sync);
+        assert_impl_all!(ShiftReference<f32>: Send, Sync);
+        assert_impl_all!(ShiftReference<f64>: Send, Sync);
     }
 }

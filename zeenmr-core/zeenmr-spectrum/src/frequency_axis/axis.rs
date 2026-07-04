@@ -1,8 +1,6 @@
-use crate::frequency_axis::range::{FrequencyRange, ShiftRange};
+use crate::frequency_axis::range::{FiniteBounds, FrequencyRange, ShiftRange, SpectralRange};
 use crate::frequency_axis::reference::ShiftReference;
-use num_traits::Zero;
-use uom::si::f64::{Frequency, Ratio};
-use uom::si::ratio::ratio;
+use num_traits::Float;
 
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
@@ -30,33 +28,31 @@ use serde::{Deserialize, Serialize};
     derive(Serialize, Deserialize),
     serde(rename_all = "camelCase")
 )]
-pub struct Axis {
+pub struct Axis<T> {
     /// Frequency range of the full axis.
-    range: FrequencyRange,
-    /// Larmor frequency of the nucleus used to convert frequency values to
-    /// chemical shifts.
+    range: FrequencyRange<T>,
+    /// Larmor frequency of the nucleus in the experiment.
     ///
-    /// Typical order of magnitude is 1e6 Hz. Also known as operating frequency
-    /// and spectrometer frequency.
+    /// Stored in units of megahertz. Used to convert frequency values to
+    /// chemical shifts. Also known as operating frequency and spectrometer
+    /// frequency.
     ///
     /// See also: [NMRCentral](https://web.archive.org/web/20110926141002/http://nmrcentral.com/2011/08/chemical-shift/)
-    larmor: Frequency,
+    larmor: T,
     /// Chemical shift reference.
-    reference: ShiftReference,
+    reference: ShiftReference<T>,
 }
 
-impl Axis {
+impl<T> Axis<T>
+where
+    T: Float,
+{
     /// Constructs a new `Axis`
     ///
     /// Returns `None` if the width of `range` is zero, or if `larmor` is one
     /// of the infinities, zero or negative.
-    pub fn new(
-        range: FrequencyRange,
-        larmor: Frequency,
-        reference: ShiftReference,
-    ) -> Option<Self> {
-        if range.width() == Frequency::zero() || !larmor.is_finite() || larmor <= Frequency::zero()
-        {
+    pub fn new(range: FrequencyRange<T>, larmor: T, reference: ShiftReference<T>) -> Option<Self> {
+        if range.width() == T::zero() || !larmor.is_finite() || larmor <= T::zero() {
             return None;
         }
 
@@ -68,22 +64,22 @@ impl Axis {
     }
 
     /// Returns the larmor frequency.
-    pub fn larmor(&self) -> Frequency {
+    pub fn larmor(&self) -> T {
         self.larmor
     }
 
     /// Returns the shift reference.
-    pub fn reference(&self) -> ShiftReference {
+    pub fn reference(&self) -> ShiftReference<T> {
         self.reference
     }
 
     /// Returns the frequency range.
-    pub fn freq_range(&self) -> FrequencyRange {
+    pub fn freq_range(&self) -> FrequencyRange<T> {
         self.range
     }
 
     /// Returns the chemical shift range.
-    pub fn shift_range(&self) -> ShiftRange {
+    pub fn shift_range(&self) -> ShiftRange<T> {
         let offset = self.reference.offset_unchecked(self.larmor);
 
         ShiftRange::new(
@@ -96,19 +92,20 @@ impl Axis {
     /// Returns the frequency step size given a number of data points.
     ///
     /// If `size <= 1`, the returned step size is not meaningful.
-    pub fn freq_step(&self, size: usize) -> Frequency {
-        self.range.signed_width() / (size.saturating_sub(1) as f64)
+    pub fn freq_step(&self, size: usize) -> T {
+        self.range.signed_width()
+            / T::from(size.saturating_sub(1)).expect("conversion from usize to T must never fail")
     }
 
     /// Returns the chemical shift step size given a number of data points.
     ///
     /// If `size <= 1`, the returned step size is not meaningful.
-    pub fn shift_step(&self, size: usize) -> Ratio {
+    pub fn shift_step(&self, size: usize) -> T {
         self.freq_step(size) / self.larmor
     }
 
     /// Converts a frequency to a chemical shift.
-    pub fn freq_to_shift(&self, freq: Frequency) -> Option<Ratio> {
+    pub fn freq_to_shift(&self, freq: T) -> Option<T> {
         if !self.range.contains(freq) {
             return None;
         }
@@ -117,7 +114,7 @@ impl Axis {
     }
 
     /// Converts a chemical shift to a frequency.
-    pub fn shift_to_freq(&self, shift: Ratio) -> Option<Frequency> {
+    pub fn shift_to_freq(&self, shift: T) -> Option<T> {
         if !self.shift_range().contains(shift) {
             return None;
         }
@@ -128,33 +125,34 @@ impl Axis {
     /// Converts a frequency to a relative coordinate in terms of the width.
     ///
     /// Returns `None` if `freq` is not within the frequency range.
-    pub fn freq_to_rel(&self, freq: Frequency) -> Option<f64> {
+    pub fn freq_to_rel(&self, freq: T) -> Option<T> {
         if !self.range.contains(freq) {
             return None;
         }
 
-        Some(((freq - self.range.start()) / self.range.signed_width()).get::<ratio>())
+        Some((freq - self.range.start()) / self.range.signed_width())
     }
 
     /// Converts a chemical shift to a relative coordinate in terms of the
     /// width.
     ///
     /// Returns `None` if `shift` is not within the chemical shift range.
-    pub fn shift_to_rel(&self, shift: Ratio) -> Option<f64> {
+    pub fn shift_to_rel(&self, shift: T) -> Option<T> {
         let shift_range = self.shift_range();
+
         if !shift_range.contains(shift) {
             return None;
         }
 
-        Some(((shift - shift_range.start()) / shift_range.signed_width()).get::<ratio>())
+        Some((shift - shift_range.start()) / shift_range.signed_width())
     }
 
     /// Converts a relative coordinate in terms of the total width to a
     /// frequency.
     ///
     /// Returns `None` if `rel ∉ [0, 1]`
-    pub fn rel_to_freq(&self, rel: f64) -> Option<Frequency> {
-        if !(0.0..=1.0).contains(&rel) {
+    pub fn rel_to_freq(&self, rel: T) -> Option<T> {
+        if !(T::zero()..=T::one()).contains(&rel) {
             return None;
         }
 
@@ -165,8 +163,8 @@ impl Axis {
     /// chemical shift.
     ///
     /// Returns `None` if `rel ∉ [0, 1]`
-    pub fn rel_to_shift(&self, rel: f64) -> Option<Ratio> {
-        if !(0.0..=1.0).contains(&rel) {
+    pub fn rel_to_shift(&self, rel: T) -> Option<T> {
+        if !(T::zero()..=T::one()).contains(&rel) {
             return None;
         }
 
@@ -185,31 +183,13 @@ impl Axis {
     /// will not be exactly identical to the end of the frequency range.
     ///
     /// Each call to this method will recompute the frequency values on the fly.
-    pub fn freqs(&self, size: usize) -> impl Iterator<Item = Frequency> + use<> {
-        let step = self.freq_step(size);
-        let start = self.range.start();
-
-        (0..size).map(move |i| start + step * i as f64)
-    }
-
-    /// Returns a parallel iterator over `size` equally spaced frequencies from
-    /// the start to the end of the frequency range.
-    ///
-    /// If `size <= 1`, the returned iterator does not contain any meaningful
-    /// values.
-    ///
-    /// Due to floating point errors when adding and multiplying, the end value
-    /// will not be exactly identical to the end of the frequency range.
-    ///
-    /// Each call to this method will recompute the frequency values on the fly.
-    #[cfg(feature = "rayon")]
-    pub fn par_freqs(&self, size: usize) -> impl IndexedParallelIterator<Item = Frequency> + use<> {
+    pub fn freqs(&self, size: usize) -> impl Iterator<Item = T> + use<T> {
         let step = self.freq_step(size);
         let start = self.range.start();
 
         (0..size)
-            .into_par_iter()
-            .map(move |i| start + step * i as f64)
+            .map(|i| T::from(i).expect("conversion from usize to T must never fail"))
+            .map(move |i| start + step * i)
     }
 
     /// Returns an iterator over `size` equally spaced chemical shifts from the
@@ -222,11 +202,39 @@ impl Axis {
     /// will not be exactly identical to the end of the frequency range.
     ///
     /// Each call to this method will recompute the frequency values on the fly.
-    pub fn shifts(&self, size: usize) -> impl Iterator<Item = Ratio> + use<> {
+    pub fn shifts(&self, size: usize) -> impl Iterator<Item = T> + use<T> {
         let step = self.shift_step(size);
         let start = self.shift_range().start();
 
-        (0..size).map(move |i| start + step * i as f64)
+        (0..size)
+            .map(|i| T::from(i).expect("conversion from usize to T must never fail"))
+            .map(move |i| start + step * i)
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl<T> Axis<T>
+where
+    T: Float + Send + Sync,
+{
+    /// Returns a parallel iterator over `size` equally spaced frequencies from
+    /// the start to the end of the frequency range.
+    ///
+    /// If `size <= 1`, the returned iterator does not contain any meaningful
+    /// values.
+    ///
+    /// Due to floating point errors when adding and multiplying, the end value
+    /// will not be exactly identical to the end of the frequency range.
+    ///
+    /// Each call to this method will recompute the frequency values on the fly.
+    pub fn par_freqs(&self, size: usize) -> impl IndexedParallelIterator<Item = T> + use<T> {
+        let step = self.freq_step(size);
+        let start = self.range.start();
+
+        (0..size)
+            .into_par_iter()
+            .map(|i| T::from(i).expect("conversion from usize to T must never fail"))
+            .map(move |i| start + step * i)
     }
 
     /// Returns a parallel iterator over `size` equally spaced chemical shifts
@@ -239,14 +247,14 @@ impl Axis {
     /// will not be exactly identical to the end of the frequency range.
     ///
     /// Each call to this method will recompute the frequency values on the fly.
-    #[cfg(feature = "rayon")]
-    pub fn par_shifts(&self, size: usize) -> impl IndexedParallelIterator<Item = Ratio> + use<> {
+    pub fn par_shifts(&self, size: usize) -> impl IndexedParallelIterator<Item = T> + use<T> {
         let step = self.shift_step(size);
         let start = self.shift_range().start();
 
         (0..size)
             .into_par_iter()
-            .map(move |i| start + step * i as f64)
+            .map(|i| T::from(i).expect("conversion from usize to T must never fail"))
+            .map(move |i| start + step * i)
     }
 }
 
@@ -254,58 +262,91 @@ impl Axis {
 mod tests {
     use super::*;
     use static_assertions::assert_impl_all;
-    use uom::si::frequency::{hertz, megahertz};
 
-    fn test_parameters() -> (FrequencyRange, Frequency, ShiftReference) {
-        let range =
-            FrequencyRange::new(Frequency::zero(), Frequency::new::<hertz>(12000.0)).unwrap();
-        let larmor = Frequency::new::<megahertz>(600.25);
-        let reference = ShiftReference::from_freq(Frequency::new::<hertz>(3000.0)).unwrap();
+    fn test_parameters<T>() -> (FrequencyRange<T>, T, ShiftReference<T>)
+    where
+        T: Float,
+    {
+        let start = T::zero();
+        let end = T::from(12000_u32).unwrap();
+        let ref_freq = T::from(3000_u32).unwrap();
+        let range = FrequencyRange::new(start, end).unwrap();
+        let larmor = T::from(600.25_f64).unwrap();
+        let reference = ShiftReference::from_freq(ref_freq).unwrap();
 
         (range, larmor, reference)
     }
 
     #[test]
     fn thread_safety() {
-        assert_impl_all!(Axis: Send, Sync);
+        assert_impl_all!(Axis<f32>: Send, Sync);
+        assert_impl_all!(Axis<f64>: Send, Sync);
     }
 
     #[test]
     fn zero_width() {
-        let range = FrequencyRange::new(Frequency::zero(), Frequency::zero()).unwrap();
-        let (_, larmor, reference) = test_parameters();
+        fn _zero_width<T>()
+        where
+            T: Float,
+        {
+            let range = FrequencyRange::new(T::zero(), T::zero()).unwrap();
+            let (_, larmor, reference) = test_parameters();
 
-        assert!(Axis::new(range, larmor, reference).is_none());
+            assert!(Axis::new(range, larmor, reference).is_none());
+        }
+
+        _zero_width::<f32>();
+        _zero_width::<f64>();
     }
 
     #[test]
     fn zero_larmor() {
-        let larmor = Frequency::zero();
-        let (range, _, reference) = test_parameters();
+        fn _zero_larmor<T>()
+        where
+            T: Float,
+        {
+            let larmor = T::zero();
+            let (range, _, reference) = test_parameters();
 
-        assert!(Axis::new(range, larmor, reference).is_none());
+            assert!(Axis::new(range, larmor, reference).is_none());
+        }
+
+        _zero_larmor::<f32>();
+        _zero_larmor::<f64>();
     }
 
     #[test]
     fn negative_larmor() {
-        let larmor = Frequency::new::<megahertz>(-700.0);
-        let (range, _, reference) = test_parameters();
+        fn _negative_larmor<T>()
+        where
+            T: Float,
+        {
+            let larmor = T::from(-700.0_f64).unwrap();
+            let (range, _, reference) = test_parameters();
 
-        assert!(Axis::new(range, larmor, reference).is_none());
+            assert!(Axis::new(range, larmor, reference).is_none());
+        }
+
+        _negative_larmor::<f32>();
+        _negative_larmor::<f64>();
     }
 
     #[test]
     fn non_finite_larmor() {
-        let larmors = [
-            Frequency::new::<hertz>(f64::NAN),
-            Frequency::new::<hertz>(f64::INFINITY),
-            Frequency::new::<hertz>(f64::NEG_INFINITY),
-        ];
-        let (range, _, reference) = test_parameters();
+        fn _non_finite_larmor<T>()
+        where
+            T: Float,
+        {
+            let larmors = [T::nan(), T::infinity(), T::neg_infinity()];
+            let (range, _, reference) = test_parameters();
 
-        larmors
-            .into_iter()
-            .for_each(|larmor| assert!(Axis::new(range, larmor, reference).is_none()));
+            larmors
+                .into_iter()
+                .for_each(|larmor| assert!(Axis::new(range, larmor, reference).is_none()));
+        }
+
+        _non_finite_larmor::<f32>();
+        _non_finite_larmor::<f64>();
     }
 
     macro_rules! axis_tests {
@@ -313,7 +354,6 @@ mod tests {
             mod $name {
                 use super::*;
                 use float_cmp::assert_approx_eq;
-                use uom::si::ratio::part_per_million as ppm;
 
                 #[test]
                 fn step_size() {
@@ -336,14 +376,14 @@ mod tests {
 
                             assert_approx_eq!(
                                 f64,
-                                (freq_range.start() + freq_step * (size - 1) as f64).get::<hertz>(),
-                                freq_range.end().get::<hertz>(),
+                                freq_range.start() + freq_step * (size - 1) as f64,
+                                freq_range.end(),
                                 epsilon = 1e-12
                             );
                             assert_approx_eq!(
                                 f64,
-                                (shift_range.start() + shift_step * (size - 1) as f64).get::<ppm>(),
-                                shift_range.end().get::<ppm>(),
+                                shift_range.start() + shift_step * (size - 1) as f64,
+                                shift_range.end(),
                                 epsilon = 1e-12
                             );
                         }
@@ -361,17 +401,13 @@ mod tests {
 
                     assert_approx_eq!(
                         f64,
-                        axis.freq_to_shift(range.start())
-                            .unwrap()
-                            .get::<ppm>(),
-                        shift_range.start().get::<ppm>()
+                        axis.freq_to_shift(range.start()).unwrap(),
+                        shift_range.start()
                     );
                     assert_approx_eq!(
                         f64,
-                        axis.freq_to_shift(range.end())
-                            .unwrap()
-                            .get::<ppm>(),
-                        shift_range.end().get::<ppm>()
+                        axis.freq_to_shift(range.end()).unwrap(),
+                        shift_range.end()
                     );
                     // the converted values accumulate floating point errors much faster
                     // than the direct computations.
@@ -379,12 +415,7 @@ mod tests {
                         .map(|freq| axis.freq_to_shift(freq).unwrap())
                         .zip(axis.shifts(size))
                         .for_each(|(converted, computed)| {
-                            assert_approx_eq!(
-                                f64,
-                                converted.get::<ppm>(),
-                                computed.get::<ppm>(),
-                                epsilon = 1e-12
-                            );
+                            assert_approx_eq!(f64, converted, computed, epsilon = 1e-12);
                         });
                 }
 
@@ -435,26 +466,10 @@ mod tests {
                     let shift_range = axis.shift_range();
                     let size = 2_usize.pow(4);
 
-                    assert_approx_eq!(
-                        f64,
-                        axis.rel_to_freq(0.0).unwrap().get::<hertz>(),
-                        range.start().get::<hertz>()
-                    );
-                    assert_approx_eq!(
-                        f64,
-                        axis.rel_to_freq(1.0).unwrap().get::<hertz>(),
-                        range.end().get::<hertz>()
-                    );
-                    assert_approx_eq!(
-                        f64,
-                        axis.rel_to_shift(0.0).unwrap().get::<ppm>(),
-                        shift_range.start().get::<ppm>()
-                    );
-                    assert_approx_eq!(
-                        f64,
-                        axis.rel_to_shift(1.0).unwrap().get::<ppm>(),
-                        shift_range.end().get::<ppm>()
-                    );
+                    assert_approx_eq!(f64, axis.rel_to_freq(0.0).unwrap(), range.start());
+                    assert_approx_eq!(f64, axis.rel_to_freq(1.0).unwrap(), range.end());
+                    assert_approx_eq!(f64, axis.rel_to_shift(0.0).unwrap(), shift_range.start());
+                    assert_approx_eq!(f64, axis.rel_to_shift(1.0).unwrap(), shift_range.end());
                     // the converted values accumulate floating point errors much faster
                     // than the direct computations.
                     (0..size)
@@ -465,12 +480,7 @@ mod tests {
                         })
                         .zip(axis.freqs(size))
                         .for_each(|(converted, computed)| {
-                            assert_approx_eq!(
-                                f64,
-                                converted.get::<hertz>(),
-                                computed.get::<hertz>(),
-                                epsilon = 1e-12
-                            );
+                            assert_approx_eq!(f64, converted, computed, epsilon = 1e-12);
                         });
                     (0..size)
                         .into_iter()
@@ -480,12 +490,7 @@ mod tests {
                         })
                         .zip(axis.shifts(size))
                         .for_each(|(converted, computed)| {
-                            assert_approx_eq!(
-                                f64,
-                                converted.get::<ppm>(),
-                                computed.get::<ppm>(),
-                                epsilon = 1e-12
-                            );
+                            assert_approx_eq!(f64, converted, computed, epsilon = 1e-12);
                         });
                 }
             }
@@ -494,26 +499,26 @@ mod tests {
 
     axis_tests!(
         forward_range_zero_reference,
-        FrequencyRange::new(Frequency::zero(), Frequency::new::<hertz>(12000.0)).unwrap(),
-        Frequency::new::<megahertz>(600.25),
-        ShiftReference::from_freq(Frequency::new::<hertz>(3000.0)).unwrap()
+        FrequencyRange::new(0.0, 12000.0).unwrap(),
+        600.25,
+        ShiftReference::from_freq(3000.0).unwrap()
     );
     axis_tests!(
         backward_range_zero_reference,
-        FrequencyRange::new(Frequency::new::<hertz>(12000.0), Frequency::zero()).unwrap(),
-        Frequency::new::<megahertz>(600.25),
-        ShiftReference::from_freq(Frequency::new::<hertz>(3000.0)).unwrap()
+        FrequencyRange::new(12000.0, 0.0).unwrap(),
+        600.25,
+        ShiftReference::from_freq(3000.0).unwrap()
     );
     axis_tests!(
         forward_range_non_zero_reference,
-        FrequencyRange::new(Frequency::zero(), Frequency::new::<hertz>(12000.0)).unwrap(),
-        Frequency::new::<megahertz>(600.25),
-        ShiftReference::from_shift(Ratio::new::<ppm>(14.5)).unwrap()
+        FrequencyRange::new(0.0, 12000.0).unwrap(),
+        600.25,
+        ShiftReference::from_shift(14.5).unwrap()
     );
     axis_tests!(
         backward_range_non_zero_reference,
-        FrequencyRange::new(Frequency::new::<hertz>(12000.0), Frequency::zero()).unwrap(),
-        Frequency::new::<megahertz>(600.25),
-        ShiftReference::from_shift(Ratio::new::<ppm>(14.5)).unwrap()
+        FrequencyRange::new(12000.0, 0.0).unwrap(),
+        600.25,
+        ShiftReference::from_shift(14.5).unwrap()
     );
 }
