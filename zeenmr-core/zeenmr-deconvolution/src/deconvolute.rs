@@ -4,13 +4,11 @@ use crate::fitting::Fit;
 use crate::peak_finding::Find;
 use crate::smoothing::Smooth;
 use num_traits::Float;
-use std::marker::PhantomData;
 use std::ops::Range;
-use uom::si::ratio::part_per_million as ppm;
 use zeenmr_peakshape::PeakShape;
 use zeenmr_peakshape::iter::SuperpositionMap;
 use zeenmr_spectrum::Spectrum1D;
-use zeenmr_spectrum::frequency_axis::range::ShiftRange;
+use zeenmr_spectrum::frequency_axis::range::{FiniteBounds, ShiftRange};
 use zeenmr_spectrum::intensity_array::Array1D;
 
 #[cfg(feature = "rayon")]
@@ -27,7 +25,7 @@ pub trait Deconvolute<T, P> {
     /// Deconvolutes the provided `Spectrum` into its constituent signals.
     ///
     /// Each signal is modeled as a peak shape.
-    fn deconvolute<S>(&self, spectrum: &Spectrum1D<S>) -> Result<Deconvolution<S::Elem, P>>
+    fn deconvolute<S>(&self, spectrum: &Spectrum1D<T, S>) -> Result<Deconvolution<T, P>>
     where
         S: Array1D<Elem = T>;
 }
@@ -42,7 +40,7 @@ pub trait ParDeconvolute<T, P> {
     /// parallel.
     ///
     /// Each signal is modeled as a peak shape.
-    fn par_deconvolute<S>(&self, spectrum: &Spectrum1D<S>) -> Result<Deconvolution<S::Elem, P>>
+    fn par_deconvolute<S>(&self, spectrum: &Spectrum1D<T, S>) -> Result<Deconvolution<T, P>>
     where
         S: Array1D<Elem = T>;
 }
@@ -59,7 +57,7 @@ pub trait DeconvoluteMap<T, P>: Iterator {
 impl<'s, S, I, P> DeconvoluteMap<S::Elem, P> for I
 where
     S: Array1D + 's,
-    I: Iterator<Item = &'s Spectrum1D<S>>,
+    I: Iterator<Item = &'s Spectrum1D<S::Elem, S>>,
     P: PeakShape<S::Elem>,
 {
     fn deconvolute<D>(
@@ -92,7 +90,7 @@ impl<'s, S, I, P> ParDeconvoluteMap<S::Elem, P> for I
 where
     S: Array1D + 's,
     S::Elem: Send + Sync,
-    I: IndexedParallelIterator<Item = &'s Spectrum1D<S>>,
+    I: IndexedParallelIterator<Item = &'s Spectrum1D<S::Elem, S>>,
     P: PeakShape<S::Elem> + Send + Sync,
 {
     fn deconvolute<D>(
@@ -134,9 +132,7 @@ pub struct Deconvoluter<T, SM, PF, FT> {
     /// Must implement [`Fit`] or [`ParFit`], or be [`NeedsFitter`].
     fitter: FT,
     /// Chemical shift ranges to ignore during deconvolution.
-    ignore: Vec<ShiftRange>,
-    /// Numeric type this deconvoluter can process.
-    numeric: PhantomData<T>,
+    ignore: Vec<ShiftRange<T>>,
 }
 
 impl<T, P, SM, PF, FT> Deconvolute<T, P> for Deconvoluter<T, SM, PF, FT>
@@ -147,21 +143,26 @@ where
     PF: Find<T>,
     FT: Fit<T, P>,
 {
-    fn deconvolute<S>(&self, spectrum: &Spectrum1D<S>) -> Result<Deconvolution<T, P>>
+    fn deconvolute<S>(&self, spectrum: &Spectrum1D<T, S>) -> Result<Deconvolution<T, P>>
     where
         S: Array1D<Elem = T>,
     {
         let len = spectrum.intensities().len();
+        let len_as_t = T::from(len).expect("conversion from usize to T must never fail");
         let axis = spectrum.axis();
         let smoothed = self.smoother.smooth(spectrum.intensities());
         let ignore = self
             .ignore
             .iter()
             .filter_map(|range| {
-                let start = axis.shift_to_rel(range.start())? * len as f64;
-                let end = axis.shift_to_rel(range.end())? * len as f64;
+                let start = axis.shift_to_rel(range.start())? * len_as_t;
+                let end = axis.shift_to_rel(range.end())? * len_as_t;
+                let min = start.min(end).ceil().to_usize()?;
+                let max = start.max(end).floor().to_usize()? + 1;
 
-                Some(start.min(end).ceil() as usize..start.max(end).floor() as usize + 1)
+                // no need to check against len because relative coordinates
+                // returned by `Axis` are always in `[0, 1]`
+                Some(min..max)
             })
             .collect::<Vec<Range<usize>>>();
         let peaks = self
@@ -171,9 +172,6 @@ where
         let superpositions = spectrum
             .axis()
             .shifts(len)
-            .map(|shift| {
-                T::from(shift.get::<ppm>()).expect("conversion from f64 to T must not fail")
-            })
             .superposition(&peak_shapes)
             .collect::<Vec<T>>();
 
@@ -193,21 +191,26 @@ where
     PF: Find<T>,
     FT: ParFit<T, P>,
 {
-    fn par_deconvolute<S>(&self, spectrum: &Spectrum1D<S>) -> Result<Deconvolution<T, P>>
+    fn par_deconvolute<S>(&self, spectrum: &Spectrum1D<T, S>) -> Result<Deconvolution<T, P>>
     where
         S: Array1D<Elem = T>,
     {
         let len = spectrum.intensities().len();
+        let len_as_t = T::from(len).expect("conversion from usize to T must never fail");
         let axis = spectrum.axis();
         let intensities = self.smoother.smooth(spectrum.intensities());
         let ignore = self
             .ignore
             .iter()
             .filter_map(|range| {
-                let start = axis.shift_to_rel(range.start())? * len as f64;
-                let end = axis.shift_to_rel(range.end())? * len as f64;
+                let start = axis.shift_to_rel(range.start())? * len_as_t;
+                let end = axis.shift_to_rel(range.end())? * len_as_t;
+                let min = start.min(end).ceil().to_usize()?;
+                let max = start.max(end).floor().to_usize()? + 1;
 
-                Some(start.min(end).ceil() as usize..start.max(end).floor() as usize + 1)
+                // no need to check against len because relative coordinates
+                // returned by `Axis` are always in `[0, 1]`
+                Some(min..max)
             })
             .collect::<Vec<Range<usize>>>();
         let peaks = self
@@ -217,9 +220,6 @@ where
         let superpositions = spectrum
             .axis()
             .par_shifts(len)
-            .map(|shift| {
-                T::from(shift.get::<ppm>()).expect("conversion from f64 to T must not fail")
-            })
             .superposition(&peak_shapes)
             .collect::<Vec<T>>();
 
@@ -261,7 +261,6 @@ impl Deconvoluter<(), NeedsSmoother, NeedsFinder, NeedsFitter> {
             finder: NeedsFinder,
             fitter: NeedsFitter,
             ignore: Vec::new(),
-            numeric: PhantomData,
         }
     }
 }
@@ -280,7 +279,6 @@ where
             finder: self.finder,
             fitter: self.fitter,
             ignore: self.ignore,
-            numeric: self.numeric,
         }
     }
 }
@@ -296,7 +294,6 @@ impl<T, SM, FT> Deconvoluter<T, SM, NeedsFinder, FT> {
             finder: peak_finder,
             fitter: self.fitter,
             ignore: self.ignore,
-            numeric: self.numeric,
         }
     }
 }
@@ -316,12 +313,14 @@ impl<T, SM, PF> Deconvoluter<T, SM, PF, NeedsFitter> {
             finder: self.finder,
             fitter,
             ignore: self.ignore,
-            numeric: self.numeric,
         }
     }
 }
 
-impl<T, SM, PF, FT> Deconvoluter<T, SM, PF, FT> {
+impl<T, SM, PF, FT> Deconvoluter<T, SM, PF, FT>
+where
+    T: Float,
+{
     /// Adds a chemical shift range to ignore during deconvolution.
     ///
     /// Some samples contain signals that cannot be fitted with the intended
@@ -337,8 +336,8 @@ impl<T, SM, PF, FT> Deconvoluter<T, SM, PF, FT> {
     /// # Errors
     ///
     /// Returns an error if the provided chemical shift range contains a bound
-    /// that is `INF`, `NEG_INF` or `NaN`.
-    pub fn ignore(mut self, range: ShiftRange) -> Result<Self> {
+    /// that is one of the infinities or `NaN`.
+    pub fn ignore(mut self, range: ShiftRange<T>) -> Result<Self> {
         self.ignore.push(range.normalized());
         self.ignore.sort_unstable_by(|a, b| {
             a.start()
@@ -368,11 +367,7 @@ impl<T, SM, PF, FT> Deconvoluter<T, SM, PF, FT> {
 /// the superposition of the fitted peak shapes.
 ///
 /// Ignored regions and signal-free region are excluded.
-fn mse<T, S>(
-    spectrum: &Spectrum1D<S>,
-    superpositions: &[S::Elem],
-    ignore: &[Range<usize>],
-) -> S::Elem
+fn mse<T, S>(spectrum: &Spectrum1D<T, S>, superpositions: &[T], ignore: &[Range<usize>]) -> T
 where
     T: Float,
     S: Array1D<Elem = T>,

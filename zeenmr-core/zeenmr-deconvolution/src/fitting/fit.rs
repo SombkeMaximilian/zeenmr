@@ -9,7 +9,7 @@ where
     P: PeakShape<T>,
 {
     /// Fits peak shapes to the spectrum using the provided peaks.
-    fn fit<S>(&self, spectrum: &Spectrum1D<S>, peaks: &[Peak]) -> Vec<P>
+    fn fit<S>(&self, spectrum: &Spectrum1D<T, S>, peaks: &[Peak]) -> Vec<P>
     where
         S: Array1D<Elem = T>;
 }
@@ -25,7 +25,7 @@ where
     P: PeakShape<T> + Send + Sync,
 {
     /// Fits peak shapes to the spectrum in parallel using the provided peaks.
-    fn par_fit<S>(&self, spectrum: &Spectrum1D<S>, peaks: &[Peak]) -> Vec<P>
+    fn par_fit<S>(&self, spectrum: &Spectrum1D<T, S>, peaks: &[Peak]) -> Vec<P>
     where
         S: Array1D<Elem = T>;
 }

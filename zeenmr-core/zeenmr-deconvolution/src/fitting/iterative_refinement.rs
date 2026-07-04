@@ -2,7 +2,6 @@ use crate::fitting::Fit;
 use crate::peak_finding::Peak;
 use num_traits::Float;
 use std::marker::PhantomData;
-use uom::si::ratio::part_per_million as ppm;
 use zeenmr_peakshape::iter::SuperpositionMap;
 use zeenmr_peakshape::{Lorentzian, PeakShape};
 use zeenmr_spectrum::Spectrum1D;
@@ -64,24 +63,23 @@ where
 {
     /// Extracts the positions and intensities of the peaks from the spectrum
     /// and constructs a `ReducedSpectrum` from them.
-    fn new<S>(spectrum: &Spectrum1D<S>, peaks: &[Peak]) -> Self
+    fn new<S>(spectrum: &Spectrum1D<T, S>, peaks: &[Peak]) -> Self
     where
         S: Array1D<Elem = T>,
     {
         let len = spectrum.intensities().len();
+        let len_as_t = T::from(len).expect("conversion from usize to T must never fail");
         let axis = spectrum.axis();
         let (shifts, intensities) = peaks
             .iter()
             .flat_map(|peak| [peak.left, peak.center, peak.right])
             .filter_map(|index| {
                 if index < len {
+                    let index_as_t =
+                        T::from(index).expect("conversion from usize to T must never fail");
+
                     Some((
-                        T::from(
-                            axis.rel_to_shift((index as f64) / (len as f64))
-                                .unwrap()
-                                .get::<ppm>(),
-                        )
-                        .expect("conversion from f64 to T must never fail"),
+                        axis.rel_to_shift(index_as_t / len_as_t).unwrap(),
                         spectrum.intensities()[index],
                     ))
                 } else {
@@ -181,7 +179,7 @@ where
     T: Float,
     P: PeakShape<T> + ThreePointStencil<T>,
 {
-    fn fit<S>(&self, spectrum: &Spectrum1D<S>, peaks: &[Peak]) -> Vec<P>
+    fn fit<S>(&self, spectrum: &Spectrum1D<T, S>, peaks: &[Peak]) -> Vec<P>
     where
         S: Array1D<Elem = T>,
     {
@@ -227,7 +225,7 @@ where
     T: Float + Send + Sync,
     P: PeakShape<T> + ThreePointStencil<T> + Send + Sync,
 {
-    fn par_fit<S>(&self, spectrum: &Spectrum1D<S>, peaks: &[Peak]) -> Vec<P>
+    fn par_fit<S>(&self, spectrum: &Spectrum1D<T, S>, peaks: &[Peak]) -> Vec<P>
     where
         S: Array1D<Elem = T>,
     {
