@@ -3,28 +3,15 @@ use crate::error::Result;
 use crate::frequency_axis::Axis;
 use crate::intensity_array::Array1D;
 use crate::intensity_array::diagnostic_1d::{
-    FindSignalRange, Magnitude, SingleChannel, ValidateIntensities,
+    DualChannel, FindSignalRange, Magnitude, SingleChannel, ValidateIntensities,
 };
+use num_complex::Complex;
 use num_traits::Float;
 use std::marker::PhantomData;
 use std::ops::Range;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-
-/// Wrapper around two 1D arrays for real and imaginary channels.
-#[derive(Clone, PartialEq, Debug)]
-#[cfg_attr(
-    feature = "serde",
-    derive(Serialize, Deserialize),
-    serde(rename_all = "camelCase")
-)]
-pub struct DualChannel1D<S1, S2> {
-    /// Real, absorptive channel.
-    pub(crate) real: S1,
-    /// Imaginary, dispersive channel.
-    pub(crate) imag: S2,
-}
 
 /// 1D NMR spectrum.
 #[derive(Clone, PartialEq, Debug)]
@@ -65,29 +52,13 @@ impl<T, S> Spectrum1D<T, S> {
     }
 }
 
-impl<S> Spectrum1D<S::Elem, S>
+impl<T, S> Spectrum1D<T, S>
 where
     S: Array1D,
 {
     /// Returns a slice containing the intensities.
     pub fn intensities(&self) -> &[S::Elem] {
         self.intensities.as_ref()
-    }
-}
-
-impl<S1, S2> Spectrum1D<S1::Elem, DualChannel1D<S1, S2>>
-where
-    S1: Array1D,
-    S2: Array1D<Elem = S1::Elem>,
-{
-    /// Returns a slice containing the real channel intensities.
-    pub fn real(&self) -> &[S1::Elem] {
-        self.intensities.real.as_ref()
-    }
-
-    /// Returns a slice containing the imaginary channel intensities.
-    pub fn imag(&self) -> &[S2::Elem] {
-        self.intensities.imag.as_ref()
     }
 }
 
@@ -101,7 +72,7 @@ pub struct NeedsRange;
 
 /// Builder for 1D spectra.
 #[derive(Clone, PartialEq, Debug)]
-pub struct Builder1D<S, K, A, R> {
+pub struct Builder1D<T, S, K, A, R> {
     /// Nucleus observed in the NMR experiment.
     nucleus: Option<Nucleus>,
     /// Frequency axis of the spectrum.
@@ -110,16 +81,18 @@ pub struct Builder1D<S, K, A, R> {
     signal_range: R,
     /// Intensity array or dual channel.
     intensities: S,
-    /// Magnitude or single channel intensities.
+    /// Scalar type.
+    scalar: PhantomData<T>,
+    /// Magnitude, single or dual channel intensities.
     intensity_kind: PhantomData<K>,
 }
 
-impl<S, K> Builder1D<S, K, Axis<S::Elem>, Range<usize>>
+impl<T, S, K> Builder1D<T, S, K, Axis<T>, Range<usize>>
 where
     S: Array1D,
 {
     /// Finalizes the spectrum.
-    pub fn finalize(self) -> Spectrum1D<S::Elem, S> {
+    pub fn finalize(self) -> Spectrum1D<T, S> {
         Spectrum1D {
             nucleus: self.nucleus,
             axis: self.axis,
@@ -129,23 +102,7 @@ where
     }
 }
 
-impl<S1, S2> Builder1D<DualChannel1D<S1, S2>, SingleChannel, Axis<S1::Elem>, Range<usize>>
-where
-    S1: Array1D,
-    S2: Array1D<Elem = S1::Elem>,
-{
-    /// Finalizes the dual channel spectrum.
-    pub fn finalize(self) -> Spectrum1D<S1::Elem, DualChannel1D<S1, S2>> {
-        Spectrum1D {
-            nucleus: self.nucleus,
-            axis: self.axis,
-            signal_range: self.signal_range,
-            intensities: self.intensities,
-        }
-    }
-}
-
-impl<S> Builder1D<S, Magnitude, NeedsAxis, NeedsRange>
+impl<S> Builder1D<S::Elem, S, Magnitude, NeedsAxis, NeedsRange>
 where
     S: Array1D,
     S::Elem: Float,
@@ -163,12 +120,13 @@ where
             axis: NeedsAxis,
             signal_range: NeedsRange,
             intensities: array,
+            scalar: PhantomData,
             intensity_kind: PhantomData,
         })
     }
 }
 
-impl<S> Builder1D<S, SingleChannel, NeedsAxis, NeedsRange>
+impl<S> Builder1D<S::Elem, S, SingleChannel, NeedsAxis, NeedsRange>
 where
     S: Array1D,
     S::Elem: Float,
@@ -186,76 +144,65 @@ where
             axis: NeedsAxis,
             signal_range: NeedsRange,
             intensities: array,
+            scalar: PhantomData,
             intensity_kind: PhantomData,
         })
     }
-}
 
-impl<S1, S2> Builder1D<DualChannel1D<S1, S2>, SingleChannel, NeedsAxis, NeedsRange>
-where
-    S1: Array1D,
-    S1::Elem: Float,
-    S2: Array1D<Elem = S1::Elem>,
-{
-    /// Build a dual channel spectrum with real and imaginary intensities.
+    /// Build a single channel, imaginary spectrum.
     ///
     /// # Errors
     ///
-    /// Returns an error if validating either intensities fails.
-    pub fn dual_channel(real: S1, imag: S2) -> Result<Self> {
-        SingleChannel::validate(&real)?;
-        SingleChannel::validate(&imag)?;
+    /// Returns an error if validating the intensities fails.
+    pub fn imag(array: S) -> Result<Self> {
+        Self::real(array)
+    }
+}
+
+impl<T, S> Builder1D<T, S, DualChannel, NeedsAxis, NeedsRange>
+where
+    T: Float,
+    S: Array1D<Elem = Complex<T>>,
+{
+    /// Build a dual channel, complex spectrum.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if validating the intensities fails.
+    pub fn complex(array: S) -> Result<Self> {
+        DualChannel::validate(&array)?;
 
         Ok(Self {
             nucleus: None,
             axis: NeedsAxis,
             signal_range: NeedsRange,
-            intensities: DualChannel1D { real, imag },
+            intensities: array,
+            scalar: PhantomData,
             intensity_kind: PhantomData,
         })
     }
 }
 
-impl<S, K, R> Builder1D<S, K, NeedsAxis, R>
+impl<T, S, K, R> Builder1D<T, S, K, NeedsAxis, R>
 where
     S: Array1D,
 {
     /// Sets the frequency axis.
-    pub fn axis(self, axis: Axis<S::Elem>) -> Builder1D<S, K, Axis<S::Elem>, R> {
+    pub fn axis(self, axis: Axis<T>) -> Builder1D<T, S, K, Axis<T>, R> {
         Builder1D {
             nucleus: self.nucleus,
             axis,
             signal_range: self.signal_range,
             intensities: self.intensities,
+            scalar: PhantomData,
             intensity_kind: self.intensity_kind,
         }
     }
 }
 
-impl<S1, S2, K, R> Builder1D<DualChannel1D<S1, S2>, K, NeedsAxis, R>
-where
-    S1: Array1D,
-    S2: Array1D<Elem = S1::Elem>,
-{
-    /// Sets the frequency axis.
-    pub fn axis(
-        self,
-        axis: Axis<S1::Elem>,
-    ) -> Builder1D<DualChannel1D<S1, S2>, K, Axis<S1::Elem>, R> {
-        Builder1D {
-            nucleus: self.nucleus,
-            axis,
-            signal_range: self.signal_range,
-            intensities: self.intensities,
-            intensity_kind: self.intensity_kind,
-        }
-    }
-}
-
-impl<S, K, A> Builder1D<S, K, A, NeedsRange>
+impl<T, S, K, A> Builder1D<T, S, K, A, NeedsRange>
 where
     S: Array1D,
-    S::Elem: Float,
 {
     /// Sets the signal range with a finder.
     ///
@@ -265,7 +212,7 @@ where
     /// # Errors
     ///
     /// Returns an error if finding the signal range fails.
-    pub fn signal_range<F>(self, finder: F) -> Result<Builder1D<S, K, A, Range<usize>>>
+    pub fn signal_range<F>(self, finder: F) -> Result<Builder1D<T, S, K, A, Range<usize>>>
     where
         F: FindSignalRange<S::Elem, K>,
     {
@@ -274,56 +221,129 @@ where
             axis: self.axis,
             signal_range: finder.find_signal_range(self.intensities.as_ref())?,
             intensities: self.intensities,
+            scalar: PhantomData,
             intensity_kind: self.intensity_kind,
         })
     }
 }
 
-impl<S1, S2, A> Builder1D<DualChannel1D<S1, S2>, SingleChannel, A, NeedsRange>
-where
-    S1: Array1D,
-    S1::Elem: Float,
-    S2: Array1D<Elem = S1::Elem>,
-{
-    /// Sets the signal range with a finder.
-    ///
-    /// Uses the union of the signal ranges found in the real and imaginary
-    /// arrays.
-    ///
-    /// To directly set the signal range, `Range<usize>` is also a finder, which
-    /// simply returns itself.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if finding the signal range fails.
-    pub fn signal_range<F>(
-        self,
-        finder: F,
-    ) -> Result<Builder1D<DualChannel1D<S1, S2>, SingleChannel, A, Range<usize>>>
-    where
-        F: FindSignalRange<S1::Elem, SingleChannel>,
-    {
-        let real_range = finder.find_signal_range(self.intensities.real.as_ref())?;
-        let imag_range = finder.find_signal_range(self.intensities.imag.as_ref())?;
-        let start = real_range.start.min(imag_range.start);
-        let end = real_range.end.max(imag_range.end);
-        let signal_range = start..end;
-
-        Ok(Builder1D {
-            nucleus: self.nucleus,
-            axis: self.axis,
-            signal_range,
-            intensities: self.intensities,
-            intensity_kind: self.intensity_kind,
-        })
-    }
-}
-
-impl<S, K, A, R> Builder1D<S, K, A, R> {
+impl<T, S, K, A, R> Builder1D<T, S, K, A, R> {
     /// Sets the observed nucleus.
     pub fn nucleus(mut self, nucleus: Nucleus) -> Self {
         self.nucleus = Some(nucleus);
 
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frequency_axis::ShiftReference;
+    use crate::frequency_axis::range::FrequencyRange;
+
+    fn valid_axis<T>() -> Axis<T>
+    where
+        T: Float,
+    {
+        let start = T::zero();
+        let end = T::from(12000_u32).unwrap();
+        let larmor = T::from(600.25_f64).unwrap();
+        let ref_freq = T::from(3000_u32).unwrap();
+
+        Axis::new(
+            FrequencyRange::new(start, end).unwrap(),
+            larmor,
+            ShiftReference::from_freq(ref_freq).unwrap(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn real_spectrum() {
+        fn _real_spectrum<T>() -> Result<()>
+        where
+            T: Float + std::fmt::Debug,
+        {
+            let data = (0..2_u32.pow(8))
+                .map(|x| T::from(x).unwrap())
+                .collect::<Vec<_>>();
+            let range = 2_usize.pow(4)..(data.len() - 2_usize.pow(4));
+            let axis = valid_axis();
+            let spectrum = Builder1D::real(data)?
+                .axis(axis)
+                .signal_range(range)?
+                .nucleus(Nucleus::Hydrogen)
+                .finalize();
+
+            let _ = spectrum.nucleus();
+            let _ = spectrum.axis();
+            let _ = spectrum.signal_range();
+            let _ = spectrum.intensities();
+
+            Ok(())
+        }
+
+        _real_spectrum::<f32>().unwrap();
+        _real_spectrum::<f64>().unwrap();
+    }
+
+    #[test]
+    fn magnitude_spectrum() {
+        fn _magnitude_spectrum<T>() -> Result<()>
+        where
+            T: Float + std::fmt::Debug,
+        {
+            let data = (0..2_u32.pow(8))
+                .map(|x| T::from(x).unwrap())
+                .collect::<Vec<T>>();
+            let range = 2_usize.pow(4)..(data.len() - 2_usize.pow(4));
+            let axis = valid_axis();
+            let spectrum = Builder1D::magnitude(data)?
+                .axis(axis)
+                .signal_range(range)?
+                .nucleus(Nucleus::Hydrogen)
+                .finalize();
+
+            let _ = spectrum.nucleus();
+            let _ = spectrum.axis();
+            let _ = spectrum.signal_range();
+            let _ = spectrum.intensities();
+
+            Ok(())
+        }
+
+        _magnitude_spectrum::<f32>().unwrap();
+        _magnitude_spectrum::<f64>().unwrap();
+    }
+
+    #[test]
+    fn complex_spectrum() {
+        fn _complex_spectrum<T>() -> Result<()>
+        where
+            T: Float + std::fmt::Debug,
+        {
+            let data = (0..2_u32.pow(8))
+                .map(|x| T::from(x).unwrap())
+                .map(|x| Complex::new(x, x))
+                .collect::<Vec<Complex<T>>>();
+            let range = 2_usize.pow(4)..(data.len() - 2_usize.pow(4));
+            let axis = valid_axis();
+            let spectrum = Builder1D::complex(data)?
+                .axis(axis)
+                .signal_range(range)?
+                .nucleus(Nucleus::Hydrogen)
+                .finalize();
+
+            let _ = spectrum.nucleus();
+            let _ = spectrum.axis();
+            let _ = spectrum.signal_range();
+            let _ = spectrum.intensities();
+
+            Ok(())
+        }
+
+        _complex_spectrum::<f32>().unwrap();
+        _complex_spectrum::<f64>().unwrap();
     }
 }

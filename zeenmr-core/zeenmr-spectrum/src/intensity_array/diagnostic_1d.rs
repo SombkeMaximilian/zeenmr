@@ -2,8 +2,8 @@
 
 use crate::error::{Error, Result};
 use crate::intensity_array::Array1D;
-use num_traits::{Float, FromPrimitive};
-use std::marker::PhantomData;
+use num_complex::Complex;
+use num_traits::Float;
 use std::ops::Range;
 
 /// Intensities are magnitude transformed, i.e., `s = sqrt(r^2 + i^2)`.
@@ -13,6 +13,10 @@ pub struct Magnitude;
 /// Intensities are the real or imaginary channel.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct SingleChannel;
+
+/// Intensities are the real and imaginary channel as complex numbers.
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub struct DualChannel;
 
 /// Trait for validating intensities.
 pub trait ValidateIntensities<T> {
@@ -69,6 +73,29 @@ where
     }
 }
 
+impl<T> ValidateIntensities<Complex<T>> for DualChannel
+where
+    T: Float,
+{
+    fn validate<A>(array: A) -> Result<()>
+    where
+        A: Array1D<Elem = Complex<T>>,
+    {
+        let array = array.as_ref();
+
+        if array.is_empty() {
+            Err(Error::empty_array())
+        } else if array
+            .iter()
+            .any(|x| !x.re.is_finite() || !x.im.is_finite())
+        {
+            Err(Error::non_finite_float())
+        } else {
+            Ok(())
+        }
+    }
+}
+
 /// Trait for finding the range within which signals are found.
 pub trait FindSignalRange<T, K> {
     /// Computes the signal range.
@@ -105,7 +132,7 @@ impl<T, K> FindSignalRange<T, K> for Range<usize> {
 /// This test statistic relies on there being noise at the edges of the array.
 /// If there is no or extremely little noise, division by zero will occur.
 #[derive(Copy, Clone, PartialEq, Debug)]
-pub struct CumulativeSum<T, K> {
+pub struct CumulativeSum<T> {
     /// Flagging limit above which to mark a position as signal start or end.
     limit: T,
     /// Penalty for each term.
@@ -114,13 +141,11 @@ pub struct CumulativeSum<T, K> {
     edges: f64,
     /// Padding around the start and end points to avoid cutting off signals.
     padding: usize,
-    /// Single channel or magnitude.
-    intensity_kind: PhantomData<K>,
 }
 
-impl<T> FindSignalRange<T, Magnitude> for CumulativeSum<T, Magnitude>
+impl<T> FindSignalRange<T, Magnitude> for CumulativeSum<T>
 where
-    T: Copy + Float + FromPrimitive,
+    T: Float,
 {
     fn find_signal_range<A>(&self, array: A) -> Result<Range<usize>>
     where
@@ -134,7 +159,7 @@ where
             .collect::<Vec<T>>();
         let (mean, std) = self.edge_stats(&array)?;
         if std.abs()
-            <= T::from_u8(100).expect("conversion from u8 to T must never fail") * T::epsilon()
+            <= T::from(100_u8).expect("conversion from u8 to T must never fail") * T::epsilon()
         {
             return Err(Error::divide_by_zero());
         }
@@ -148,9 +173,9 @@ where
     }
 }
 
-impl<T> FindSignalRange<T, SingleChannel> for CumulativeSum<T, SingleChannel>
+impl<T> FindSignalRange<T, SingleChannel> for CumulativeSum<T>
 where
-    T: Copy + Float + FromPrimitive,
+    T: Float,
 {
     fn find_signal_range<A>(&self, array: A) -> Result<Range<usize>>
     where
@@ -159,7 +184,7 @@ where
         let array = array.as_ref();
         let (mean, std) = self.edge_stats(array)?;
         if std.abs()
-            <= T::from_u8(100).expect("conversion from u8 to T must never fail") * T::epsilon()
+            <= T::from(100_u8).expect("conversion from u8 to T must never fail") * T::epsilon()
         {
             return Err(Error::divide_by_zero());
         }
@@ -173,9 +198,27 @@ where
     }
 }
 
-impl<T, K> CumulativeSum<T, K>
+impl<T> FindSignalRange<Complex<T>, DualChannel> for CumulativeSum<T>
 where
-    T: Copy + Float + FromPrimitive,
+    T: Float,
+{
+    fn find_signal_range<A>(&self, array: A) -> Result<Range<usize>>
+    where
+        A: Array1D<Elem = Complex<T>>,
+    {
+        let array = array
+            .as_ref()
+            .iter()
+            .map(|c| c.norm())
+            .collect::<Vec<T>>();
+
+        FindSignalRange::<T, Magnitude>::find_signal_range(self, array)
+    }
+}
+
+impl<T> CumulativeSum<T>
+where
+    T: Float,
 {
     /// Creates a new `CumulativeSum`.
     pub fn new(limit: T, penalty: T) -> Self {
@@ -184,7 +227,6 @@ where
             penalty,
             edges: 0.1,
             padding: 20,
-            intensity_kind: PhantomData,
         }
     }
 
@@ -218,17 +260,6 @@ where
         self.padding = padding;
 
         self
-    }
-
-    /// Sets the intensity kind from `M` to `N`.
-    pub fn intensity_kind<N>(self) -> CumulativeSum<T, N> {
-        CumulativeSum::<T, N> {
-            limit: self.limit,
-            penalty: self.penalty,
-            edges: self.edges,
-            padding: self.padding,
-            intensity_kind: PhantomData,
-        }
     }
 
     /// Performs a one-sided scan which only checks for positive deviance.
@@ -321,8 +352,7 @@ where
         }
 
         let right_edge = array.len() - edge_width;
-        let num =
-            T::from_usize(2 * edge_width).expect("conversion from usize to T must never fail");
+        let num = T::from(2 * edge_width).expect("conversion from usize to T must never fail");
 
         let left_sum = array[..edge_width]
             .iter()
