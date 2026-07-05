@@ -1,74 +1,89 @@
-use crate::data::DataTable;
 use byteorder::{ByteOrder, ReadBytesExt};
-use std::fs::File;
-use std::io::{self, BufReader};
-use std::marker::PhantomData;
-use std::path::Path;
+use std::io::{self, Read};
 
-/// Reader adapter for Bruker binary files.
-#[derive(Debug)]
-pub(crate) struct BrukerBinaryReader<E> {
-    /// Reader for the main file.
-    reader: BufReader<File>,
-    /// Endianness of the data in the file.
-    endian: PhantomData<E>,
-}
-
-impl<E> BrukerBinaryReader<E> {
-    /// Attempts to open a Bruker binary file in read-only mode.
-    pub(crate) fn new<P: AsRef<Path>>(path: P) -> io::Result<Self> {
-        Ok(Self {
-            reader: BufReader::new(File::open(path)?),
-            endian: PhantomData,
-        })
-    }
-}
-
-impl<E> BrukerBinaryReader<E>
+/// Attempts to read `i32` values from the file and returns them.
+///
+/// # Errors
+///
+/// Returns the same errors as [`Read::read_exact`].
+fn read_n_i32<R, E>(reader: &mut R, n: usize) -> io::Result<Vec<i32>>
 where
+    R: Read,
     E: ByteOrder,
 {
-    /// Attempts to read complex `i32` values from the file, and returns a data
-    /// table with "R" and "I" columns.
-    ///
-    /// # Errors
-    ///
-    /// Returns the same errors as [`io::Read::read_exact`].
-    pub(crate) fn read_i32_complex(self, n: usize, exp: u32) -> io::Result<DataTable<'static>> {
-        let mut table = DataTable::new();
-        let mut complex = vec![0_i32; n];
-        self.reader
-            .into_inner()
-            .read_i32_into::<E>(&mut complex)?;
-        let (real, imag) = complex
-            .chunks_exact(2)
-            .map(|c| ((c[0] as i64) << exp, (c[1] as i64) << exp))
-            .unzip::<i64, i64, Vec<i64>, Vec<i64>>();
-        table.insert("R".into(), real.into());
-        table.insert("I".into(), imag.into());
+    let mut values = vec![0_i32; n];
+    reader.read_i32_into::<E>(&mut values)?;
 
-        Ok(table)
-    }
+    Ok(values)
+}
 
-    /// Attempts to read complex `f64` values from the file, and returns a data
-    /// table with "R" and "I" columns.
-    ///
-    /// # Errors
-    ///
-    /// Returns the same errors as [`io::Read::read_exact`].
-    pub(crate) fn read_f64_complex(self, n: usize) -> io::Result<DataTable<'static>> {
-        let mut table = DataTable::new();
-        let mut complex = vec![0_f64; n];
-        self.reader
-            .into_inner()
-            .read_f64_into::<E>(&mut complex)?;
-        let (real, imag) = complex
-            .chunks_exact(2)
-            .map(|c| (c[0], c[1]))
-            .unzip::<f64, f64, Vec<f64>, Vec<f64>>();
-        table.insert("R".into(), real.into());
-        table.insert("I".into(), imag.into());
+/// Attempts to read complex `i32` values from the file and returns them.
+///
+/// The first returned vector contains the real values, the second contains the
+/// imaginary values.
+///
+/// # Errors
+///
+/// Returns the same errors as [`Read::read_exact`].
+fn read_n_i32_complex<R, E>(reader: &mut R, n: usize) -> io::Result<(Vec<i32>, Vec<i32>)>
+where
+    R: Read,
+    E: ByteOrder,
+{
+    let mut values = vec![0_i32; n];
+    reader.read_i32_into::<E>(&mut values)?;
 
-        Ok(table)
+    Ok(values
+        .chunks_exact(2)
+        .map(|c| (c[0], c[1]))
+        .unzip())
+}
+
+/// Attempts to read `f64` values from the file and returns them.
+///
+/// # Errors
+///
+/// Returns the same errors as [`Read::read_exact`].
+fn read_n_f64<R, E>(reader: &mut R, n: usize) -> io::Result<Vec<f64>>
+where
+    R: Read,
+    E: ByteOrder,
+{
+    let mut values = vec![0_f64; n];
+    reader.read_f64_into::<E>(&mut values)?;
+
+    Ok(values)
+}
+
+/// Attempts to read complex `f64` values from the file and returns them.
+///
+/// The first returned vector contains the real values, the second contains
+/// the imaginary values.
+///
+/// # Errors
+///
+/// Returns the same errors as [`Read::read_exact`].
+fn read_f64_complex<R, E>(reader: &mut R, n: usize) -> io::Result<(Vec<f64>, Vec<f64>)>
+where
+    R: Read,
+    E: ByteOrder,
+{
+    let mut complex = vec![0_f64; n];
+    reader.read_f64_into::<E>(&mut complex)?;
+
+    Ok(complex
+        .chunks_exact(2)
+        .map(|c| (c[0], c[1]))
+        .unzip())
+}
+
+/// Undoes scaling as specified by the `NC_proc` parameter.
+///
+/// This should only be used for processed data. Raw FIDs are not rescaled.
+fn undo_scaling(data: &mut [i32], exp: i32) {
+    if exp > 0 {
+        data.iter_mut().for_each(|x| *x <<= exp)
+    } else if exp < 0 {
+        data.iter_mut().for_each(|x| *x >>= -exp)
     }
 }
