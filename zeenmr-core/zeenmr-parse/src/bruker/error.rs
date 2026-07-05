@@ -1,6 +1,15 @@
 //! Bruker parsing error types.
 
 use crate::jcampdx;
+use std::io;
+
+/// A specialized [`Result`] type.
+///
+/// [`Result`]: std::result::Result
+///
+/// This type alias avoids writing out the full type name directly, and is
+/// broadly used across the library.
+pub type Result<T> = std::result::Result<T, Error>;
 
 /// An `Error` that occurred while parsing a dataset.
 ///
@@ -19,15 +28,15 @@ pub struct Error {
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum Kind {
     /// General I/O errors while reading files.
-    IoError(std::io::ErrorKind),
+    IoError(io::ErrorKind),
     /// An error occurred while parsing the parameter files.
     ///
     /// See [`crate::error::Error`] for how to display these nicely.
     JcampDx(jcampdx::error::Error),
 }
 
-impl From<std::io::Error> for Error {
-    fn from(value: std::io::Error) -> Self {
+impl From<io::Error> for Error {
+    fn from(value: io::Error) -> Self {
         Self {
             kind: Kind::IoError(value.kind()),
         }
