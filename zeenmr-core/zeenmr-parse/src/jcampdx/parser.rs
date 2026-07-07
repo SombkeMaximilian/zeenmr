@@ -550,7 +550,7 @@ where
             top.values.push(value);
         } else {
             match self.current_value {
-                Value::Empty => self.current_value = Value::Array(vec![value]),
+                Value::Empty => self.current_value = value,
                 Value::Array(ref mut array) => array.push(value),
                 _ => self.current_value = Value::Array(vec![self.take_current_value(), value]),
             }
