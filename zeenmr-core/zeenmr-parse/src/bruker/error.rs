@@ -30,11 +30,6 @@ pub enum Kind {
     /// A needed parameter is missing from `acqus` or `procs`.
     #[default]
     MissingParameter,
-    /// An unexpected value was encountered for acquisition mode.
-    ///
-    /// Bruker stores the acquisition mode as integers (0, 1, 2, 3) under the
-    /// key `AQ_mod`. Other values carry no meaning.
-    UnknownAcquisitionMode,
     /// General I/O errors while reading files.
     IoError(io::ErrorKind),
     /// An error occurred while parsing the parameter files.
@@ -71,7 +66,6 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let description = match self.kind {
             Kind::MissingParameter => "missing acqus/procs parameter",
-            Kind::UnknownAcquisitionMode => "unknown acquisition mode",
             Kind::IoError(e) => return e.fmt(f),
             Kind::JcampDx(e) => return e.fmt(f),
         };
@@ -81,12 +75,11 @@ impl std::fmt::Display for Error {
 }
 
 impl Error {
+    /// Creates a [`MissingParameter`] error.
+    ///
+    /// [`MissingParameter`]: Kind::MissingParameter
     pub(crate) fn missing_parameter() -> Self {
         Kind::MissingParameter.into()
-    }
-
-    pub(crate) fn unknown_acquisition_mode() -> Self {
-        Kind::UnknownAcquisitionMode.into()
     }
 
     /// Returns the `Kind` of error that occurred.
