@@ -7,6 +7,17 @@ license = "MIT"
 
 [dependencies]
 criterion = "0.8.2"
+num-traits = { workspace = true }
+rayon = { workspace = true }
+zeenmr-spectrum = { workspace = true }
+zeenmr-parse = { workspace = true }
+zeenmr-peakshape = { workspace = true }
+zeenmr-deconvolution = { workspace = true, features = ["rayon"] }
 
 [lints]
 workspace = true
+
+[[bench]]
+name = "deconvolute"
+path = "deconvolute.rs"
+harness = false
