@@ -116,7 +116,7 @@ where
     }
 
     fn full_width(&self) -> T {
-        T::from(2_u8).unwrap() * self.scale2.sqrt()
+        (T::one() + T::one()) * self.half_width()
     }
 
     fn area(&self) -> T {

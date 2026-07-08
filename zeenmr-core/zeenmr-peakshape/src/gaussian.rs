@@ -91,7 +91,7 @@ where
     }
 
     fn full_width(&self) -> T {
-        T::from(2_u8).unwrap() * self.half_width()
+        (T::one() + T::one()) * self.half_width()
     }
 
     fn area(&self) -> T {
@@ -131,7 +131,7 @@ where
     pub fn from_untransformed(amp: T, scale: T, center: T) -> Self {
         Self {
             amp,
-            double_scale2: T::from(2_u8).unwrap() * scale.powi(2),
+            double_scale2: (T::one() + T::one()) * scale.powi(2),
             center,
         }
     }
