@@ -22,3 +22,6 @@ pub use lorentzian::Lorentzian;
 
 mod gaussian;
 pub use gaussian::Gaussian;
+
+mod voigt;
+pub use voigt::Voigt;
