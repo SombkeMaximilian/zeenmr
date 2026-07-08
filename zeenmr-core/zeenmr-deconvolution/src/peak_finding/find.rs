@@ -23,6 +23,8 @@ pub trait Find<T>: Send + Sync {
 
 /// A 1D NMR peak, represented by its left bound, center, and right bound.
 ///
+/// It must hold that `left <= center <= right`.
+///
 /// The center point should always be the maximum, but what the left and right
 /// bounds represent may change between different peak finding algorithms.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]

@@ -72,19 +72,17 @@ where
         let axis = spectrum.axis();
         let (shifts, intensities) = peaks
             .iter()
+            .filter(|peak| peak.right < len)
             .flat_map(|peak| [peak.left, peak.center, peak.right])
-            .filter_map(|index| {
-                if index < len {
-                    let index_as_t =
-                        T::from(index).expect("conversion from usize to T must never fail");
+            .map(|index| {
+                let index_as_t =
+                    T::from(index).expect("conversion from usize to T must never fail");
 
-                    Some((
-                        axis.rel_to_shift(index_as_t / len_as_t).unwrap(),
-                        spectrum.intensities()[index],
-                    ))
-                } else {
-                    None
-                }
+                (
+                    axis.rel_to_shift(index_as_t / len_as_t)
+                        .expect("indices cannot be greater than len"),
+                    spectrum.intensities()[index],
+                )
             })
             .unzip::<_, _, Vec<_>, Vec<_>>();
 
