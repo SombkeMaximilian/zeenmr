@@ -61,11 +61,7 @@ use serde::{Deserialize, Serialize};
 /// # Negative Parameters
 ///
 /// For a `Lorentzian` to represent a peak shape, its `amp` and `scale` must
-/// be positive. Further, if the transformed parameters `amp_scale` and
-/// `scale2` are negative, attempting to recover the `scale` parameter will
-/// corrupt the data, as it involves taking the square root. This is not
-/// enforced to avoid unnecessary overhead, and any algorithms using this type
-/// must be designed to prevent negative parameters.
+/// be positive. This is not enforced to avoid unnecessary overhead.
 ///
 /// # Serialization with [Serde]
 ///

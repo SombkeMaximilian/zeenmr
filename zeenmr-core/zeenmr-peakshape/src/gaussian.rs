@@ -43,6 +43,12 @@ use serde::{Deserialize, Serialize};
 /// scale = sqrt(double_scale2 / 2)
 /// ```
 ///
+/// # Negative Parameters
+///
+/// For a `Gaussian` to represent a peak shape, `amp` and `double_scale2` must
+/// be positive. This is not enforced at construction to avoid unnecessary
+/// overhead.
+///
 /// # Serialization with [Serde]
 ///
 /// [Serde]: https://serde.rs/
