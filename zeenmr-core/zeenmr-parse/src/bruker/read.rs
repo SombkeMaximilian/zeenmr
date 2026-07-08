@@ -6,7 +6,7 @@ use std::path::Path;
 use std::{fs, io};
 
 /// Maximum number of dimensions to try.
-const MAX_DIM: usize = 16;
+const MAX_DIM: usize = 8;
 
 /// Dataset that can be read from Bruker directories.
 pub type BrukerDataset = Dataset<'static, Error>;
@@ -46,7 +46,9 @@ where
     if dataset.data_parameters.len() != dataset.children[0].data_parameters.len() {
         // maybe this should be a fatal error, but that makes fixing things
         // impossible for users
-        dataset.errors.insert(0, Error::incoherent_dimensionality());
+        dataset
+            .errors
+            .insert(0, Error::incoherent_dimensionality());
     }
 
     Ok(dataset)
@@ -106,7 +108,11 @@ where
         dataset.data_parameters.push(parameters);
     }
 
-    let raw_name = if dataset.data_parameters.is_empty() { "fid" } else { "ser" };
+    let raw_name = if dataset.data_parameters.is_empty() {
+        "fid"
+    } else {
+        "ser"
+    };
     let raw = read_raw_data(exp_root.join(&raw_name), &dataset.parameters)?;
     let mut table = DataTable::new();
     table.set_id("RAW");
@@ -191,10 +197,10 @@ where
     } else {
         let mut table = DataTable::new();
         table.set_id("RAW");
-        let char_gen = |bit: u8| if bit & 1 == 1 { 'r' } else { 'i' };
-        for i in 0..2_u8.pow(dims as u32) {
+        let char_gen = |bit: u32| if bit & 1 == 1 { 'r' } else { 'i' };
+        for i in 0..2_u32.pow(dims as u32) {
             let mut file_name = dims.to_string();
-            file_name.extend((0..dims).map(|bit| char_gen(i >> bit)));
+            file_name.extend((0..dims as u32).map(|bit| char_gen(i >> bit)));
             let raw_path = proc_root.join(&file_name);
             let raw = read_proc_data(raw_path, &dataset.parameters)?;
             table.insert(file_name.into(), raw);
