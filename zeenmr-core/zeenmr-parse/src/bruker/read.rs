@@ -30,6 +30,11 @@ where
     dataset
         .children
         .push(read_bruker_proc(proc_root, false)?);
+    if dataset.data_parameters.len() != dataset.children[0].data_parameters.len() {
+        // maybe this should be a fatal error, but that makes fixing things
+        // impossible for users
+        dataset.errors.insert(0, Error::incoherent_dimensionality());
+    }
 
     Ok(dataset)
 }

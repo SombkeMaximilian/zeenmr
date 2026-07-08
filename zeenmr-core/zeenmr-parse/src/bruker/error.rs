@@ -30,6 +30,8 @@ pub enum Kind {
     /// A needed parameter is missing from `acqus` or `procs`.
     #[default]
     MissingParameter,
+    /// A dataset's raw and processed data differ in dimensionality.
+    IncoherentDimensionality,
     /// General I/O errors while reading files.
     IoError(io::ErrorKind),
     /// An error occurred while parsing the parameter files.
@@ -66,6 +68,7 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let description = match self.kind {
             Kind::MissingParameter => "missing acqus/procs parameter",
+            Kind::IncoherentDimensionality => "incoherent dimensionality",
             Kind::IoError(e) => return e.fmt(f),
             Kind::JcampDx(e) => return e.fmt(f),
         };
@@ -80,6 +83,13 @@ impl Error {
     /// [`MissingParameter`]: Kind::MissingParameter
     pub(crate) fn missing_parameter() -> Self {
         Kind::MissingParameter.into()
+    }
+
+    /// Creates a [`IncoherentDimensionality`] error.
+    ///
+    /// [`IncoherentDimensionality`]: Kind::IncoherentDimensionality
+    pub(crate) fn incoherent_dimensionality() -> Self {
+        Kind::IncoherentDimensionality.into()
     }
 
     /// Returns the `Kind` of error that occurred.
