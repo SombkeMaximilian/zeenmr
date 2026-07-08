@@ -191,29 +191,29 @@ where
     where
         S: Array1D<Elem = T>,
     {
-        let mut reduced_spectrum = ReducedSpectrum::new(spectrum, peaks);
-        let mut stencils = reduced_spectrum.stencils().collect::<Vec<_>>();
+        let mut reduced = ReducedSpectrum::new(spectrum, peaks);
+        let mut stencils = reduced.stencils().collect::<Vec<_>>();
         let mut peak_shapes = stencils
             .iter()
             .map(|stencil| P::estimate_parameters(stencil.shifts, stencil.intensities))
             .collect::<Vec<_>>();
         for _ in 0..self.iterations {
             prune(
-                &mut reduced_spectrum.shifts,
-                &mut reduced_spectrum.intensities,
+                &mut reduced.shifts,
+                &mut reduced.intensities,
                 &mut stencils,
                 &mut peak_shapes,
             );
             if peak_shapes.is_empty() {
                 break;
             }
-            let ratios = reduced_spectrum
+            let ratios = reduced
                 .shifts
                 .as_flattened()
                 .iter()
                 .copied()
                 .superposition(&peak_shapes)
-                .zip(reduced_spectrum.intensities.as_flattened().iter())
+                .zip(reduced.intensities.as_flattened().iter())
                 .map(|(superposition, &intensity)| intensity / superposition)
                 .collect::<Vec<_>>();
             for (stencil, ratios) in stencils.iter_mut().zip(ratios.chunks(3)) {
@@ -245,29 +245,29 @@ where
     where
         S: Array1D<Elem = T>,
     {
-        let mut reduced_spectrum = ReducedSpectrum::new(spectrum, peaks);
-        let mut stencils = reduced_spectrum.stencils().collect::<Vec<_>>();
+        let mut reduced = ReducedSpectrum::new(spectrum, peaks);
+        let mut stencils = reduced.stencils().collect::<Vec<_>>();
         let mut peak_shapes = stencils
             .iter()
             .map(|stencil| P::estimate_parameters(stencil.shifts, stencil.intensities))
             .collect::<Vec<_>>();
         for _ in 0..self.iterations {
             prune(
-                &mut reduced_spectrum.shifts,
-                &mut reduced_spectrum.intensities,
+                &mut reduced.shifts,
+                &mut reduced.intensities,
                 &mut stencils,
                 &mut peak_shapes,
             );
             if peak_shapes.is_empty() {
                 break;
             }
-            let ratios = reduced_spectrum
+            let ratios = reduced
                 .shifts
                 .as_flattened()
                 .par_iter()
                 .copied()
                 .superposition(&peak_shapes)
-                .zip(reduced_spectrum.intensities.as_flattened().par_iter())
+                .zip(reduced.intensities.as_flattened().par_iter())
                 .map(|(superposition, &intensity)| intensity / superposition)
                 .collect::<Vec<_>>();
             for (stencil, ratios) in stencils.iter_mut().zip(ratios.chunks(3)) {
