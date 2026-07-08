@@ -113,7 +113,7 @@ where
     } else {
         "ser"
     };
-    let raw = read_raw_data(exp_root.join(&raw_name), &dataset.parameters)?;
+    let raw = read_raw_data(exp_root.join(raw_name), &dataset.parameters)?;
     let mut table = DataTable::new();
     table.set_id("RAW");
     table.insert(raw_name.into(), raw);
