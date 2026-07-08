@@ -13,12 +13,25 @@ pub type BrukerDataset = Dataset<'static, Error>;
 
 /// Reads raw and processed data from a Bruker directory.
 ///
+/// The following directory structure is expected.
+///
+/// ```text
+/// root
+/// └── exp_id
+///     ├── pdata
+///     │   └── proc_id
+///     │       ├── <processed binary files>
+///     │       └── <procs file(s)>
+///     ├── <raw binary file>
+///     └── <acqus file(s)>
+/// ```
+///
 /// # Errors
 ///
 /// Returns an error if
-/// - the `acqus` file is missing, or
+/// - the `acqus` file is missing or can't be parsed, or
 /// - the raw binary file is missing (`fid` or `ser`), or
-/// - the `procs` file is missing, or
+/// - the `procs` file is missing or can't be parsed, or
 /// - the processed binary file is missing (`1r` and/or `1i`, etc.)
 pub fn read_bruker_dir<P>(root: P, exp_id: u32, proc_id: u32) -> Result<BrukerDataset>
 where
@@ -41,10 +54,22 @@ where
 
 /// Reads raw data from a Bruker experiment directory.
 ///
+/// The number of dimensions is inferred from how many `acquNs` files are found
+/// alongside `acqus` (see below), and determines which processed binary file is
+/// read.
+///
+/// The following directory structure is expected.
+///
+/// ```text
+/// root
+/// ├── <raw binary file>
+/// └── <acqus file(s)>
+/// ```
+///
 /// # Errors
 ///
 /// Returns an error if
-/// - the `acqus` file is missing, or
+/// - the `acqus` file is missing or can't be parsed, or
 /// - the raw binary file is missing (`fid` or `ser`)
 pub fn read_bruker_exp<P>(root: P) -> Result<BrukerDataset>
 where
@@ -84,8 +109,8 @@ where
     let raw_name = if dataset.data_parameters.is_empty() { "fid" } else { "ser" };
     let raw = read_raw_data(exp_root.join(&raw_name), &dataset.parameters)?;
     let mut table = DataTable::new();
-    table.set_id(raw_name);
-    table.insert("RAW".into(), raw);
+    table.set_id("RAW");
+    table.insert(raw_name.into(), raw);
     dataset.data_tables.push(table);
 
     Ok(dataset)
@@ -93,10 +118,31 @@ where
 
 /// Reads processed data from a Bruker directory.
 ///
+/// The number of dimensions is inferred from how many `procNs` files are found
+/// alongside `procs` (see below), and determines which processed binary file(s)
+/// are read. A processed binary file for an `n`-dimensional dataset is named
+/// `<n><components>`. Components is a string of `n` characters, each either `r`
+/// (real) or `i` (imaginary), one per dimension, ordered from the indirect
+/// dimension(s) to the direct (acquisition) dimension. For example, a 2D
+/// dataset's fully real binary file is named `2rr`, while its fully imaginary
+/// counterpart is `2ii`.
+///
+/// If `real_only` is `true`, only the all-real binary file (`1r`, `2rr`,
+/// `3rrr`, etc.) is read. Otherwise, every combination of `r`/`i` across all
+/// `n` dimensions is read.
+///
+/// The following directory structure is expected.
+///
+/// ```text
+/// root
+/// ├── <processed binary files>
+/// └── <procs file(s)>
+/// ```
+///
 /// # Errors
 ///
 /// Returns an error if
-/// - the `procs` file is missing, or
+/// - the `procs` file is missing or can't be parsed, or
 /// - the processed binary file is missing (`1r` and/or `1i`, etc.)
 pub fn read_bruker_proc<P>(root: P, real_only: bool) -> Result<BrukerDataset>
 where
@@ -159,30 +205,30 @@ where
     Ok(dataset)
 }
 
-/// Passes the correct keys to [`read_raw_to_column`] and returns its result.
+/// Passes the correct keys to [`read_bin_to_col`] and returns its result.
 ///
 /// # Errors
 ///
-/// Returns the same errors as [`read_raw_to_column`].
+/// Returns the same errors as [`read_bin_to_col`].
 fn read_raw_data<P>(path: P, main_acqus: &ParameterTable) -> Result<Column<'static>>
 where
     P: AsRef<Path>,
 {
-    read_raw_to_column(path, main_acqus, "DTYPA", "BYTORDA")
+    read_bin_to_col(path, main_acqus, "DTYPA", "BYTORDA")
 }
 
-/// Passes the correct keys to [`read_raw_to_column`], undoes the scaling, and
+/// Passes the correct keys to [`read_bin_to_col`], undoes the scaling, and
 /// returns its result.
 ///
 /// # Errors
 ///
-/// Returns the same errors as [`read_raw_to_column`], and returns an error if
+/// Returns the same errors as [`read_bin_to_col`], and returns an error if
 /// the `NC_proc` key is missing from the parameter table.
 fn read_proc_data<P>(path: P, main_procs: &ParameterTable) -> Result<Column<'static>>
 where
     P: AsRef<Path>,
 {
-    let mut raw = read_raw_to_column(path, main_procs, "DTYPP", "BYTORDP")?;
+    let mut raw = read_bin_to_col(path, main_procs, "DTYPP", "BYTORDP")?;
     let scale_exponent = main_procs
         .get("NC_proc")
         .and_then(Value::as_i64)
@@ -219,7 +265,7 @@ where
 /// Returns an error if either of the two keys are not in the parameter table,
 /// or if they are not integers. Also returns any [`io`] errors encountered
 /// while querying the file's size, opening it, or reading its contents.
-fn read_raw_to_column<P>(
+fn read_bin_to_col<P>(
     path: P,
     table: &ParameterTable,
     type_key: &str,
