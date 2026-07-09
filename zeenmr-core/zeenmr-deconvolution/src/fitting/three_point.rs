@@ -187,9 +187,9 @@ where
 
 /// Fitting algorithm based on the analytical solution of a system of equations
 /// using a 3-point peak stencil.
-#[derive(Eq, PartialEq, Hash, Debug)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct IterativeRefinement<P> {
+pub struct ThreePoint<P> {
     /// Number of iterations to refine the peak parameters.
     pub iterations: usize,
     /// Marker for the peak shape type.
@@ -198,15 +198,15 @@ pub struct IterativeRefinement<P> {
 }
 
 // manual impls to avoid `P: Copy`, which isn't necessary with PhantomData.
-impl<P> Copy for IterativeRefinement<P> {}
+impl<P> Copy for ThreePoint<P> {}
 
-impl<P> Clone for IterativeRefinement<P> {
+impl<P> Clone for ThreePoint<P> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<T, P> Fit<T, P> for IterativeRefinement<P>
+impl<T, P> Fit<T, P> for ThreePoint<P>
 where
     T: Float,
     P: PeakShape<T> + ThreePointStencil<T>,
@@ -260,7 +260,7 @@ where
 }
 
 #[cfg(feature = "rayon")]
-impl<T, P> ParFit<T, P> for IterativeRefinement<P>
+impl<T, P> ParFit<T, P> for ThreePoint<P>
 where
     T: Float + Send + Sync,
     P: PeakShape<T> + ThreePointStencil<T> + Send + Sync,
@@ -313,14 +313,14 @@ where
     }
 }
 
-impl<P> Default for IterativeRefinement<P> {
+impl<P> Default for ThreePoint<P> {
     fn default() -> Self {
         Self::new(10)
     }
 }
 
-impl<P> IterativeRefinement<P> {
-    /// Creates a new `IterativeRefinement` fitter.
+impl<P> ThreePoint<P> {
+    /// Creates a new `ThreePoint` fitter.
     pub fn new(iterations: usize) -> Self {
         Self {
             iterations,

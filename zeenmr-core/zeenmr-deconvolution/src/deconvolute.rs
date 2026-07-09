@@ -238,7 +238,7 @@ impl Deconvoluter<(), NeedsSmoother, NeedsFinder, NeedsFitter> {
     ///
     /// ```
     /// use zeenmr_deconvolution::Deconvoluter;
-    /// use zeenmr_deconvolution::fitting::IterativeRefinement;
+    /// use zeenmr_deconvolution::fitting::ThreePoint;
     /// use zeenmr_deconvolution::peak_finding::CurvatureAnalysis;
     /// use zeenmr_deconvolution::smoothing::MovingAverage;
     /// use zeenmr_peakshape::Lorentzian;
@@ -247,11 +247,11 @@ impl Deconvoluter<(), NeedsSmoother, NeedsFinder, NeedsFitter> {
     /// let deconvoluter = Deconvoluter::new::<f64>()
     ///     .with_smoother(MovingAverage::default())
     ///     .with_finder(CurvatureAnalysis::default())
-    ///     .with_fitter(IterativeRefinement::<Lorentzian<_>>::default());
+    ///     .with_fitter(ThreePoint::<Lorentzian<_>>::default());
     ///
     /// // alternatively, set the fitter first for the same effect
     /// let deconvoluter = Deconvoluter::new()
-    ///     .with_fitter(IterativeRefinement::<Lorentzian<f64>>::default())
+    ///     .with_fitter(ThreePoint::<Lorentzian<f64>>::default())
     ///     .with_finder(CurvatureAnalysis::default())
     ///     .with_smoother(MovingAverage::default());
     /// ```
@@ -400,7 +400,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fitting::IterativeRefinement;
+    use crate::fitting::ThreePoint;
     use crate::peak_finding::CurvatureAnalysis;
     use crate::smoothing::MovingAverage;
     use zeenmr_peakshape::Lorentzian;
@@ -410,6 +410,6 @@ mod tests {
         let _ = Deconvoluter::new::<f64>()
             .with_smoother(MovingAverage::default())
             .with_finder(CurvatureAnalysis::default())
-            .with_fitter(IterativeRefinement::<Lorentzian<_>>::default());
+            .with_fitter(ThreePoint::<Lorentzian<_>>::default());
     }
 }
