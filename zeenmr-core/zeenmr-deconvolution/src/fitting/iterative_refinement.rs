@@ -3,7 +3,7 @@ use crate::peak_finding::Peak;
 use num_traits::Float;
 use std::marker::PhantomData;
 use zeenmr_peakshape::iter::SuperpositionMap;
-use zeenmr_peakshape::{Lorentzian, PeakShape};
+use zeenmr_peakshape::{Gaussian, Lorentzian, PeakShape};
 use zeenmr_spectrum::Spectrum1D;
 use zeenmr_spectrum::intensity_array::Array1D;
 
@@ -21,6 +21,30 @@ use serde::{Deserialize, Serialize};
 pub trait ThreePointStencil<T> {
     /// Estimate the parameters of the peak shape from three data points.
     fn estimate_parameters(x: [T; 3], y: [T; 3]) -> Self;
+}
+
+impl<T> ThreePointStencil<T> for Gaussian<T>
+where
+    T: Float,
+{
+    fn estimate_parameters(x: [T; 3], y: [T; 3]) -> Self {
+        let half = T::one() / (T::one() + T::one());
+        let z = [y[0].ln(), y[1].ln(), y[2].ln()];
+
+        let numerator = x[0].powi(2) * (z[1] - z[2])
+            + x[1].powi(2) * (z[2] - z[0])
+            + x[2].powi(2) * (z[0] - z[1]);
+        let denominator = x[0] * (z[1] - z[2]) + x[1] * (z[2] - z[0]) + x[2] * (z[0] - z[1]);
+        let center = half * numerator / denominator;
+
+        let left = ((x[1] - center).powi(2) - (x[0] - center).powi(2)) / (z[0] - z[1]);
+        let right = ((x[2] - center).powi(2) - (x[1] - center).powi(2)) / (z[1] - z[2]);
+        let double_scale2 = half * (left + right);
+
+        let amp = y[1] * ((x[1] - center).powi(2) / double_scale2).exp();
+
+        Gaussian::new(amp, double_scale2, center)
+    }
 }
 
 impl<T> ThreePointStencil<T> for Lorentzian<T>
@@ -310,7 +334,7 @@ impl<P> IterativeRefinement<P> {
 ///
 /// # Panics
 ///
-/// Panics in debug mode if the loop components have differing lengths.
+/// Panics in debug builds if the loop components have differing lengths.
 fn prune<T, P>(
     shifts: &mut Vec<[T; 3]>,
     intensities: &mut Vec<[T; 3]>,
@@ -333,5 +357,44 @@ fn prune<T, P>(
             stencils.swap_remove(curr);
             peak_shapes.swap_remove(curr);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use float_cmp::{ApproxEq, assert_approx_eq};
+
+    fn recover_peak_shape<T, P>(peak_shape: P)
+    where
+        T: Float + ApproxEq + std::fmt::Debug,
+        P: PeakShape<T> + ThreePointStencil<T> + std::fmt::Debug,
+    {
+        let stencil_points = [
+            peak_shape.center() - peak_shape.half_width(),
+            peak_shape.center(),
+            peak_shape.center() + peak_shape.half_width(),
+        ];
+        let stencil_values = stencil_points
+            .clone()
+            .map(|x| peak_shape.evaluate(x));
+        let recovered = P::estimate_parameters(stencil_points, stencil_values);
+
+        assert_approx_eq!(T, peak_shape.center(), recovered.center());
+        assert_approx_eq!(T, peak_shape.half_width(), recovered.half_width());
+        assert_approx_eq!(T, peak_shape.maximum(), recovered.maximum());
+        assert_approx_eq!(T, peak_shape.area(), recovered.area());
+    }
+
+    #[test]
+    fn lorentzian_stencil() {
+        recover_peak_shape(Lorentzian::new(1_f32, 1_f32, 0_f32));
+        recover_peak_shape(Lorentzian::new(1_f64, 1_f64, 0_f64));
+    }
+
+    #[test]
+    fn gaussian_stencil() {
+        recover_peak_shape(Gaussian::new(1_f32, 1_f32, 0_f32));
+        recover_peak_shape(Gaussian::new(1_f64, 1_f64, 0_f64));
     }
 }

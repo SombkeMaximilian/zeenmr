@@ -35,5 +35,8 @@ num-traits = { workspace = true }
 rayon = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 
+[dev-dependencies]
+float-cmp = { workspace = true }
+
 [lints]
 workspace = true
