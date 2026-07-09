@@ -375,9 +375,7 @@ mod tests {
             peak_shape.center(),
             peak_shape.center() + peak_shape.half_width(),
         ];
-        let stencil_values = stencil_points
-            .clone()
-            .map(|x| peak_shape.evaluate(x));
+        let stencil_values = stencil_points.map(|x| peak_shape.evaluate(x));
         let recovered = P::estimate_parameters(stencil_points, stencil_values);
 
         assert_approx_eq!(T, peak_shape.center(), recovered.center());

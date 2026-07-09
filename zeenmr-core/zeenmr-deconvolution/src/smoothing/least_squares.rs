@@ -174,7 +174,7 @@ where
     }
 
     // scale correction for derivatives
-    let correction = (1..=unit).fold(1_usize, |acc, i| acc * i);
+    let correction = (1..=unit).product::<usize>();
     let scale = T::from(correction).expect("conversion from usize to T must never fail")
         / half_window_t.powi(unit as i32);
 
@@ -337,9 +337,7 @@ mod tests {
     #[test]
     fn constant_signal() {
         let window = 11;
-        let data = std::iter::repeat(69.0)
-            .take(2_usize.pow(8))
-            .collect::<Box<[f64]>>();
+        let data = std::iter::repeat_n(69.0, 2_usize.pow(8)).collect::<Box<[f64]>>();
         let smoother = LeastSquares::new(1, window, 4).unwrap();
         let smoothed = smoother
             .smooth(&data)

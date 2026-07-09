@@ -25,7 +25,7 @@ categories = [
 [features]
 default = []
 rayon = ["dep:rayon", "zeenmr-spectrum/rayon", "zeenmr-peakshape/rayon"]
-serde = ["dep:serde"]
+serde = ["dep:serde", "zeenmr-spectrum/serde", "zeenmr-peakshape/serde"]
 
 [dependencies]
 zeenmr-spectrum = { workspace = true }
