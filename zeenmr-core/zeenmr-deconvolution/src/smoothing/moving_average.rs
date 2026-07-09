@@ -5,8 +5,9 @@ use std::borrow::Cow;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-/// Moving average filter that smooths a sequence of values by averaging them
-/// over a sliding window.
+/// Moving average filter.
+///
+/// Smooths a sequence of values by averaging them over a sliding window.
 ///
 /// # Edge Handling
 ///
