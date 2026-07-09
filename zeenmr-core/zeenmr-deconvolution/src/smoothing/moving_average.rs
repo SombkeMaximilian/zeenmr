@@ -39,7 +39,11 @@ where
     T: Clone + Float,
 {
     fn smooth<'a>(&self, data: &'a [T]) -> Cow<'a, [T]> {
-        if data.len() < 2 || self.iterations == 0 || self.window_size <= 1 {
+        if data.len() < 2
+            || data.len() < self.window_size
+            || self.iterations == 0
+            || self.window_size <= 1
+        {
             return data.into();
         }
 
