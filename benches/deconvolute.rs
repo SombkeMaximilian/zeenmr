@@ -3,7 +3,7 @@ use num_traits::Float;
 use rayon::prelude::*;
 use std::path::Path;
 use std::sync::Arc;
-use zeenmr_deconvolution::fitting::IterativeRefinement;
+use zeenmr_deconvolution::fitting::ThreePoint;
 use zeenmr_deconvolution::iter::ParDeconvoluteMap;
 use zeenmr_deconvolution::peak_finding::CurvatureAnalysis;
 use zeenmr_deconvolution::smoothing::MovingAverage;
@@ -83,7 +83,7 @@ fn single_and_batch(c: &mut Criterion) {
 
     let blood_spectra = read_spectra::<f32, _>(data_dir.join("blood"));
     let deconvoluter = Deconvoluter::new()
-        .with_fitter(IterativeRefinement::<Lorentzian<f32>>::default())
+        .with_fitter(ThreePoint::<Lorentzian<f32>>::default())
         .with_finder(CurvatureAnalysis::default())
         .with_smoother(MovingAverage::default());
 
@@ -112,7 +112,7 @@ fn single_and_batch(c: &mut Criterion) {
 
     let blood_spectra = read_spectra::<f64, _>(data_dir.join("blood"));
     let deconvoluter = Deconvoluter::new()
-        .with_fitter(IterativeRefinement::<Lorentzian<f64>>::default())
+        .with_fitter(ThreePoint::<Lorentzian<f64>>::default())
         .with_finder(CurvatureAnalysis::default())
         .with_smoother(MovingAverage::default());
 
