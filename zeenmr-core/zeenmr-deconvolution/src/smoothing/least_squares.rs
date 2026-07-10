@@ -1,6 +1,5 @@
 use crate::smoothing::Smooth;
 use num_traits::Float;
-use std::borrow::Cow;
 
 /// Least squares filter.
 ///
@@ -28,17 +27,14 @@ impl<T> Smooth<T> for LeastSquares<T>
 where
     T: Float + Send + Sync,
 {
-    fn smooth<'a>(&self, data: &'a [T]) -> Cow<'a, [T]> {
+    fn smooth_in_place(&self, data: &mut [T]) {
         if data.len() < 2 || data.len() < self.coeff.len() || self.iterations == 0 {
-            return data.into();
+            return;
         }
 
         let half_window = self.coeff.len() / 2;
         let len = data.len();
-
-        let mut data = data.to_vec();
         let mut next = vec![T::zero(); len];
-
         for _ in 0..self.iterations {
             for curr in 0..half_window {
                 // asymmetric moving average at the edges
@@ -65,10 +61,8 @@ where
                     .fold(T::zero(), |acc, &x| acc + x)
                     / div;
             }
-            std::mem::swap(&mut data, &mut next);
+            data.swap_with_slice(&mut next);
         }
-
-        data.into()
     }
 }
 

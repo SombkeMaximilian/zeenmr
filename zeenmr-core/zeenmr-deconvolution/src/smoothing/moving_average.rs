@@ -1,6 +1,5 @@
 use crate::smoothing::Smooth;
 use num_traits::Float;
-use std::borrow::Cow;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -39,16 +38,15 @@ impl<T> Smooth<T> for MovingAverage
 where
     T: Clone + Float,
 {
-    fn smooth<'a>(&self, data: &'a [T]) -> Cow<'a, [T]> {
+    fn smooth_in_place(&self, data: &mut [T]) {
         if data.len() < 2
             || data.len() < self.window_size
             || self.iterations == 0
             || self.window_size <= 1
         {
-            return data.into();
+            return;
         }
 
-        let mut data = data.to_vec();
         let half_window = self.window_size / 2;
         let len = data.len();
         let full_div = T::one()
@@ -75,8 +73,6 @@ where
                         .expect("conversion from usize to T must never fail");
             }
         }
-
-        data.into()
     }
 }
 
