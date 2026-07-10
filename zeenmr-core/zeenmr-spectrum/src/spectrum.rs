@@ -1,7 +1,7 @@
 use crate::Nucleus;
 use crate::error::Result;
 use crate::frequency_axis::Axis;
-use crate::intensity_array::Array1D;
+use crate::intensity_array::Storage;
 use crate::intensity_array::diagnostic_1d::{
     DualChannel, FindSignalRange, Magnitude, SingleChannel, ValidateIntensities,
 };
@@ -54,7 +54,7 @@ impl<T, S> Spectrum1D<T, S> {
 
 impl<T, S> Spectrum1D<T, S>
 where
-    S: Array1D,
+    S: Storage,
 {
     /// Returns a slice containing the intensities.
     pub fn intensities(&self) -> &[S::Elem] {
@@ -89,7 +89,7 @@ pub struct Builder1D<T, S, K, A, R> {
 
 impl<T, S, K> Builder1D<T, S, K, Axis<T>, Range<usize>>
 where
-    S: Array1D,
+    S: Storage,
 {
     /// Finalizes the spectrum.
     pub fn finalize(self) -> Spectrum1D<T, S> {
@@ -104,7 +104,7 @@ where
 
 impl<S> Builder1D<S::Elem, S, Magnitude, NeedsAxis, NeedsRange>
 where
-    S: Array1D,
+    S: Storage,
     S::Elem: Float,
 {
     /// Build a magnitude spectrum.
@@ -128,7 +128,7 @@ where
 
 impl<S> Builder1D<S::Elem, S, SingleChannel, NeedsAxis, NeedsRange>
 where
-    S: Array1D,
+    S: Storage,
     S::Elem: Float,
 {
     /// Build a single channel, real spectrum.
@@ -162,7 +162,7 @@ where
 impl<T, S> Builder1D<T, S, DualChannel, NeedsAxis, NeedsRange>
 where
     T: Float,
-    S: Array1D<Elem = Complex<T>>,
+    S: Storage<Elem = Complex<T>>,
 {
     /// Build a dual channel, complex spectrum.
     ///
@@ -185,7 +185,7 @@ where
 
 impl<T, S, K, R> Builder1D<T, S, K, NeedsAxis, R>
 where
-    S: Array1D,
+    S: Storage,
 {
     /// Sets the frequency axis.
     pub fn axis(self, axis: Axis<T>) -> Builder1D<T, S, K, Axis<T>, R> {
@@ -202,7 +202,7 @@ where
 
 impl<T, S, K, A> Builder1D<T, S, K, A, NeedsRange>
 where
-    S: Array1D,
+    S: Storage,
 {
     /// Sets the signal range with a finder.
     ///

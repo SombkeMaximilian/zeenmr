@@ -1,7 +1,7 @@
 //! Intensity diagnostics for detecting 1D spectral properties.
 
 use crate::error::{Error, Result};
-use crate::intensity_array::Array1D;
+use crate::intensity_array::Storage;
 use num_complex::Complex;
 use num_traits::Float;
 use std::ops::Range;
@@ -28,7 +28,7 @@ pub trait ValidateIntensities<T> {
     /// non-finite values in the case of a float type.
     fn validate<A>(array: A) -> Result<()>
     where
-        A: Array1D<Elem = T>;
+        A: Storage<Elem = T>;
 }
 
 impl<T> ValidateIntensities<T> for Magnitude
@@ -37,7 +37,7 @@ where
 {
     fn validate<A>(array: A) -> Result<()>
     where
-        A: Array1D<Elem = T>,
+        A: Storage<Elem = T>,
     {
         let array = array.as_ref();
 
@@ -59,7 +59,7 @@ where
 {
     fn validate<A>(array: A) -> Result<()>
     where
-        A: Array1D<Elem = T>,
+        A: Storage<Elem = T>,
     {
         let array = array.as_ref();
 
@@ -79,7 +79,7 @@ where
 {
     fn validate<A>(array: A) -> Result<()>
     where
-        A: Array1D<Elem = Complex<T>>,
+        A: Storage<Elem = Complex<T>>,
     {
         let array = array.as_ref();
 
@@ -103,7 +103,7 @@ pub trait FindSignalRange<T, K> {
     /// May perform expensive computations.
     fn find_signal_range<A>(&self, array: A) -> Result<Range<usize>>
     where
-        A: Array1D<Elem = T>;
+        A: Storage<Elem = T>;
 }
 
 impl<T, K> FindSignalRange<T, K> for Range<usize> {
@@ -115,7 +115,7 @@ impl<T, K> FindSignalRange<T, K> for Range<usize> {
     /// the array, or if `self` is empty.
     fn find_signal_range<A>(&self, array: A) -> Result<Range<usize>>
     where
-        A: Array1D<Elem = T>,
+        A: Storage<Elem = T>,
     {
         if self.start > array.as_ref().len() || self.end > array.as_ref().len() {
             Err(Error::out_of_bounds())
@@ -149,7 +149,7 @@ where
 {
     fn find_signal_range<A>(&self, array: A) -> Result<Range<usize>>
     where
-        A: Array1D<Elem = T>,
+        A: Storage<Elem = T>,
     {
         let array = array
             .as_ref()
@@ -179,7 +179,7 @@ where
 {
     fn find_signal_range<A>(&self, array: A) -> Result<Range<usize>>
     where
-        A: Array1D<Elem = T>,
+        A: Storage<Elem = T>,
     {
         let array = array.as_ref();
         let (mean, std) = self.edge_stats(array)?;
@@ -204,7 +204,7 @@ where
 {
     fn find_signal_range<A>(&self, array: A) -> Result<Range<usize>>
     where
-        A: Array1D<Elem = Complex<T>>,
+        A: Storage<Elem = Complex<T>>,
     {
         let array = array
             .as_ref()

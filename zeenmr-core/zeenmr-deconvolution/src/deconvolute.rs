@@ -9,7 +9,7 @@ use zeenmr_peakshape::PeakShape;
 use zeenmr_peakshape::iter::SuperpositionMap;
 use zeenmr_spectrum::Spectrum1D;
 use zeenmr_spectrum::frequency_axis::range::{FiniteBounds, ShiftRange};
-use zeenmr_spectrum::intensity_array::Array1D;
+use zeenmr_spectrum::intensity_array::Storage;
 
 #[cfg(feature = "rayon")]
 use crate::fitting::ParFit;
@@ -27,7 +27,7 @@ pub trait Deconvolute<T, P> {
     /// Each signal is modeled as a peak shape.
     fn deconvolute<S>(&self, spectrum: &Spectrum1D<T, S>) -> Result<Deconvolution<T, P>>
     where
-        S: Array1D<Elem = T>;
+        S: Storage<Elem = T>;
 }
 
 /// Trait for deconvoluting a spectrum into its constituent signals in
@@ -42,7 +42,7 @@ pub trait ParDeconvolute<T, P> {
     /// Each signal is modeled as a peak shape.
     fn par_deconvolute<S>(&self, spectrum: &Spectrum1D<T, S>) -> Result<Deconvolution<T, P>>
     where
-        S: Array1D<Elem = T>;
+        S: Storage<Elem = T>;
 }
 
 /// Extension trait for iterators of [`AsRef<Spectrum>`] types to deconvolute
@@ -56,7 +56,7 @@ pub trait DeconvoluteMap<T, P>: Iterator {
 
 impl<'s, S, I, P> DeconvoluteMap<S::Elem, P> for I
 where
-    S: Array1D + 's,
+    S: Storage + 's,
     I: Iterator<Item = &'s Spectrum1D<S::Elem, S>>,
     P: PeakShape<S::Elem>,
 {
@@ -88,7 +88,7 @@ pub trait ParDeconvoluteMap<T, P>: IndexedParallelIterator {
 #[cfg(feature = "rayon")]
 impl<'s, S, I, P> ParDeconvoluteMap<S::Elem, P> for I
 where
-    S: Array1D + 's,
+    S: Storage + 's,
     S::Elem: Send + Sync,
     I: IndexedParallelIterator<Item = &'s Spectrum1D<S::Elem, S>>,
     P: PeakShape<S::Elem> + Send + Sync,
@@ -145,7 +145,7 @@ where
 {
     fn deconvolute<S>(&self, spectrum: &Spectrum1D<T, S>) -> Result<Deconvolution<T, P>>
     where
-        S: Array1D<Elem = T>,
+        S: Storage<Elem = T>,
     {
         let len = spectrum.intensities().len();
         let len_as_t = T::from(len).expect("conversion from usize to T must never fail");
@@ -193,7 +193,7 @@ where
 {
     fn par_deconvolute<S>(&self, spectrum: &Spectrum1D<T, S>) -> Result<Deconvolution<T, P>>
     where
-        S: Array1D<Elem = T>,
+        S: Storage<Elem = T>,
     {
         let len = spectrum.intensities().len();
         let len_as_t = T::from(len).expect("conversion from usize to T must never fail");
@@ -370,7 +370,7 @@ where
 fn mse<T, S>(spectrum: &Spectrum1D<T, S>, superpositions: &[T], ignore: &[Range<usize>]) -> T
 where
     T: Float,
-    S: Array1D<Elem = T>,
+    S: Storage<Elem = T>,
 {
     let signal = spectrum.signal_range();
     let iter = std::iter::once(signal.start)

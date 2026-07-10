@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 use zeenmr_peakshape::iter::SuperpositionMap;
 use zeenmr_peakshape::{Gaussian, Lorentzian, PeakShape};
 use zeenmr_spectrum::Spectrum1D;
-use zeenmr_spectrum::intensity_array::Array1D;
+use zeenmr_spectrum::intensity_array::Storage;
 
 #[cfg(feature = "rayon")]
 use crate::fitting::ParFit;
@@ -91,7 +91,7 @@ where
     /// and constructs a `ReducedSpectrum` from them.
     fn new<S>(spectrum: &Spectrum1D<T, S>, peaks: &[Peak]) -> Self
     where
-        S: Array1D<Elem = T>,
+        S: Storage<Elem = T>,
     {
         let len = spectrum.intensities().len();
         let len_as_t = T::from(len).expect("conversion from usize to T must never fail");
@@ -213,7 +213,7 @@ where
 {
     fn fit<S>(&self, spectrum: &Spectrum1D<T, S>, peaks: &[Peak]) -> Vec<P>
     where
-        S: Array1D<Elem = T>,
+        S: Storage<Elem = T>,
     {
         let mut reduced = ReducedSpectrum::new(spectrum, peaks);
         let mut stencils = reduced.stencils().collect::<Vec<_>>();
@@ -267,7 +267,7 @@ where
 {
     fn par_fit<S>(&self, spectrum: &Spectrum1D<T, S>, peaks: &[Peak]) -> Vec<P>
     where
-        S: Array1D<Elem = T>,
+        S: Storage<Elem = T>,
     {
         let mut reduced = ReducedSpectrum::new(spectrum, peaks);
         let mut stencils = reduced.stencils().collect::<Vec<_>>();
