@@ -25,25 +25,11 @@ categories = [
 ]
 
 [features]
-default = ["parallel", "alignment", "bruker", "jdx", "serde"]
-full = ["parallel", "alignment", "bruker", "jdx", "serde"]
-parallel = ["dep:rayon"]
-alignment = ["dep:good_lp", "parallel"]
-bruker = ["dep:byteorder", "dep:regex"]
-jdx = ["dep:regex"]
-serde = ["dep:serde"]
+default = []
+parallel = []
+serde = []
 
 [dependencies]
-num-traits = { workspace = true }
-good_lp = { version = "1.14.0", features = ["highs"], default-features = false, optional = true }
-regex = { version = "1.11.1", optional = true }
-byteorder = { version = "1.5.0", optional = true }
-rayon = { workspace = true, optional = true }
-serde = { workspace = true, optional = true }
-
-[dev-dependencies]
-float-cmp = { workspace = true }
-serde_json = { workspace = true }
 
 [lints]
 workspace = true
