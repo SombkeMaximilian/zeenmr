@@ -8,7 +8,7 @@ description = """
     Python bindings for the ZeeNMR Rust library crate.
 """
 readme = "../README.md"
-repository = "https://github.com/spang-lab/zeenmr"
+repository = "https://github.com/SombkeMaximilian/zeenmr"
 license = "MIT"
 keywords = [
     "bioinformatics",

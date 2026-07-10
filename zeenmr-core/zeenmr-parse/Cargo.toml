@@ -8,7 +8,7 @@ description = """
     Parsers for common NMR data formats.
 """
 readme = "README.md"
-repository = "https://github.com/spang-lab/zeenmr"
+repository = "https://github.com/SombkeMaximilian/zeenmr"
 license = "MIT"
 keywords = [
     "bioinformatics",
