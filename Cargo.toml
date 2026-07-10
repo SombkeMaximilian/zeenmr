@@ -19,11 +19,10 @@ zeenmr-parse = { version = "0.1.0", path = "zeenmr-core/zeenmr-parse" }
 
 num-complex = { version = "0.4.6" }
 num-traits = { version = "0.2.19" }
-uom = { git = "https://github.com/SombkeMaximilian/uom", branch = "gyromagnetic_ratio", default-features = false, features = ["autoconvert", "std", "si", "f64"] }
+uom = { git = "https://github.com/iliekturtles/uom", branch = "master", default-features = false, features = ["autoconvert", "std", "si", "f64"] }
 
 byteorder = { version = "1.5.0" }
 logos = { version = "0.16.1" }
-regex = { version = "1.12.4" }
 
 rayon = { version = "1.12.0" }
 
