@@ -28,12 +28,7 @@ name = "_zeenmr"
 crate-type = ["cdylib"]
 
 [dependencies]
-zeenmr = { workspace = true }
-numpy = { version = "0.25.0" }
-pyo3 = { version = "0.25.1", features = ["extension-module"] }
-rayon = { workspace = true }
-serde_json = { workspace = true }
-rmp-serde = { workspace = true }
+pyo3 = { version = "0.29.0", features = ["extension-module"] }
 
 [lints]
 workspace = true
