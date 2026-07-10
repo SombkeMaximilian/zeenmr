@@ -4,7 +4,7 @@ members = [
     "zeenmr",
     "zeenmr-core/*",
 
-    "zeenmr-python",
+    #"zeenmr-python",
 
     # Internal crates
     "benches",

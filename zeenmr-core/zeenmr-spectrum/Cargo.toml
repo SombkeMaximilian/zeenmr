@@ -23,6 +23,7 @@ categories = [
 
 [features]
 default = []
+rayon = ["dep:rayon"]
 serde = ["dep:serde", "uom/serde"]
 
 [dependencies]

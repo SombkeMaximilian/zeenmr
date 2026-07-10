@@ -26,10 +26,14 @@ categories = [
 
 [features]
 default = []
-parallel = []
-serde = []
+rayon = ["zeenmr-spectrum/rayon", "zeenmr-peakshape/rayon", "zeenmr-deconvolution/rayon"]
+serde = ["zeenmr-spectrum/serde", "zeenmr-parse/serde", "zeenmr-peakshape/serde", "zeenmr-deconvolution/serde"]
 
 [dependencies]
+zeenmr-parse = { workspace = true }
+zeenmr-spectrum = { workspace = true }
+zeenmr-peakshape = { workspace = true }
+zeenmr-deconvolution = { workspace = true }
 
 [lints]
 workspace = true

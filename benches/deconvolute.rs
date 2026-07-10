@@ -3,18 +3,26 @@ use num_traits::Float;
 use rayon::prelude::*;
 use std::path::Path;
 use std::sync::Arc;
-use zeenmr_deconvolution::fitting::ThreePoint;
-use zeenmr_deconvolution::iter::ParDeconvoluteMap;
-use zeenmr_deconvolution::peak_finding::CurvatureAnalysis;
-use zeenmr_deconvolution::smoothing::MovingAverage;
-use zeenmr_deconvolution::{Deconvolute, Deconvoluter, ParDeconvolute};
-use zeenmr_parse::bruker::read_bruker_dir;
-use zeenmr_parse::data::{Column, Value};
-use zeenmr_peakshape::Lorentzian;
-use zeenmr_spectrum::Spectrum1D;
-use zeenmr_spectrum::builder_1d::Builder1D;
-use zeenmr_spectrum::frequency_axis::range::{FiniteBounds, FrequencyRange};
-use zeenmr_spectrum::frequency_axis::{Axis, ShiftReference};
+use zeenmr::{
+    deconvolution::{
+        fitting::ThreePoint,
+        iter::ParDeconvoluteMap,
+        peak_finding::CurvatureAnalysis,
+        smoothing::MovingAverage,
+        {Deconvolute, Deconvoluter, ParDeconvolute},
+    },
+    parse::{
+        bruker::read_bruker_dir,
+        data::{Column, Value},
+    },
+    peak_shape::Lorentzian,
+    spectrum::{
+        Spectrum1D,
+        builder_1d::Builder1D,
+        frequency_axis::range::{FiniteBounds, FrequencyRange},
+        frequency_axis::{Axis, ShiftReference},
+    },
+};
 
 mod workspace_dir;
 use workspace_dir::workspace_dir;
