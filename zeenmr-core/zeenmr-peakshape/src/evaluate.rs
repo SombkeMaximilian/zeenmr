@@ -12,19 +12,18 @@ use rayon::prelude::*;
 /// # Example
 ///
 /// ```
-/// use float_cmp::assert_approx_eq;
 /// use zeenmr_peakshape::Evaluate;
 ///
 /// #[derive(Copy, Clone, Debug)]
 /// struct Power(i32);
 ///
-/// impl Evaluate for Power {
+/// impl Evaluate<f64> for Power {
 ///     fn evaluate(&self, at: f64) -> f64 {
 ///         at.powi(self.0)
 ///     }
 /// }
 ///
-/// assert_approx_eq!(f64, Power(2).evaluate(3.0), 9.0);
+/// assert_eq!(Power(2).evaluate(3.0), 9.0);
 /// ```
 pub trait Evaluate<T> {
     /// Evaluate the function at the specified point.
@@ -65,21 +64,20 @@ where
 /// # Example
 ///
 /// ```
-/// use float_cmp::assert_approx_eq;
 /// use zeenmr_peakshape::Evaluate;
 /// use zeenmr_peakshape::iter::Superposition;
 ///
 /// #[derive(Copy, Clone, Debug)]
 /// struct Power(i32);
 ///
-/// impl Evaluate for Power {
+/// impl Evaluate<f64> for Power {
 ///     fn evaluate(&self, at: f64) -> f64 {
 ///         at.powi(self.0)
 ///     }
 /// }
 ///
 /// let powers = [Power(2), Power(2), Power(3)];
-/// assert_approx_eq!(f64, powers.into_iter().superposition(3.0), 45.0);
+/// assert_eq!(powers.into_iter().superposition(3.0), 45.0);
 /// ```
 pub trait Superposition<T>: Iterator {
     /// Evaluate each function in the iterator at the given point and return
@@ -118,7 +116,6 @@ where
 /// # Example
 ///
 /// ```
-/// use float_cmp::assert_approx_eq;
 /// use rayon::prelude::*;
 /// use zeenmr_peakshape::Evaluate;
 /// use zeenmr_peakshape::iter::ParSuperposition;
@@ -126,14 +123,14 @@ where
 /// #[derive(Copy, Clone, Debug)]
 /// struct Power(i32);
 ///
-/// impl Evaluate for Power {
+/// impl Evaluate<f64> for Power {
 ///     fn evaluate(&self, at: f64) -> f64 {
 ///         at.powi(self.0)
 ///     }
 /// }
 ///
 /// let powers = vec![Power(2), Power(2), Power(3)];
-/// assert_approx_eq!(f64, powers.into_par_iter().superposition(3.0), 45.0);
+/// assert_eq!(powers.into_par_iter().superposition(3.0), 45.0);
 /// ```
 #[cfg(feature = "rayon")]
 pub trait ParSuperposition<T: Send + Sync>: ParallelIterator {
@@ -176,14 +173,13 @@ where
 /// # Example
 ///
 /// ```
-/// use float_cmp::assert_approx_eq;
 /// use zeenmr_peakshape::Evaluate;
 /// use zeenmr_peakshape::iter::EvaluateMap;
 ///
 /// #[derive(Copy, Clone, Debug)]
 /// struct Power(i32);
 ///
-/// impl Evaluate for Power {
+/// impl Evaluate<f64> for Power {
 ///     fn evaluate(&self, at: f64) -> f64 {
 ///         at.powi(self.0)
 ///     }
@@ -193,9 +189,9 @@ where
 ///     .into_iter()
 ///     .evaluate(Power(2))
 ///     .collect::<Vec<f64>>();
-/// assert_approx_eq!(f64, squares[0], 4.0);
-/// assert_approx_eq!(f64, squares[1], 9.0);
-/// assert_approx_eq!(f64, squares[2], 16.0);
+/// assert_eq!(squares[0], 4.0);
+/// assert_eq!(squares[1], 9.0);
+/// assert_eq!(squares[2], 16.0);
 /// ```
 pub trait EvaluateMap<T>: Iterator {
     /// Apply the given evaluator to each item in the iterator, producing an
@@ -232,7 +228,6 @@ where
 /// # Example
 ///
 /// ```
-/// use float_cmp::assert_approx_eq;
 /// use rayon::prelude::*;
 /// use zeenmr_peakshape::Evaluate;
 /// use zeenmr_peakshape::iter::ParEvaluateMap;
@@ -240,7 +235,7 @@ where
 /// #[derive(Copy, Clone, Debug)]
 /// struct Power(i32);
 ///
-/// impl Evaluate for Power {
+/// impl Evaluate<f64> for Power {
 ///     fn evaluate(&self, at: f64) -> f64 {
 ///         at.powi(self.0)
 ///     }
@@ -250,9 +245,9 @@ where
 ///     .into_par_iter()
 ///     .evaluate(Power(2))
 ///     .collect::<Vec<f64>>();
-/// assert_approx_eq!(f64, squares[0], 4.0);
-/// assert_approx_eq!(f64, squares[1], 9.0);
-/// assert_approx_eq!(f64, squares[2], 16.0);
+/// assert_eq!(squares[0], 4.0);
+/// assert_eq!(squares[1], 9.0);
+/// assert_eq!(squares[2], 16.0);
 /// ```
 #[cfg(feature = "rayon")]
 pub trait ParEvaluateMap<T: Send>: IndexedParallelIterator {
@@ -296,14 +291,13 @@ where
 /// # Example
 ///
 /// ```
-/// use float_cmp::assert_approx_eq;
 /// use zeenmr_peakshape::Evaluate;
 /// use zeenmr_peakshape::iter::SuperpositionMap;
 ///
 /// #[derive(Copy, Clone, Debug)]
 /// struct Power(i32);
 ///
-/// impl Evaluate for Power {
+/// impl Evaluate<f64> for Power {
 ///     fn evaluate(&self, at: f64) -> f64 {
 ///         at.powi(self.0)
 ///     }
@@ -314,9 +308,9 @@ where
 ///     .into_iter()
 ///     .superposition(&evaluators)
 ///     .collect::<Vec<f64>>();
-/// assert_approx_eq!(f64, results[0], 12.0);
-/// assert_approx_eq!(f64, results[1], 36.0);
-/// assert_approx_eq!(f64, results[2], 80.0);
+/// assert_eq!(results[0], 12.0);
+/// assert_eq!(results[1], 36.0);
+/// assert_eq!(results[2], 80.0);
 /// ```
 pub trait SuperpositionMap<T>: Iterator {
     /// Apply the superposition of the given evaluators to each item in the
@@ -356,7 +350,6 @@ where
 /// # Example
 ///
 /// ```
-/// use float_cmp::assert_approx_eq;
 /// use rayon::prelude::*;
 /// use zeenmr_peakshape::Evaluate;
 /// use zeenmr_peakshape::iter::ParSuperpositionMap;
@@ -364,7 +357,7 @@ where
 /// #[derive(Copy, Clone, Debug)]
 /// struct Power(i32);
 ///
-/// impl Evaluate for Power {
+/// impl Evaluate<f64> for Power {
 ///     fn evaluate(&self, at: f64) -> f64 {
 ///         at.powi(self.0)
 ///     }
@@ -375,9 +368,9 @@ where
 ///     .into_par_iter()
 ///     .superposition(&evaluators)
 ///     .collect::<Vec<f64>>();
-/// assert_approx_eq!(f64, results[0], 2.0f64.powi(2) + 2.0f64.powi(3));
-/// assert_approx_eq!(f64, results[1], 3.0f64.powi(2) + 3.0f64.powi(3));
-/// assert_approx_eq!(f64, results[2], 4.0f64.powi(2) + 4.0f64.powi(3));
+/// assert_eq!(results[0], 2.0f64.powi(2) + 2.0f64.powi(3));
+/// assert_eq!(results[1], 3.0f64.powi(2) + 3.0f64.powi(3));
+/// assert_eq!(results[2], 4.0f64.powi(2) + 4.0f64.powi(3));
 /// ```
 #[cfg(feature = "rayon")]
 pub trait ParSuperpositionMap<T: Send + Sync>: IndexedParallelIterator {
