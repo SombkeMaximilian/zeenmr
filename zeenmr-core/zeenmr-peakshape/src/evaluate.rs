@@ -341,10 +341,9 @@ where
 
         evaluators[1..]
             .iter()
-            .map(|e| at.iter().copied().evaluate(e))
-            .fold(init, |mut acc, at| {
+            .fold(init, |mut acc, e| {
                 acc.iter_mut()
-                    .zip(at)
+                    .zip(at.iter().copied().evaluate(e))
                     .for_each(|(acc, x)| *acc = *acc + x);
 
                 acc
