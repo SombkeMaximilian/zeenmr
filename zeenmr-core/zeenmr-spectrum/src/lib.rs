@@ -13,7 +13,7 @@ mod nucleus;
 pub use nucleus::Nucleus;
 
 mod spectrum;
-pub use spectrum::Spectrum1D;
+pub use spectrum::{Spectrum1D, SpectrumView1D};
 
 pub mod builder_1d {
     //! Builder pattern for spectra.

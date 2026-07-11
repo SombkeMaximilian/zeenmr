@@ -1,4 +1,3 @@
-use crate::Nucleus;
 use crate::error::Result;
 use crate::frequency_axis::Axis;
 use crate::intensity_array::Storage;
@@ -21,26 +20,15 @@ use serde::{Deserialize, Serialize};
     serde(rename_all = "camelCase")
 )]
 pub struct Spectrum1D<T, S> {
-    /// Nucleus observed in the NMR experiment.
-    #[cfg_attr(
-        feature = "serde",
-        serde(default, skip_serializing_if = "Option::is_none")
-    )]
-    nucleus: Option<Nucleus>,
     /// Frequency axis of the spectrum.
     axis: Axis<T>,
     /// Range within the intensities where signals are present.
     signal_range: Range<usize>,
-    /// Intensity array or dual channel.
+    /// Intensity array.
     intensities: S,
 }
 
 impl<T, S> Spectrum1D<T, S> {
-    /// Returns the observed nucleus.
-    pub fn nucleus(&self) -> Option<&Nucleus> {
-        self.nucleus.as_ref()
-    }
-
     /// Returns the frequency axis.
     pub fn axis(&self) -> &Axis<T> {
         &self.axis
@@ -62,6 +50,42 @@ where
     }
 }
 
+impl<T, S> Spectrum1D<T, S>
+where
+    T: Copy,
+    S: Storage,
+{
+    /// Returns a borrowed view of this spectrum.
+    pub fn view(&self) -> SpectrumView1D<'_, T, S::Elem> {
+        SpectrumView1D {
+            axis: self.axis,
+            signal_range: self.signal_range.clone(),
+            intensities: self.intensities.as_ref(),
+        }
+    }
+}
+
+/// A borrowed view of a 1D spectrum.
+///
+/// Note that the element type may differ from the scalar type, but will always
+/// be coupled to it in some way (e.g., when `E = Complex<T>`).
+pub type SpectrumView1D<'s, T, E> = Spectrum1D<T, &'s [E]>;
+
+impl<T, E> SpectrumView1D<'_, T, E>
+where
+    T: Copy,
+    E: Clone,
+{
+    /// Returns an owned spectrum by copying the intensities of this view.
+    pub fn to_owned(&self) -> Spectrum1D<T, Vec<E>> {
+        Spectrum1D {
+            axis: self.axis,
+            signal_range: self.signal_range.clone(),
+            intensities: self.intensities.to_vec(),
+        }
+    }
+}
+
 /// Pre-initialization marker.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct NeedsAxis;
@@ -73,8 +97,6 @@ pub struct NeedsRange;
 /// Builder for 1D spectra.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Builder1D<T, S, K, A, R> {
-    /// Nucleus observed in the NMR experiment.
-    nucleus: Option<Nucleus>,
     /// Frequency axis of the spectrum.
     axis: A,
     /// Cached or overridden signal range.
@@ -94,7 +116,6 @@ where
     /// Finalizes the spectrum.
     pub fn finalize(self) -> Spectrum1D<T, S> {
         Spectrum1D {
-            nucleus: self.nucleus,
             axis: self.axis,
             signal_range: self.signal_range,
             intensities: self.intensities,
@@ -116,7 +137,6 @@ where
         Magnitude::validate(&array)?;
 
         Ok(Self {
-            nucleus: None,
             axis: NeedsAxis,
             signal_range: NeedsRange,
             intensities: array,
@@ -140,7 +160,6 @@ where
         SingleChannel::validate(&array)?;
 
         Ok(Self {
-            nucleus: None,
             axis: NeedsAxis,
             signal_range: NeedsRange,
             intensities: array,
@@ -173,7 +192,6 @@ where
         DualChannel::validate(&array)?;
 
         Ok(Self {
-            nucleus: None,
             axis: NeedsAxis,
             signal_range: NeedsRange,
             intensities: array,
@@ -190,7 +208,6 @@ where
     /// Sets the frequency axis.
     pub fn axis(self, axis: Axis<T>) -> Builder1D<T, S, K, Axis<T>, R> {
         Builder1D {
-            nucleus: self.nucleus,
             axis,
             signal_range: self.signal_range,
             intensities: self.intensities,
@@ -217,22 +234,12 @@ where
         F: FindSignalRange<S::Elem, K>,
     {
         Ok(Builder1D {
-            nucleus: self.nucleus,
             axis: self.axis,
             signal_range: finder.find_signal_range(self.intensities.as_ref())?,
             intensities: self.intensities,
             scalar: PhantomData,
             intensity_kind: self.intensity_kind,
         })
-    }
-}
-
-impl<T, S, K, A, R> Builder1D<T, S, K, A, R> {
-    /// Sets the observed nucleus.
-    pub fn nucleus(mut self, nucleus: Nucleus) -> Self {
-        self.nucleus = Some(nucleus);
-
-        self
     }
 }
 
@@ -273,10 +280,8 @@ mod tests {
             let spectrum = Builder1D::real(data)?
                 .axis(axis)
                 .signal_range(range)?
-                .nucleus(Nucleus::Hydrogen)
                 .finalize();
 
-            let _ = spectrum.nucleus();
             let _ = spectrum.axis();
             let _ = spectrum.signal_range();
             let _ = spectrum.intensities();
@@ -302,10 +307,8 @@ mod tests {
             let spectrum = Builder1D::magnitude(data)?
                 .axis(axis)
                 .signal_range(range)?
-                .nucleus(Nucleus::Hydrogen)
                 .finalize();
 
-            let _ = spectrum.nucleus();
             let _ = spectrum.axis();
             let _ = spectrum.signal_range();
             let _ = spectrum.intensities();
@@ -332,10 +335,8 @@ mod tests {
             let spectrum = Builder1D::complex(data)?
                 .axis(axis)
                 .signal_range(range)?
-                .nucleus(Nucleus::Hydrogen)
                 .finalize();
 
-            let _ = spectrum.nucleus();
             let _ = spectrum.axis();
             let _ = spectrum.signal_range();
             let _ = spectrum.intensities();
