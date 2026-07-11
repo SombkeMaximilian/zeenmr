@@ -27,9 +27,11 @@ impl<T> Smooth<T> for LeastSquares<T>
 where
     T: Float,
 {
-    fn smooth_in_place(&self, data: &mut [T]) {
+    type Error = std::convert::Infallible;
+
+    fn smooth_in_place(&self, data: &mut [T]) -> Result<(), Self::Error> {
         if data.len() < 2 || data.len() < self.coeff.len() || self.iterations == 0 {
-            return;
+            return Ok(());
         }
 
         let half_window = self.coeff.len() / 2;
@@ -63,6 +65,8 @@ where
             }
             data.swap_with_slice(&mut next);
         }
+
+        Ok(())
     }
 }
 
@@ -335,6 +339,7 @@ mod tests {
         let smoother = LeastSquares::new(1, window, 4).unwrap();
         let smoothed = smoother
             .smooth(&data)
+            .expect("infallible")
             .into_owned()
             .into_boxed_slice();
 
@@ -348,7 +353,8 @@ mod tests {
             .map(|x| x as f64)
             .collect::<Box<[f64]>>();
         let smoother = LeastSquares::new(1, window, 4).unwrap();
-        let smoothed = smoother.smooth(&data)[window / 2..data.len() - window / 2]
+        let smoothed = smoother.smooth(&data).expect("infallible")
+            [window / 2..data.len() - window / 2]
             .to_vec()
             .into_boxed_slice();
         let data = data[window / 2..data.len() - window / 2]

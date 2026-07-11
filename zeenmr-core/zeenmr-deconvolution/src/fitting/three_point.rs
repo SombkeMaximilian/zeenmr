@@ -207,7 +207,9 @@ where
     T: Float,
     P: PeakShape<T> + ThreePointStencil<T>,
 {
-    fn fit(&self, spectrum: SpectrumView1D<T, T>, peaks: &[Peak]) -> Vec<P> {
+    type Error = std::convert::Infallible;
+
+    fn fit(&self, spectrum: SpectrumView1D<T, T>, peaks: &[Peak]) -> Result<Vec<P>, Self::Error> {
         let mut reduced = ReducedSpectrum::new(spectrum, peaks);
         let mut stencils = reduced.stencils().collect::<Vec<_>>();
         let mut peak_shapes = stencils
@@ -248,7 +250,7 @@ where
         }
         peak_shapes.retain(|p| p.is_valid() && p.is_significant(crate::precision()));
 
-        peak_shapes
+        Ok(peak_shapes)
     }
 }
 
@@ -258,7 +260,13 @@ where
     T: Float + Send + Sync,
     P: PeakShape<T> + ThreePointStencil<T> + Send + Sync,
 {
-    fn par_fit(&self, spectrum: SpectrumView1D<T, T>, peaks: &[Peak]) -> Vec<P> {
+    type Error = std::convert::Infallible;
+
+    fn par_fit(
+        &self,
+        spectrum: SpectrumView1D<T, T>,
+        peaks: &[Peak],
+    ) -> Result<Vec<P>, Self::Error> {
         let mut reduced = ReducedSpectrum::new(spectrum, peaks);
         let mut stencils = reduced.stencils().collect::<Vec<_>>();
         let mut peak_shapes = stencils
@@ -299,7 +307,7 @@ where
         }
         peak_shapes.retain(|p| p.is_valid() && p.is_significant(crate::precision()));
 
-        peak_shapes
+        Ok(peak_shapes)
     }
 }
 

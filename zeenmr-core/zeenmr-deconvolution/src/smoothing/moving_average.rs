@@ -38,13 +38,15 @@ impl<T> Smooth<T> for MovingAverage
 where
     T: Float,
 {
-    fn smooth_in_place(&self, data: &mut [T]) {
+    type Error = std::convert::Infallible;
+
+    fn smooth_in_place(&self, data: &mut [T]) -> Result<(), Self::Error> {
         if data.len() < 2
             || data.len() < self.window_size
             || self.iterations == 0
             || self.window_size <= 1
         {
-            return;
+            return Ok(());
         }
 
         let half_window = self.window_size / 2;
@@ -73,6 +75,8 @@ where
                         .expect("conversion from usize to T must never fail");
             }
         }
+
+        Ok(())
     }
 }
 

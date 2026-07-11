@@ -1,10 +1,80 @@
-use crate::error::{Error, Result};
 use crate::peak_finding::{Find, Peak};
 use num_traits::Float;
 use std::ops::Range;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+
+/// An error that occurred during the curvature analysis based peak finding.
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+pub struct CurvatureError {
+    /// Kind of error that occurred.
+    kind: CurvatureErrorKind,
+}
+
+/// Kind of error that can occur during curvature analysis based peak finding.
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+pub enum CurvatureErrorKind {
+    /// No peaks were detected in the input data.
+    ///
+    /// Indicates that intensities may have been read incorrectly or something
+    /// went wrong during the smoothing process.
+    NoPeaksDetected,
+    /// No peaks were found in the part of the spectrum where signals would be
+    /// expected.
+    ///
+    /// This may happen if there are no signals in the signal region, either
+    /// due to incorrectly setting its boundaries or if all the signals were
+    /// filtered out by the peak finding algorithm.
+    EmptySignalRegion,
+    /// No peaks were found in the part of the spectrum where random signals due
+    /// to noise would be expected.
+    ///
+    /// Some peak finding algorithms use the estimated noise from regions of a
+    /// spectrum where no signals are expected filter out peaks in the signal
+    /// region. If there is no noise, i.e., no peaks can be found, this process
+    /// might silently fail. This error avoids that issue.
+    EmptySignalFreeRegion,
+}
+
+impl std::error::Error for CurvatureError {}
+
+impl std::fmt::Display for CurvatureError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let description = match self.kind {
+            CurvatureErrorKind::NoPeaksDetected => "no peaks detected",
+            CurvatureErrorKind::EmptySignalRegion => "no peaks found in signal region",
+            CurvatureErrorKind::EmptySignalFreeRegion => "no peaks found in signal-free region",
+        };
+
+        write!(f, "{description}")
+    }
+}
+
+impl CurvatureError {
+    /// Returns the kind of error that occurred.
+    pub fn kind(&self) -> CurvatureErrorKind {
+        self.kind
+    }
+
+    fn no_peaks_detected() -> Self {
+        Self {
+            kind: CurvatureErrorKind::NoPeaksDetected,
+        }
+    }
+
+    fn empty_signal_region() -> Self {
+        Self {
+            kind: CurvatureErrorKind::EmptySignalRegion,
+        }
+    }
+
+    fn empty_signal_free_region() -> Self {
+        Self {
+            kind: CurvatureErrorKind::EmptySignalFreeRegion,
+        }
+    }
+}
 
 /// Peak detection algorithm based on the second derivative of the signal.
 ///
@@ -87,8 +157,8 @@ where
     /// # Errors
     ///
     /// The following errors can occur:
-    /// - [`NoPeaksDetected`](crate::error::Kind::NoPeaksDetected)
-    fn detect_peaks(&self) -> Result<Vec<Peak>> {
+    /// - [`NoPeaksDetected`](CurvatureError::NoPeaksDetected)
+    fn detect_peaks(&self) -> Result<Vec<Peak>, CurvatureError> {
         let peaks = self
             .0
             .windows(3)
@@ -116,7 +186,7 @@ where
 
         match peaks.is_empty() {
             false => Ok(peaks),
-            true => Err(Error::no_peaks_detected()),
+            true => Err(CurvatureError::no_peaks_detected()),
         }
     }
 
@@ -199,12 +269,14 @@ impl<T> Find<T> for CurvatureAnalysis<T>
 where
     T: Float,
 {
+    type Error = CurvatureError;
+
     fn find(
         &self,
         smoothed: &[T],
         signal: &Range<usize>,
         ignore: &[Range<usize>],
-    ) -> Result<Vec<Peak>> {
+    ) -> Result<Vec<Peak>, Self::Error> {
         let mut second_derivative = smoothed
             .windows(3)
             .map(|w| w[0] - w[1] - w[1] + w[2])
@@ -222,10 +294,10 @@ where
         let bounds = peak_region_boundaries(&peaks, signal);
 
         if peaks[..bounds.start].is_empty() && peaks[bounds.end..].is_empty() {
-            return Err(Error::empty_signal_free_region());
+            return Err(CurvatureError::empty_signal_free_region());
         }
         if peaks[bounds.start..bounds.end].is_empty() {
-            return Err(Error::empty_signal_region());
+            return Err(CurvatureError::empty_signal_region());
         }
 
         let scores_sfr = peaks[0..bounds.start]
@@ -245,7 +317,7 @@ where
 
         match peaks.is_empty() {
             false => Ok(peaks),
-            true => Err(Error::no_peaks_detected()),
+            true => Err(CurvatureError::no_peaks_detected()),
         }
     }
 }

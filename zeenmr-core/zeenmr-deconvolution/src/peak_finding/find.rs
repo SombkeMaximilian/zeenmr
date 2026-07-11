@@ -1,4 +1,3 @@
-use crate::error::Result;
 use std::ops::Range;
 
 #[cfg(feature = "serde")]
@@ -10,7 +9,13 @@ use serde::{Deserialize, Serialize};
 ///
 /// A peak finding algorithm should specify in its documentation what the bounds
 /// of a peak represent (e.g., inflection points).
+///
+/// `smoothed` can be assumed to contain no floating point `NaN` or either
+/// infinity.
 pub trait Find<T> {
+    /// Error type when an error occurs during peak finding.
+    type Error;
+
     /// Finds peaks in the given smoothed signal within the specified bounds,
     /// optionally ignoring certain regions.
     fn find(
@@ -18,7 +23,7 @@ pub trait Find<T> {
         smoothed: &[T],
         signal: &Range<usize>,
         ignore: &[Range<usize>],
-    ) -> Result<Vec<Peak>>;
+    ) -> Result<Vec<Peak>, Self::Error>;
 }
 
 /// A 1D NMR peak, represented by its left bound, center, and right bound.

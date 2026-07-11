@@ -1,20 +1,33 @@
+use crate::error::EitherError;
 use std::borrow::Cow;
 
 /// Trait for smoothing algorithms that process a sequence of values.
+///
+/// # Note for Implementors
+///
+/// It is not necessary to handle floating point `NaN` or either infinity. The
+/// passed `data` can be assumed to contain no such value.
+///
+/// If no smoothing can be performed because the data does not contain enough
+/// elements, the `Ok` variant should be returned without performing any
+/// smoothing.
 pub trait Smooth<T>
 where
     T: Clone,
 {
+    /// Error type when an error occurs during smoothing.
+    type Error;
+
     /// Smooth the provided data in place.
-    fn smooth_in_place(&self, data: &mut [T]);
+    fn smooth_in_place(&self, data: &mut [T]) -> Result<(), Self::Error>;
 
     /// Smooth the provided data and return an owned instance of the smoothed
     /// values.
-    fn smooth<'a>(&self, data: &'a [T]) -> Cow<'a, [T]> {
+    fn smooth<'a>(&self, data: &'a [T]) -> Result<Cow<'a, [T]>, Self::Error> {
         let mut data = data.to_owned();
-        self.smooth_in_place(&mut data);
+        self.smooth_in_place(&mut data)?;
 
-        data.into()
+        Ok(data.into())
     }
 
     /// Returns a smoother that first applies this smoother and then the other.
@@ -38,7 +51,11 @@ impl<T> Smooth<T> for Identity
 where
     T: Clone,
 {
-    fn smooth_in_place(&self, _: &mut [T]) {}
+    type Error = std::convert::Infallible;
+
+    fn smooth_in_place(&self, _: &mut [T]) -> Result<(), Self::Error> {
+        Ok(())
+    }
 }
 
 impl Identity {
@@ -63,8 +80,15 @@ where
     S1: Smooth<T>,
     S2: Smooth<T>,
 {
-    fn smooth_in_place(&self, data: &mut [T]) {
-        self.first.smooth_in_place(data);
-        self.second.smooth_in_place(data);
+    type Error = EitherError<S1::Error, S2::Error>;
+
+    fn smooth_in_place(&self, data: &mut [T]) -> Result<(), Self::Error> {
+        self.first
+            .smooth_in_place(data)
+            .map_err(EitherError::First)?;
+        self.second
+            .smooth_in_place(data)
+            .map_err(EitherError::Second)?;
+        Ok(())
     }
 }

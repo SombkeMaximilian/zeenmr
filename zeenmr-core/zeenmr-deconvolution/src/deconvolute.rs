@@ -1,5 +1,5 @@
 use crate::Deconvolution;
-use crate::error::Result;
+use crate::error::Error;
 use crate::fitting::Fit;
 use crate::peak_finding::Find;
 use crate::smoothing::Smooth;
@@ -22,10 +22,16 @@ use zeenmr_peakshape::iter::ParSuperpositionMap;
 ///
 /// Implementors of this trait are called deconvoluters.
 pub trait Deconvolute<T, P> {
+    /// Error type when an error occurs during deconvolution.
+    type Error;
+
     /// Deconvolutes the provided `Spectrum` into its constituent signals.
     ///
     /// Each signal is modeled as a peak shape.
-    fn deconvolute<S>(&self, spectrum: &Spectrum1D<T, S>) -> Result<Deconvolution<T, P>>
+    fn deconvolute<S>(
+        &self,
+        spectrum: &Spectrum1D<T, S>,
+    ) -> Result<Deconvolution<T, P>, Self::Error>
     where
         S: Storage<Elem = T>;
 }
@@ -36,11 +42,17 @@ pub trait Deconvolute<T, P> {
 /// Implementors of this trait are called parallelized deconvoluters.
 #[cfg(feature = "rayon")]
 pub trait ParDeconvolute<T, P> {
+    /// Error type when an error occurs during deconvolution.
+    type Error;
+
     /// Deconvolutes the provided `Spectrum` into its constituent signals in
     /// parallel.
     ///
     /// Each signal is modeled as a peak shape.
-    fn par_deconvolute<S>(&self, spectrum: &Spectrum1D<T, S>) -> Result<Deconvolution<T, P>>
+    fn par_deconvolute<S>(
+        &self,
+        spectrum: &Spectrum1D<T, S>,
+    ) -> Result<Deconvolution<T, P>, Self::Error>
     where
         S: Storage<Elem = T>;
 }
@@ -49,7 +61,10 @@ pub trait ParDeconvolute<T, P> {
 /// using a provided deconvoluter.
 pub trait DeconvoluteMap<T, P>: Iterator {
     /// Applies the provided deconvoluter to each item in the iterator.
-    fn deconvolute<D>(self, deconvoluter: &D) -> impl Iterator<Item = Result<Deconvolution<T, P>>>
+    fn deconvolute<D>(
+        self,
+        deconvoluter: &D,
+    ) -> impl Iterator<Item = Result<Deconvolution<T, P>, D::Error>>
     where
         D: Deconvolute<T, P>;
 }
@@ -63,7 +78,7 @@ where
     fn deconvolute<D>(
         self,
         deconvoluter: &D,
-    ) -> impl Iterator<Item = Result<Deconvolution<S::Elem, P>>>
+    ) -> impl Iterator<Item = Result<Deconvolution<S::Elem, P>, D::Error>>
     where
         D: Deconvolute<S::Elem, P>,
     {
@@ -80,9 +95,10 @@ pub trait ParDeconvoluteMap<T, P>: IndexedParallelIterator {
     fn deconvolute<D>(
         self,
         deconvoluter: &D,
-    ) -> impl IndexedParallelIterator<Item = Result<Deconvolution<T, P>>>
+    ) -> impl IndexedParallelIterator<Item = Result<Deconvolution<T, P>, D::Error>>
     where
-        D: ParDeconvolute<T, P> + Send + Sync;
+        D: ParDeconvolute<T, P> + Send + Sync,
+        D::Error: Send;
 }
 
 #[cfg(feature = "rayon")]
@@ -96,9 +112,10 @@ where
     fn deconvolute<D>(
         self,
         deconvoluter: &D,
-    ) -> impl IndexedParallelIterator<Item = Result<Deconvolution<S::Elem, P>>>
+    ) -> impl IndexedParallelIterator<Item = Result<Deconvolution<S::Elem, P>, D::Error>>
     where
         D: ParDeconvolute<S::Elem, P> + Send + Sync,
+        D::Error: Send,
     {
         self.map(move |spectrum| deconvoluter.par_deconvolute(spectrum))
     }
@@ -143,14 +160,22 @@ where
     PF: Find<T>,
     FT: Fit<T, P>,
 {
-    fn deconvolute<S>(&self, spectrum: &Spectrum1D<T, S>) -> Result<Deconvolution<T, P>>
+    type Error = Error<SM::Error, PF::Error, FT::Error>;
+
+    fn deconvolute<S>(
+        &self,
+        spectrum: &Spectrum1D<T, S>,
+    ) -> Result<Deconvolution<T, P>, Self::Error>
     where
         S: Storage<Elem = T>,
     {
         let len = spectrum.intensities().len();
         let len_as_t = T::from(len).expect("conversion from usize to T must never fail");
         let axis = spectrum.axis();
-        let smoothed = self.smoother.smooth(spectrum.intensities());
+        let smoothed = self
+            .smoother
+            .smooth(spectrum.intensities())
+            .map_err(Error::smoothing)?;
         let ignore = self
             .ignore
             .iter()
@@ -167,8 +192,12 @@ where
             .collect::<Vec<Range<usize>>>();
         let peaks = self
             .finder
-            .find(&smoothed, spectrum.signal_range(), &ignore)?;
-        let peak_shapes = self.fitter.fit(spectrum.view(), &peaks);
+            .find(&smoothed, spectrum.signal_range(), &ignore)
+            .map_err(Error::finding)?;
+        let peak_shapes = self
+            .fitter
+            .fit(spectrum.view(), &peaks)
+            .map_err(Error::fitting)?;
         let superpositions = spectrum
             .axis()
             .shifts(len)
@@ -191,14 +220,22 @@ where
     PF: Find<T>,
     FT: ParFit<T, P>,
 {
-    fn par_deconvolute<S>(&self, spectrum: &Spectrum1D<T, S>) -> Result<Deconvolution<T, P>>
+    type Error = Error<SM::Error, PF::Error, FT::Error>;
+
+    fn par_deconvolute<S>(
+        &self,
+        spectrum: &Spectrum1D<T, S>,
+    ) -> Result<Deconvolution<T, P>, Self::Error>
     where
         S: Storage<Elem = T>,
     {
         let len = spectrum.intensities().len();
         let len_as_t = T::from(len).expect("conversion from usize to T must never fail");
         let axis = spectrum.axis();
-        let intensities = self.smoother.smooth(spectrum.intensities());
+        let intensities = self
+            .smoother
+            .smooth(spectrum.intensities())
+            .map_err(Error::smoothing)?;
         let ignore = self
             .ignore
             .iter()
@@ -215,8 +252,12 @@ where
             .collect::<Vec<Range<usize>>>();
         let peaks = self
             .finder
-            .find(&intensities, spectrum.signal_range(), &ignore)?;
-        let peak_shapes = self.fitter.par_fit(spectrum.view(), &peaks);
+            .find(&intensities, spectrum.signal_range(), &ignore)
+            .map_err(Error::finding)?;
+        let peak_shapes = self
+            .fitter
+            .par_fit(spectrum.view(), &peaks)
+            .map_err(Error::fitting)?;
         let superpositions = spectrum
             .axis()
             .par_shifts(len)
@@ -352,12 +393,7 @@ where
     /// Overlapping ranges are automatically merged, so the input is not
     /// necessarily recoverable. For example, adding 4.7–4.9 ppm and then
     /// 4.8–5.0 ppm results in a single 4.7–5.0 ppm range.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the provided chemical shift range contains a bound
-    /// that is one of the infinities or `NaN`.
-    pub fn ignore(mut self, range: ShiftRange<T>) -> Result<Self> {
+    pub fn ignore(mut self, range: ShiftRange<T>) -> Self {
         self.ignore.push(range.normalized());
         self.ignore.sort_unstable_by(|a, b| {
             a.start()
@@ -379,7 +415,7 @@ where
             self.ignore.remove(overlap + 1);
         }
 
-        Ok(self)
+        self
     }
 }
 
