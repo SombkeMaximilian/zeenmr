@@ -135,32 +135,32 @@ pub struct NeedsFitter;
 
 /// Deconvolution config for processing spectra into their constituent signals.
 #[derive(Clone, Debug)]
-pub struct Deconvoluter<T, SM, PF, FT> {
+pub struct Deconvoluter<T, C1, C2, C3> {
     /// Smoothing algorithm.
     ///
     /// Must implement [`Smooth`], or be [`NeedsSmoother`].
-    smoother: SM,
+    smoother: C1,
     /// Peak finding algorithm.
     ///
     /// Must implement [`Find`], or be [`NeedsFinder`].
-    finder: PF,
+    finder: C2,
     /// Peak fitting algorithm.
     ///
     /// Must implement [`Fit`] or [`ParFit`], or be [`NeedsFitter`].
-    fitter: FT,
+    fitter: C3,
     /// Chemical shift ranges to ignore during deconvolution.
     ignore: Vec<ShiftRange<T>>,
 }
 
-impl<T, P, SM, PF, FT> Deconvolute<T, P> for Deconvoluter<T, SM, PF, FT>
+impl<T, P, C1, C2, C3> Deconvolute<T, P> for Deconvoluter<T, C1, C2, C3>
 where
     T: Float,
     P: PeakShape<T>,
-    SM: Smooth<T>,
-    PF: Find<T>,
-    FT: Fit<T, P>,
+    C1: Smooth<T>,
+    C2: Find<T>,
+    C3: Fit<T, P>,
 {
-    type Error = Error<SM::Error, PF::Error, FT::Error>;
+    type Error = Error<C1::Error, C2::Error, C3::Error>;
 
     fn deconvolute<S>(
         &self,
@@ -212,15 +212,15 @@ where
 }
 
 #[cfg(feature = "rayon")]
-impl<T, P, SM, PF, FT> ParDeconvolute<T, P> for Deconvoluter<T, SM, PF, FT>
+impl<T, P, C1, C2, C3> ParDeconvolute<T, P> for Deconvoluter<T, C1, C2, C3>
 where
     T: Float + Send + Sync,
     P: PeakShape<T> + Send + Sync,
-    SM: Smooth<T>,
-    PF: Find<T>,
-    FT: ParFit<T, P>,
+    C1: Smooth<T>,
+    C2: Find<T>,
+    C3: ParFit<T, P>,
 {
-    type Error = Error<SM::Error, PF::Error, FT::Error>;
+    type Error = Error<C1::Error, C2::Error, C3::Error>;
 
     fn par_deconvolute<S>(
         &self,
@@ -306,14 +306,14 @@ impl Deconvoluter<(), NeedsSmoother, NeedsFinder, NeedsFitter> {
     }
 }
 
-impl<T, PF, FT> Deconvoluter<T, NeedsSmoother, PF, FT>
+impl<T, C2, C3> Deconvoluter<T, NeedsSmoother, C2, C3>
 where
     T: Clone,
 {
     /// Sets the smoothing algorithm for the deconvoluter.
-    pub fn with_smoother<SM>(self, smoother: SM) -> Deconvoluter<T, SM, PF, FT>
+    pub fn with_smoother<C1>(self, smoother: C1) -> Deconvoluter<T, C1, C2, C3>
     where
-        SM: Smooth<T>,
+        C1: Smooth<T>,
     {
         Deconvoluter {
             smoother,
@@ -324,11 +324,11 @@ where
     }
 }
 
-impl<T, SM, FT> Deconvoluter<T, SM, NeedsFinder, FT> {
+impl<T, C1, C3> Deconvoluter<T, C1, NeedsFinder, C3> {
     /// Sets the peak finding algorithm for the deconvoluter.
-    pub fn with_finder<PF>(self, peak_finder: PF) -> Deconvoluter<T, SM, PF, FT>
+    pub fn with_finder<C2>(self, peak_finder: C2) -> Deconvoluter<T, C1, C2, C3>
     where
-        PF: Find<T>,
+        C2: Find<T>,
     {
         Deconvoluter {
             smoother: self.smoother,
@@ -339,15 +339,15 @@ impl<T, SM, FT> Deconvoluter<T, SM, NeedsFinder, FT> {
     }
 }
 
-impl<T, SM, PF> Deconvoluter<T, SM, PF, NeedsFitter> {
+impl<T, C1, C2> Deconvoluter<T, C1, C2, NeedsFitter> {
     /// Sets the peak fitting algorithm for the deconvoluter.
     ///
     /// If the fitter also implements [`ParFit`], the deconvoluter additionally
     /// becomes a parallelized deconvoluter.
-    pub fn with_fitter<P, FT>(self, fitter: FT) -> Deconvoluter<T, SM, PF, FT>
+    pub fn with_fitter<P, C3>(self, fitter: C3) -> Deconvoluter<T, C1, C2, C3>
     where
         P: PeakShape<T> + Send + Sync,
-        FT: Fit<T, P>,
+        C3: Fit<T, P>,
     {
         Deconvoluter {
             smoother: self.smoother,
@@ -359,15 +359,15 @@ impl<T, SM, PF> Deconvoluter<T, SM, PF, NeedsFitter> {
 
     /// Sets the peak fitting algorithm for the deconvoluter.
     ///
-    /// Use this method only if `FT` is not also [`Fit`]. Prefer
-    /// [`Deconvoluter::with_fitter`] for better type inference otherwise.
+    /// Use this method only if `C3` is not also [`Fit`]. Prefer [`with_fitter`]
+    /// for better type inference otherwise.
     ///
-    /// [`Deconvoluter::with_fitter`]: Self::with_fitter
+    /// [`with_fitter`]: Self::with_fitter
     #[cfg(feature = "rayon")]
-    pub fn with_par_fitter<P, FT>(self, fitter: FT) -> Deconvoluter<T, SM, PF, FT>
+    pub fn with_par_fitter<P, C3>(self, fitter: C3) -> Deconvoluter<T, C1, C2, C3>
     where
         P: PeakShape<T> + Send + Sync,
-        FT: ParFit<T, P>,
+        C3: ParFit<T, P>,
     {
         Deconvoluter {
             smoother: self.smoother,
@@ -378,7 +378,7 @@ impl<T, SM, PF> Deconvoluter<T, SM, PF, NeedsFitter> {
     }
 }
 
-impl<T, SM, PF, FT> Deconvoluter<T, SM, PF, FT>
+impl<T, C1, C2, C3> Deconvoluter<T, C1, C2, C3>
 where
     T: Float,
 {
