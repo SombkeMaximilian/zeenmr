@@ -315,6 +315,26 @@ impl<T, SM, PF> Deconvoluter<T, SM, PF, NeedsFitter> {
             ignore: self.ignore,
         }
     }
+
+    /// Sets the peak fitting algorithm for the deconvoluter.
+    ///
+    /// Use this method only if `FT` is not also [`Fit`]. Prefer
+    /// [`Deconvoluter::with_fitter`] for better type inference otherwise.
+    ///
+    /// [`Deconvoluter::with_fitter`]: Self::with_fitter
+    #[cfg(feature = "rayon")]
+    pub fn with_par_fitter<P, FT>(self, fitter: FT) -> Deconvoluter<T, SM, PF, FT>
+    where
+        P: PeakShape<T> + Send + Sync,
+        FT: ParFit<T, P>,
+    {
+        Deconvoluter {
+            smoother: self.smoother,
+            finder: self.finder,
+            fitter,
+            ignore: self.ignore,
+        }
+    }
 }
 
 impl<T, SM, PF, FT> Deconvoluter<T, SM, PF, FT>

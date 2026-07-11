@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// A peak finding algorithm should specify in its documentation what the bounds
 /// of a peak represent (e.g., inflection points).
-pub trait Find<T>: Send + Sync {
+pub trait Find<T> {
     /// Finds peaks in the given smoothed signal within the specified bounds,
     /// optionally ignoring certain regions.
     fn find(

@@ -197,7 +197,7 @@ pub struct CurvatureAnalysis<T> {
 
 impl<T> Find<T> for CurvatureAnalysis<T>
 where
-    T: Float + Send + Sync,
+    T: Float,
 {
     fn find(
         &self,

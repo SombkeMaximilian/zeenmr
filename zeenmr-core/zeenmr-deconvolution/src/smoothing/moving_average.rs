@@ -36,7 +36,7 @@ pub struct MovingAverage {
 
 impl<T> Smooth<T> for MovingAverage
 where
-    T: Clone + Float,
+    T: Float,
 {
     fn smooth_in_place(&self, data: &mut [T]) {
         if data.len() < 2

@@ -3,7 +3,7 @@ use zeenmr_peakshape::PeakShape;
 use zeenmr_spectrum::SpectrumView1D;
 
 /// Trait for fitting peak shapes to a spectrum, given a set of detected peaks.
-pub trait Fit<T, P>: Send + Sync
+pub trait Fit<T, P>
 where
     P: PeakShape<T>,
 {

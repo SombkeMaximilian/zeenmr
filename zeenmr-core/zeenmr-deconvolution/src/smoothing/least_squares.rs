@@ -25,7 +25,7 @@ pub struct LeastSquares<T> {
 
 impl<T> Smooth<T> for LeastSquares<T>
 where
-    T: Float + Send + Sync,
+    T: Float,
 {
     fn smooth_in_place(&self, data: &mut [T]) {
         if data.len() < 2 || data.len() < self.coeff.len() || self.iterations == 0 {

@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 /// Trait for smoothing algorithms that process a sequence of values.
-pub trait Smooth<T>: Send + Sync
+pub trait Smooth<T>
 where
     T: Clone,
 {
