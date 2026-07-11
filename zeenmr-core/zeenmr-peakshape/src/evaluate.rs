@@ -329,7 +329,27 @@ where
     where
         E: Evaluate<T>,
     {
-        self.map(|x| evaluators.iter().superposition(x))
+        let at = self.collect::<Vec<T>>();
+        let init = if let Some(first) = evaluators.first() {
+            at.iter()
+                .copied()
+                .evaluate(first)
+                .collect::<Vec<T>>()
+        } else {
+            return Vec::new().into_iter();
+        };
+
+        evaluators[1..]
+            .iter()
+            .map(|e| at.iter().copied().evaluate(e))
+            .fold(init, |mut acc, at| {
+                acc.iter_mut()
+                    .zip(at)
+                    .for_each(|(acc, x)| *acc = *acc + x);
+
+                acc
+            })
+            .into_iter()
     }
 }
 
