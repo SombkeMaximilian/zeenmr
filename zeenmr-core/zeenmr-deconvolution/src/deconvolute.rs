@@ -168,7 +168,7 @@ where
         let peaks = self
             .finder
             .find(&smoothed, spectrum.signal_range(), &ignore)?;
-        let peak_shapes = self.fitter.fit(spectrum, &peaks);
+        let peak_shapes = self.fitter.fit(spectrum.view(), &peaks);
         let superpositions = spectrum
             .axis()
             .shifts(len)
@@ -216,7 +216,7 @@ where
         let peaks = self
             .finder
             .find(&intensities, spectrum.signal_range(), &ignore)?;
-        let peak_shapes = self.fitter.par_fit(spectrum, &peaks);
+        let peak_shapes = self.fitter.par_fit(spectrum.view(), &peaks);
         let superpositions = spectrum
             .axis()
             .par_shifts(len)
