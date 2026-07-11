@@ -20,7 +20,7 @@ use zeenmr_peakshape::iter::ParSuperpositionMap;
 
 /// Trait for deconvoluting a spectrum into its constituent signals.
 ///
-/// Implementors of this trait are called 'deconvoluters'.
+/// Implementors of this trait are called deconvoluters.
 pub trait Deconvolute<T, P> {
     /// Deconvolutes the provided `Spectrum` into its constituent signals.
     ///
@@ -33,7 +33,7 @@ pub trait Deconvolute<T, P> {
 /// Trait for deconvoluting a spectrum into its constituent signals in
 /// parallel.
 ///
-/// Implementors of this trait are called 'parallelized deconvoluters'.
+/// Implementors of this trait are called parallelized deconvoluters.
 #[cfg(feature = "rayon")]
 pub trait ParDeconvolute<T, P> {
     /// Deconvolutes the provided `Spectrum` into its constituent signals in
@@ -45,8 +45,8 @@ pub trait ParDeconvolute<T, P> {
         S: Storage<Elem = T>;
 }
 
-/// Extension trait for iterators of [`AsRef<Spectrum>`] types to deconvolute
-/// each item using a provided 'deconvoluter'.
+/// Extension trait for iterators of spectrum types to deconvolute each item
+/// using a provided deconvoluter.
 pub trait DeconvoluteMap<T, P>: Iterator {
     /// Applies the provided deconvoluter to each item in the iterator.
     fn deconvolute<D>(self, deconvoluter: &D) -> impl Iterator<Item = Result<Deconvolution<T, P>>>
@@ -71,8 +71,8 @@ where
     }
 }
 
-/// Extension trait for parallel iterators of [`AsRef<Spectrum>`] types to
-/// deconvolute each item using a provided parallelized deconvoluter.
+/// Extension trait for iterators of spectrum types to deconvolute each item
+/// using a provided parallelized deconvoluter.
 #[cfg(feature = "rayon")]
 pub trait ParDeconvoluteMap<T, P>: IndexedParallelIterator {
     /// Applies the provided parallelized deconvoluter to each item in the
