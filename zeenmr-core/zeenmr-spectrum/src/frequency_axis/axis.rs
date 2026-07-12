@@ -183,7 +183,7 @@ where
     /// will not be exactly identical to the end of the frequency range.
     ///
     /// Each call to this method will recompute the frequency values on the fly.
-    pub fn freqs(&self, size: usize) -> impl Iterator<Item = T> + use<T> {
+    pub fn freqs(&self, size: usize) -> impl ExactSizeIterator<Item = T> + use<T> {
         let step = self.freq_step(size);
         let start = self.range.start();
 
@@ -202,7 +202,7 @@ where
     /// will not be exactly identical to the end of the frequency range.
     ///
     /// Each call to this method will recompute the frequency values on the fly.
-    pub fn shifts(&self, size: usize) -> impl Iterator<Item = T> + use<T> {
+    pub fn shifts(&self, size: usize) -> impl ExactSizeIterator<Item = T> + use<T> {
         let step = self.shift_step(size);
         let start = self.shift_range().start();
 
