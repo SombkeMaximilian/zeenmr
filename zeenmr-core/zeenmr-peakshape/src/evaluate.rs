@@ -1,5 +1,4 @@
 use num_traits::Zero;
-use std::ops::Add;
 
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
@@ -89,7 +88,7 @@ pub trait Superposition<T>: Iterator {
 
 impl<T, E, I> Superposition<T> for I
 where
-    T: Copy + Add + Zero,
+    T: Copy + Zero,
     E: Evaluate<T>,
     I: Iterator<Item = E>,
 {
@@ -144,7 +143,7 @@ pub trait ParSuperposition<T: Send + Sync>: ParallelIterator {
 #[cfg(feature = "rayon")]
 impl<T, E, I> ParSuperposition<T> for I
 where
-    T: Copy + Send + Sync + Add + Zero,
+    T: Copy + Send + Sync + Zero,
     E: Evaluate<T> + Send + Sync,
     I: ParallelIterator<Item = E>,
 {
@@ -322,7 +321,7 @@ pub trait SuperpositionMap<T>: Iterator {
 
 impl<T, I> SuperpositionMap<T> for I
 where
-    T: Copy + Add + Zero,
+    T: Copy + Zero,
     I: Iterator<Item = T>,
 {
     fn superposition<E>(self, evaluators: &[E]) -> impl Iterator<Item = T>
@@ -403,7 +402,7 @@ pub trait ParSuperpositionMap<T: Send + Sync>: IndexedParallelIterator {
 #[cfg(feature = "rayon")]
 impl<T, I> ParSuperpositionMap<T> for I
 where
-    T: Copy + Send + Sync + Add + Zero,
+    T: Copy + Send + Sync + Zero,
     I: IndexedParallelIterator<Item = T>,
 {
     fn superposition<E>(self, evaluators: &[E]) -> impl IndexedParallelIterator<Item = T>
