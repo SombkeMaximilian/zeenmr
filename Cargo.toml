@@ -37,10 +37,8 @@ strum = { version = "0.28.0", features = ["derive"] }
 criterion = { version = "0.8.2" }
 rand = { version = "0.10.2" }
 
-[profile.release]
-lto = true
-
 [profile.bench]
+codegen-units = 1
 lto = true
 
 [workspace.lints.rust]
