@@ -5,8 +5,7 @@ use crate::peak_finding::Find;
 use crate::smoothing::Smooth;
 use num_traits::Float;
 use std::ops::Range;
-use zeenmr_peakshape::PeakShape;
-use zeenmr_peakshape::iter::SuperpositionMap;
+use zeenmr_peakshape::{BatchSuperposition, PeakShape};
 use zeenmr_spectrum::Spectrum1D;
 use zeenmr_spectrum::frequency_axis::range::{FiniteBounds, ShiftRange};
 use zeenmr_spectrum::intensity_array::Storage;
@@ -15,8 +14,6 @@ use zeenmr_spectrum::intensity_array::Storage;
 use crate::fitting::ParFit;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
-#[cfg(feature = "rayon")]
-use zeenmr_peakshape::iter::ParSuperpositionMap;
 
 /// Trait for deconvoluting a spectrum into its constituent signals.
 ///
@@ -198,16 +195,9 @@ where
             .fitter
             .fit(spectrum.view(), &peaks)
             .map_err(Error::fitting)?;
-        let superpositions = spectrum
-            .axis()
-            .shifts(len)
-            .superposition(&peak_shapes)
-            .collect::<Vec<T>>();
+        let mse = mse(spectrum, &peak_shapes, &ignore);
 
-        Ok(Deconvolution::new(
-            peak_shapes,
-            mse(spectrum, &superpositions, &ignore),
-        ))
+        Ok(Deconvolution::new(peak_shapes, mse))
     }
 }
 
@@ -258,16 +248,9 @@ where
             .fitter
             .par_fit(spectrum.view(), &peaks)
             .map_err(Error::fitting)?;
-        let superpositions = spectrum
-            .axis()
-            .par_shifts(len)
-            .superposition(&peak_shapes)
-            .collect::<Vec<T>>();
+        let mse = mse(spectrum, &peak_shapes, &ignore);
 
-        Ok(Deconvolution::new(
-            peak_shapes,
-            mse(spectrum, &superpositions, &ignore),
-        ))
+        Ok(Deconvolution::new(peak_shapes, mse))
     }
 }
 
@@ -423,9 +406,10 @@ where
 /// the superposition of the fitted peak shapes.
 ///
 /// Ignored regions and signal-free region are excluded.
-fn mse<T, S>(spectrum: &Spectrum1D<T, S>, superpositions: &[T], ignore: &[Range<usize>]) -> T
+fn mse<T, P, S>(spectrum: &Spectrum1D<T, S>, peak_shapes: &[P], ignore: &[Range<usize>]) -> T
 where
     T: Float,
+    P: PeakShape<T>,
     S: Storage<Elem = T>,
 {
     let signal = spectrum.signal_range();
@@ -441,7 +425,15 @@ where
         .step_by(2)
         .zip(iter.skip(1).step_by(2))
         .fold((T::zero(), 0), |acc, (start, end)| {
-            let residual = superpositions[start..end]
+            let shifts = spectrum
+                .axis()
+                .shifts(spectrum.intensities().len())
+                .skip(start)
+                .take(end - start)
+                .collect::<Vec<T>>();
+            let superposition = peak_shapes.superposition(&shifts);
+
+            let residual = superposition
                 .iter()
                 .zip(spectrum.intensities()[start..end].iter())
                 .map(|(&sup, &obs)| (sup - obs).powi(2))

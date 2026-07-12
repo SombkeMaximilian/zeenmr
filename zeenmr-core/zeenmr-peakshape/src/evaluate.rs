@@ -271,148 +271,6 @@ where
     }
 }
 
-/// Extension trait for iterators mapping its items through the superposition
-/// of multiple functions.
-///
-/// Given a family of functions `(fⱼ)`, where `j≤m`, and a sequence of input
-/// values `(xᵢ)`, where `i≤n`, this adaptor produces an iterator of their
-/// superpositions:
-///
-/// ```text
-/// { F(x₁), F(x₂), ..., F(xₙ) }
-/// with   F(xᵢ) = f₁(xᵢ) + f₂(xᵢ) + ... + fₘ(xᵢ)
-/// ```
-///
-/// This combines the behaviors of [`EvaluateMap`] and [`Superposition`]:
-/// - Like [`EvaluateMap`], it maps over an iterator of input points.
-/// - Like [`Superposition`], it sums the contributions of multiple evaluators.
-///
-/// # Example
-///
-/// ```
-/// use zeenmr_peakshape::Evaluate;
-/// use zeenmr_peakshape::iter::SuperpositionMap;
-///
-/// #[derive(Copy, Clone, Debug)]
-/// struct Power(i32);
-///
-/// impl Evaluate<f64> for Power {
-///     fn evaluate(&self, at: f64) -> f64 {
-///         at.powi(self.0)
-///     }
-/// }
-///
-/// let evaluators = [Power(2), Power(3)];
-/// let results = [2.0, 3.0, 4.0]
-///     .into_iter()
-///     .superposition(&evaluators)
-///     .collect::<Vec<f64>>();
-/// assert_eq!(results[0], 12.0);
-/// assert_eq!(results[1], 36.0);
-/// assert_eq!(results[2], 80.0);
-/// ```
-pub trait SuperpositionMap<T>: ExactSizeIterator {
-    /// Apply the superposition of the given evaluators to each item in the
-    /// iterator, producing an iterator of evaluated results.
-    fn superposition<E>(self, evaluators: &[E]) -> impl ExactSizeIterator<Item = T>
-    where
-        E: Evaluate<T>;
-}
-
-impl<T, I> SuperpositionMap<T> for I
-where
-    T: Copy + Zero,
-    I: ExactSizeIterator<Item = T>,
-{
-    fn superposition<E>(self, evaluators: &[E]) -> impl ExactSizeIterator<Item = T>
-    where
-        E: Evaluate<T>,
-    {
-        let at = self.collect::<Vec<T>>();
-        let init = if let Some(first) = evaluators.first() {
-            at.iter()
-                .copied()
-                .evaluate(first)
-                .collect::<Vec<T>>()
-        } else {
-            return Vec::new().into_iter();
-        };
-
-        evaluators[1..]
-            .iter()
-            .fold(init, |mut acc, e| {
-                acc.iter_mut()
-                    .zip(at.iter().copied().evaluate(e))
-                    .for_each(|(acc, x)| *acc = *acc + x);
-
-                acc
-            })
-            .into_iter()
-    }
-}
-
-/// Extension trait for parallel iterators mapping its items through the
-/// superposition of multiple functions.
-///
-/// Given a family of functions `(fⱼ)`, where `j≤m`, and a sequence of input
-/// values `(xᵢ)`, where `i≤n`, this adaptor produces a parallel iterator of
-/// their superpositions:
-///
-/// ```text
-/// { F(x₁), F(x₂), ..., F(xₙ) }
-/// with   F(xᵢ) = f₁(xᵢ) + f₂(xᵢ) + ... + fₘ(xᵢ)
-/// ```
-///
-/// This is the parallel analogue of [`SuperpositionMap`].
-///
-/// # Example
-///
-/// ```
-/// use rayon::prelude::*;
-/// use zeenmr_peakshape::Evaluate;
-/// use zeenmr_peakshape::iter::ParSuperpositionMap;
-///
-/// #[derive(Copy, Clone, Debug)]
-/// struct Power(i32);
-///
-/// impl Evaluate<f64> for Power {
-///     fn evaluate(&self, at: f64) -> f64 {
-///         at.powi(self.0)
-///     }
-/// }
-///
-/// let evaluators = [Power(2), Power(3)];
-/// let results = [2.0, 3.0, 4.0]
-///     .into_par_iter()
-///     .superposition(&evaluators)
-///     .collect::<Vec<f64>>();
-/// assert_eq!(results[0], 2.0f64.powi(2) + 2.0f64.powi(3));
-/// assert_eq!(results[1], 3.0f64.powi(2) + 3.0f64.powi(3));
-/// assert_eq!(results[2], 4.0f64.powi(2) + 4.0f64.powi(3));
-/// ```
-#[cfg(feature = "rayon")]
-pub trait ParSuperpositionMap<T: Send + Sync>: IndexedParallelIterator {
-    /// Apply the superposition of the given evaluators to each item in the
-    /// parallel iterator, producing a parallel iterator of evaluated results.
-    fn superposition<E>(self, evaluators: &[E]) -> impl IndexedParallelIterator<Item = T>
-    where
-        E: Evaluate<T> + Send + Sync;
-}
-
-#[cfg(feature = "rayon")]
-impl<T, I> ParSuperpositionMap<T> for I
-where
-    T: Copy + Send + Sync + Zero,
-    I: IndexedParallelIterator<Item = T>,
-{
-    fn superposition<E>(self, evaluators: &[E]) -> impl IndexedParallelIterator<Item = T>
-    where
-        E: Evaluate<T> + Send + Sync,
-    {
-        self.map(|x| evaluators.iter().superposition(x))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -442,16 +300,12 @@ mod tests {
         assert_impl_all!(&Power: Evaluate<f32>, Evaluate<f64>, Send, Sync);
         assert_impl_all!(&mut Power: Evaluate<f32>, Evaluate<f64>, Send, Sync);
         assert_impl_all!(std::vec::IntoIter<Power>: Superposition<f32>, Superposition<f64>);
-        assert_impl_all!(std::vec::IntoIter<f32>: EvaluateMap<f32>, SuperpositionMap<f32>);
-        assert_impl_all!(std::vec::IntoIter<f64>: EvaluateMap<f64>, SuperpositionMap<f64>);
     }
 
     #[cfg(feature = "rayon")]
     #[test]
     fn par_traits() {
         assert_impl_all!(rayon::vec::IntoIter<Power>: ParSuperposition<f32>, ParSuperposition<f64>);
-        assert_impl_all!(rayon::vec::IntoIter<f32>: ParEvaluateMap<f32>, ParSuperpositionMap<f32>);
-        assert_impl_all!(rayon::vec::IntoIter<f64>: ParEvaluateMap<f64>, ParSuperpositionMap<f64>);
     }
 
     #[test]
@@ -543,64 +397,5 @@ mod tests {
             .for_each(|(a, b)| {
                 assert_approx_eq!(f64, a, b);
             });
-    }
-
-    #[test]
-    fn superposition_map() {
-        let powers = [SQUARE, CUBE, CUBE];
-
-        let superposition_map = (0..10).map(|i| i as f32).superposition(&powers);
-        let expected = (0..10).map(|i| (i as f32).powi(2) + 2.0 * (i as f32).powi(3));
-
-        superposition_map
-            .zip(expected)
-            .for_each(|(a, b)| {
-                assert_approx_eq!(f32, a, b);
-            });
-
-        let superposition_map = (0..10).map(|i| i as f64).superposition(&powers);
-        let expected = (0..10).map(|i| (i as f64).powi(2) + 2.0 * (i as f64).powi(3));
-
-        superposition_map
-            .zip(expected)
-            .for_each(|(a, b)| {
-                assert_approx_eq!(f64, a, b);
-            });
-    }
-
-    #[cfg(feature = "rayon")]
-    #[test]
-    fn par_superposition_map() {
-        let powers = [SQUARE, CUBE, CUBE];
-
-        let superposition_map = (0..10)
-            .into_par_iter()
-            .map(|i| i as f32)
-            .superposition(&powers)
-            .collect::<Vec<f32>>();
-        let expected = (0..10)
-            .into_par_iter()
-            .map(|i| (i as f32).powi(2) + 2.0 * (i as f32).powi(3))
-            .collect::<Vec<f32>>();
-
-        superposition_map
-            .into_iter()
-            .zip(expected)
-            .for_each(|(a, b)| assert_approx_eq!(f32, a, b));
-
-        let superposition_map = (0..10)
-            .into_par_iter()
-            .map(|i| i as f64)
-            .superposition(&powers)
-            .collect::<Vec<f64>>();
-        let expected = (0..10)
-            .into_par_iter()
-            .map(|i| (i as f64).powi(2) + 2.0 * (i as f64).powi(3))
-            .collect::<Vec<f64>>();
-
-        superposition_map
-            .into_iter()
-            .zip(expected)
-            .for_each(|(a, b)| assert_approx_eq!(f64, a, b));
     }
 }

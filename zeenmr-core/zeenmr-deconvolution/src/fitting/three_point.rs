@@ -2,8 +2,7 @@ use crate::fitting::Fit;
 use crate::peak_finding::Peak;
 use num_traits::Float;
 use std::marker::PhantomData;
-use zeenmr_peakshape::iter::SuperpositionMap;
-use zeenmr_peakshape::{Gaussian, Lorentzian, PeakShape};
+use zeenmr_peakshape::{BatchSuperposition, Gaussian, Lorentzian, PeakShape};
 use zeenmr_spectrum::SpectrumView1D;
 
 #[cfg(feature = "rayon")]
@@ -11,7 +10,7 @@ use crate::fitting::ParFit;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 #[cfg(feature = "rayon")]
-use zeenmr_peakshape::iter::ParSuperpositionMap;
+use zeenmr_peakshape::ParBatchSuperposition;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -226,15 +225,11 @@ where
             if peak_shapes.is_empty() {
                 break;
             }
-            let ratios = reduced
-                .shifts
-                .as_flattened()
-                .iter()
-                .copied()
-                .superposition(&peak_shapes)
+            let mut ratios = peak_shapes.superposition(reduced.shifts.as_flattened());
+            ratios
+                .iter_mut()
                 .zip(reduced.intensities.as_flattened().iter())
-                .map(|(superposition, &intensity)| intensity / superposition)
-                .collect::<Vec<_>>();
+                .for_each(|(sup, &raw)| *sup = raw / *sup);
             for (stencil, ratios) in stencils.iter_mut().zip(ratios.chunks(3)) {
                 stencil.intensities[0] = stencil.intensities[0] * ratios[0];
                 stencil.intensities[1] = stencil.intensities[1] * ratios[1];
@@ -283,15 +278,13 @@ where
             if peak_shapes.is_empty() {
                 break;
             }
-            let ratios = reduced
-                .shifts
-                .as_flattened()
-                .par_iter()
-                .copied()
-                .superposition(&peak_shapes)
-                .zip(reduced.intensities.as_flattened().par_iter())
-                .map(|(superposition, &intensity)| intensity / superposition)
-                .collect::<Vec<_>>();
+            let mut ratios = peak_shapes.par_superposition(reduced.shifts.as_flattened());
+            ratios
+                .iter_mut()
+                .zip(reduced.intensities.as_flattened().iter())
+                .for_each(|(superposition, &intensity)| {
+                    *superposition = intensity / *superposition
+                });
             for (stencil, ratios) in stencils.iter_mut().zip(ratios.chunks(3)) {
                 stencil.intensities[0] = stencil.intensities[0] * ratios[0];
                 stencil.intensities[1] = stencil.intensities[1] * ratios[1];

@@ -9,12 +9,17 @@ pub use peak_shape::{FromArray, PeakShape};
 mod evaluate;
 pub use evaluate::Evaluate;
 
+mod batch_superposition;
+#[cfg(feature = "rayon")]
+pub use batch_superposition::ParBatchSuperposition;
+pub use batch_superposition::{BatchSuperposition, Strategy};
+
 pub mod iter {
     //! Iterator adapter traits for peak shapes.
 
-    pub use crate::evaluate::{EvaluateMap, Superposition, SuperpositionMap};
+    pub use crate::evaluate::{EvaluateMap, Superposition};
     #[cfg(feature = "rayon")]
-    pub use crate::evaluate::{ParEvaluateMap, ParSuperposition, ParSuperpositionMap};
+    pub use crate::evaluate::{ParEvaluateMap, ParSuperposition};
 }
 
 mod lorentzian;
