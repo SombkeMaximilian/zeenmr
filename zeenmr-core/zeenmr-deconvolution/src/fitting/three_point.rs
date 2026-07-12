@@ -64,11 +64,11 @@ where
             (y[0] * (x[0] - center).powi(2) - y[1] * (x[1] - center).powi(2)) / (y[1] - y[0]);
         let right =
             (y[1] * (x[1] - center).powi(2) - y[2] * (x[2] - center).powi(2)) / (y[2] - y[1]);
-        let scale2 = half * (left + right);
+        let inv_scale2 = T::one() / (half * (left + right));
 
-        let amp_scale = y[1] * (scale2 + (x[1] - center).powi(2));
+        let amp_scale = y[1] * (inv_scale2 + (x[1] - center).powi(2));
 
-        Lorentzian::new(amp_scale, scale2, center)
+        Lorentzian::new(amp_scale, inv_scale2, center)
     }
 }
 

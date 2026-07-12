@@ -27,20 +27,20 @@ use serde::{Deserialize, Serialize};
 /// - `b` is the position of the maximum (`center`).
 /// - `c` is the scale (`scale`).
 ///
-/// Since `c` does not directly need to be absorbed, we can absorb both the
-/// square and the factor into a single term, `double_scale2`, saving two
-/// multiplications during every evaluation. The [Gaussian] function then
-/// becomes:
+/// Since `c` does not directly need to be present, we can absorb both the
+/// square, the factor and the divide into a single term, `inv_double_scale2`,
+/// saving two multiplications and avoiding the division during every
+/// evaluation. The [Gaussian] function then becomes:
 ///
 /// ```text
-/// f(x) = amp * exp(-(x - center)² / double_scale2)
+/// f(x) = amp * exp(-(x - center)² * inv_double_scale2)
 /// ```
 ///
 /// This representation is used internally for efficiency, but the original
 /// parameter can be recovered by inverting the transformation
 ///
 /// ```text
-/// scale = sqrt(double_scale2 / 2)
+/// scale = 1 / sqrt(inv_double_scale2 * 2)
 /// ```
 ///
 /// # Negative Parameters
@@ -62,11 +62,11 @@ pub struct Gaussian<T> {
     ///
     /// Must be positive.
     amp: T,
-    /// Doubled square of the standard deviation of the Gaussian function.
+    /// Inverted, doubled square of the scale of the Gaussian function.
     ///
-    /// Absorbed doubled, squared scale in the denominator of the exponential.
-    /// Must be positive.
-    double_scale2: T,
+    /// Absorbed doubled, squared and inverted scale which is normally the
+    /// denominator. Must be positive.
+    inv_double_scale2: T,
     /// Center of the Gaussian function.
     center: T,
 }
@@ -88,7 +88,7 @@ where
     T: Float,
 {
     fn evaluate(&self, at: T) -> T {
-        self.amp * (-(at - self.center).powi(2) / self.double_scale2).exp()
+        self.amp * (-(at - self.center).powi(2) * self.inv_double_scale2).exp()
     }
 }
 
@@ -105,7 +105,7 @@ where
     }
 
     fn half_width(&self) -> T {
-        (T::LN_2() * self.double_scale2).sqrt()
+        (T::LN_2() / self.inv_double_scale2).sqrt()
     }
 
     fn full_width(&self) -> T {
@@ -113,14 +113,14 @@ where
     }
 
     fn area(&self) -> T {
-        self.amp * (T::PI() * self.double_scale2).sqrt()
+        self.amp * (T::PI() / self.inv_double_scale2).sqrt()
     }
 
     fn is_valid(&self) -> bool {
         self.amp.is_finite()
             && self.amp > T::zero()
-            && self.double_scale2.is_finite()
-            && self.double_scale2 > T::zero()
+            && self.inv_double_scale2.is_finite()
+            && self.inv_double_scale2 > T::zero()
             && self.center.is_finite()
     }
 
@@ -137,10 +137,10 @@ where
     ///
     /// Note that these are not the standard parameters, but the transformed
     /// parameters as outlined in the struct documentation.
-    pub fn new(amp: T, double_scale2: T, center: T) -> Self {
+    pub fn new(amp: T, inv_double_scale2: T, center: T) -> Self {
         Self {
             amp,
-            double_scale2,
+            inv_double_scale2,
             center,
         }
     }
@@ -149,7 +149,7 @@ where
     pub fn from_untransformed(amp: T, scale: T, center: T) -> Self {
         Self {
             amp,
-            double_scale2: (T::one() + T::one()) * scale.powi(2),
+            inv_double_scale2: T::one() / ((T::one() + T::one()) * scale.powi(2)),
             center,
         }
     }
