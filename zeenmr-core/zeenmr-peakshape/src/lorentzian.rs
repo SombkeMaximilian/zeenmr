@@ -1,4 +1,4 @@
-use crate::{Evaluate, PeakShape};
+use crate::{Evaluate, FromArray, PeakShape};
 use num_traits::{Float, FloatConst};
 
 #[cfg(feature = "serde")]
@@ -84,6 +84,18 @@ pub struct Lorentzian<T> {
     scale2: T,
     /// Center of the Lorentzian function.
     center: T,
+}
+
+impl<T> FromArray<T, 3> for Lorentzian<T>
+where
+    T: Float,
+{
+    /// Creates a new `Lorentzian` from its parameter array.
+    ///
+    /// Order: `amp_scale`, `scale2`, `center`.
+    fn from_array(array: [T; 3]) -> Self {
+        Self::new(array[0], array[1], array[2])
+    }
 }
 
 impl<T> Evaluate<T> for Lorentzian<T>

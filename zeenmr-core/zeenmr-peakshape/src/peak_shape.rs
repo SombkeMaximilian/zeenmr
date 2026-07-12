@@ -54,3 +54,9 @@ pub trait PeakShape<T>: Evaluate<T> {
     /// precision.
     fn is_significant(&self, precision: T) -> bool;
 }
+
+/// Trait for peak shapes which can be constructed from an array of parameters.
+pub trait FromArray<T, const N: usize> {
+    /// Creates a new instance from an array of parameters.
+    fn from_array(array: [T; N]) -> Self;
+}
