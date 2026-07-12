@@ -78,7 +78,7 @@ where
 /// let powers = [Power(2), Power(2), Power(3)];
 /// assert_eq!(powers.into_iter().superposition(3.0), 45.0);
 /// ```
-pub trait Superposition<T>: Iterator {
+pub trait Superposition<T>: ExactSizeIterator {
     /// Evaluate each function in the iterator at the given point and return
     /// the sum of the results.
     fn superposition(self, at: T) -> T
@@ -90,7 +90,7 @@ impl<T, E, I> Superposition<T> for I
 where
     T: Copy + Zero,
     E: Evaluate<T>,
-    I: Iterator<Item = E>,
+    I: ExactSizeIterator<Item = E>,
 {
     fn superposition(self, at: T) -> T
     where
@@ -132,7 +132,7 @@ where
 /// assert_eq!(powers.into_par_iter().superposition(3.0), 45.0);
 /// ```
 #[cfg(feature = "rayon")]
-pub trait ParSuperposition<T: Send + Sync>: ParallelIterator {
+pub trait ParSuperposition<T: Send + Sync>: IndexedParallelIterator {
     /// Evaluate each function in the parallel iterator at the given point and
     /// return the sum of the results.
     fn superposition(self, at: T) -> T
@@ -145,7 +145,7 @@ impl<T, E, I> ParSuperposition<T> for I
 where
     T: Copy + Send + Sync + Zero,
     E: Evaluate<T> + Send + Sync,
-    I: ParallelIterator<Item = E>,
+    I: IndexedParallelIterator<Item = E>,
 {
     fn superposition(self, at: T) -> T
     where
@@ -192,19 +192,19 @@ where
 /// assert_eq!(squares[1], 9.0);
 /// assert_eq!(squares[2], 16.0);
 /// ```
-pub trait EvaluateMap<T>: Iterator {
+pub trait EvaluateMap<T>: ExactSizeIterator {
     /// Apply the given evaluator to each item in the iterator, producing an
     /// iterator of evaluated results.
-    fn evaluate<E>(self, evaluator: E) -> impl Iterator<Item = T>
+    fn evaluate<E>(self, evaluator: E) -> impl ExactSizeIterator<Item = T>
     where
         E: Evaluate<T>;
 }
 
 impl<T, I> EvaluateMap<T> for I
 where
-    I: Iterator<Item = T>,
+    I: ExactSizeIterator<Item = T>,
 {
-    fn evaluate<E>(self, evaluator: E) -> impl Iterator<Item = T>
+    fn evaluate<E>(self, evaluator: E) -> impl ExactSizeIterator<Item = T>
     where
         E: Evaluate<T>,
     {
@@ -311,10 +311,10 @@ where
 /// assert_eq!(results[1], 36.0);
 /// assert_eq!(results[2], 80.0);
 /// ```
-pub trait SuperpositionMap<T>: Iterator {
+pub trait SuperpositionMap<T>: ExactSizeIterator {
     /// Apply the superposition of the given evaluators to each item in the
     /// iterator, producing an iterator of evaluated results.
-    fn superposition<E>(self, evaluators: &[E]) -> impl Iterator<Item = T>
+    fn superposition<E>(self, evaluators: &[E]) -> impl ExactSizeIterator<Item = T>
     where
         E: Evaluate<T>;
 }
@@ -322,9 +322,9 @@ pub trait SuperpositionMap<T>: Iterator {
 impl<T, I> SuperpositionMap<T> for I
 where
     T: Copy + Zero,
-    I: Iterator<Item = T>,
+    I: ExactSizeIterator<Item = T>,
 {
-    fn superposition<E>(self, evaluators: &[E]) -> impl Iterator<Item = T>
+    fn superposition<E>(self, evaluators: &[E]) -> impl ExactSizeIterator<Item = T>
     where
         E: Evaluate<T>,
     {
