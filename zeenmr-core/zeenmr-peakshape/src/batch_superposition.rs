@@ -1,6 +1,8 @@
-use crate::Evaluate;
 use crate::iter::EvaluateMap;
+use crate::util::fuse_fold;
+use crate::{Evaluate, EvaluateParts};
 use num_traits::Zero;
+use std::ops::{Div, Mul};
 
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
@@ -134,6 +136,30 @@ where
     }
 }
 
+/// A collection of functions that can be superposed over a grid of points using
+/// a fusion transformation.
+pub trait FusedBatchSuperposition<T> {
+    /// Performs the fused superposition with the given strategy.
+    fn fused_superposition_with<const K: usize>(&self, at: &[T], strategy: Strategy) -> Vec<T>;
+
+    /// F(x) = (f₁(x₁) + … + fₙ(x₁), ..., f₁(xₘ) + … + fₙ(xₘ)).
+    fn fused_superposition<const K: usize>(&self, at: &[T]) -> Vec<T> {
+        self.fused_superposition_with::<K>(at, Strategy::Auto)
+    }
+}
+
+impl<T, E> FusedBatchSuperposition<T> for [E]
+where
+    T: Copy + Mul<T, Output = T> + Div<T, Output = T> + Zero,
+    E: EvaluateParts<T>,
+{
+    fn fused_superposition_with<const K: usize>(&self, at: &[T], strategy: Strategy) -> Vec<T> {
+        let (rows, cols) = strategy.resolve(self.len(), at.len());
+
+        schedule_fused_to_owned::<T, E, K>(self, at, rows, cols)
+    }
+}
+
 /// Schedules the superposition into (row, col) chunks of `M` and returns it as
 /// an owned `Vec<T>`.
 fn schedule_to_owned<T, E>(functions: &[E], at: &[T], rows: usize, cols: usize) -> Vec<T>
@@ -162,6 +188,51 @@ where
                     .zip(at_chunk.iter().copied().evaluate(f))
                 {
                     *d = *d + eval;
+                }
+            }
+        }
+    }
+}
+
+fn schedule_fused_to_owned<T, E, const K: usize>(
+    functions: &[E],
+    at: &[T],
+    rows: usize,
+    cols: usize,
+) -> Vec<T>
+where
+    T: Copy + Mul<T, Output = T> + Div<T, Output = T> + Zero,
+    E: EvaluateParts<T>,
+{
+    let mut out = vec![T::zero(); at.len()];
+    schedule_fused::<T, E, K>(functions, at, &mut out, rows, cols);
+
+    out
+}
+
+fn schedule_fused<T, E, const K: usize>(
+    functions: &[E],
+    at: &[T],
+    out: &mut [T],
+    rows: usize,
+    cols: usize,
+) where
+    T: Copy + Mul<T, Output = T> + Div<T, Output = T> + Zero,
+    E: EvaluateParts<T>,
+{
+    for f_chunk in functions.chunks(rows) {
+        for (at_c, out_c) in at.chunks(cols).zip(out.chunks_mut(cols)) {
+            let mut groups = f_chunk.chunks_exact(K);
+            for g in &mut groups {
+                let g: &[E; K] = g.try_into().expect("chunks_exact yields K");
+                for (o, &x) in out_c.iter_mut().zip(at_c) {
+                    let (num, den) = fuse_fold::<T, K>(std::array::from_fn(|i| g[i].parts(x)));
+                    *o = *o + num / den;
+                }
+            }
+            for f in groups.remainder() {
+                for (o, &x) in out_c.iter_mut().zip(at_c) {
+                    *o = *o + f.evaluate(x);
                 }
             }
         }

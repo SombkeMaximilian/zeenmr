@@ -8,10 +8,13 @@ use std::fmt::Debug;
 use std::hint::black_box;
 use std::time::Duration;
 use zeenmr::peak_shape::{
-    BatchSuperposition, Evaluate, FromArray, Gaussian, Lorentzian, ParBatchSuperposition, Strategy,
+    BatchSuperposition, Evaluate, EvaluateParts, FromArray, FusedBatchSuperposition, Gaussian,
+    Lorentzian, ParBatchSuperposition, Strategy,
 };
 
 const SEED: u64 = 0xC0FF_EE15_600D;
+const SAMPLES: usize = 10;
+const TIME_SECONDS: u64 = 3;
 
 trait PeakName {
     const NAME: &'static str;
@@ -48,18 +51,10 @@ fn make_grid<T: Float>(m: usize) -> Vec<T> {
 }
 
 // include auto later
-const STRATEGIES: [(&str, Strategy); 5] = [
+const STRATEGIES: [(&str, Strategy); 3] = [
     ("functions_outer", Strategy::FunctionsOuter),
-    ("subvectors_512", Strategy::Subvectors { p: 512 }),
-    ("subvectors_1024", Strategy::Subvectors { p: 1024 }),
-    (
-        "submatrices_512_2048",
-        Strategy::Submatrices { p: 2048, f: 512 },
-    ),
-    (
-        "submatrices_128_4096",
-        Strategy::Submatrices { p: 4096, f: 128 },
-    ),
+    ("subvectors", Strategy::Subvectors { p: 1024 }),
+    ("submatrices", Strategy::Submatrices { p: 4096, f: 128 }),
 ];
 
 /// (evaluators, points).
@@ -75,7 +70,7 @@ const ISO_WORK: [(usize, usize); 5] = [
 ];
 
 /// Number of threads to run.
-const THREADS: [usize; 5] = [1, 2, 4, 8, 16];
+const THREADS: [usize; 4] = [2, 4, 8, 16];
 
 fn iso_work<T, E, const N: usize>(c: &mut Criterion, dtype: &str)
 where
@@ -87,8 +82,8 @@ where
     let dist = Uniform::new(T::one(), T::from(100).unwrap()).unwrap();
     let mut group = c.benchmark_group(format!("{}/{dtype}/iso_work", E::NAME));
     group
-        .sample_size(10)
-        .measurement_time(Duration::from_secs(3));
+        .sample_size(SAMPLES)
+        .measurement_time(Duration::from_secs(TIME_SECONDS));
     for (n, m) in &ISO_WORK {
         group.throughput(Throughput::Elements((n * m) as u64));
         let functions = make_functions::<T, E, N>(&mut rng, &dist, *n);
@@ -121,8 +116,8 @@ where
     let dist = Uniform::new(T::one(), T::from(100).unwrap()).unwrap();
     let mut group = c.benchmark_group(format!("{}/{dtype}/par_iso_work", E::NAME));
     group
-        .sample_size(10)
-        .measurement_time(Duration::from_secs(3));
+        .sample_size(SAMPLES)
+        .measurement_time(Duration::from_secs(TIME_SECONDS));
     for (n, m) in &ISO_WORK[..1] {
         group.throughput(Throughput::Elements((n * m) as u64));
         let functions = make_functions::<T, E, N>(&mut rng, &dist, *n);
@@ -155,6 +150,40 @@ where
     group.finish();
 }
 
+fn fused_iso_work<T, E, const N: usize, const K: usize>(c: &mut Criterion, dtype: &str)
+where
+    T: Float + SampleUniform + Debug,
+    E: EvaluateParts<T> + FromArray<T, N> + PeakName,
+    [E]: FusedBatchSuperposition<T>,
+{
+    let mut rng = StdRng::seed_from_u64(SEED);
+    let dist = Uniform::new(T::one(), T::from(100).unwrap()).unwrap();
+    let mut group = c.benchmark_group(format!("{}/{dtype}/{K}_fused_iso_work", E::NAME));
+    group
+        .sample_size(SAMPLES)
+        .measurement_time(Duration::from_secs(TIME_SECONDS));
+    for (n, m) in &ISO_WORK[..1] {
+        group.throughput(Throughput::Elements((n * m) as u64));
+        let functions = make_functions::<T, E, N>(&mut rng, &dist, *n);
+        let at = make_grid::<T>(*m);
+        let id = format!("{n}x{m}");
+        for (name, strategy) in STRATEGIES {
+            let reference = functions.superposition_with(&at, strategy);
+            let fused = functions.fused_superposition_with::<K>(&at, strategy);
+            let tol = T::from(8.0 * *n as f64).unwrap() * T::epsilon();
+            for (a, b) in fused.iter().zip(&reference) {
+                assert!((*a - *b).abs() <= tol * b.abs(), "{name}: K={K} @ {n}x{m}");
+            }
+            group.bench_with_input(BenchmarkId::new(name, &id), &strategy, |b, &s| {
+                b.iter(|| {
+                    black_box(&functions[..]).fused_superposition_with::<K>(black_box(&at), s)
+                })
+            });
+        }
+    }
+    group.finish()
+}
+
 fn benches(c: &mut Criterion) {
     iso_work::<f32, Lorentzian<f32>, 3>(c, "f32");
     iso_work::<f64, Lorentzian<f64>, 3>(c, "f64");
@@ -169,6 +198,17 @@ fn par_benches(c: &mut Criterion) {
     par_iso_work::<f64, Gaussian<f64>, 3>(c, "f64");
 }
 
-criterion_group!(superposition, benches, par_benches);
+fn fused_benches(c: &mut Criterion) {
+    fused_iso_work::<f32, Lorentzian<f32>, 3, 1>(c, "f32");
+    fused_iso_work::<f64, Lorentzian<f64>, 3, 1>(c, "f64");
+    fused_iso_work::<f32, Lorentzian<f32>, 3, 2>(c, "f32");
+    fused_iso_work::<f64, Lorentzian<f64>, 3, 2>(c, "f64");
+    fused_iso_work::<f32, Lorentzian<f32>, 3, 4>(c, "f32");
+    fused_iso_work::<f64, Lorentzian<f64>, 3, 4>(c, "f64");
+    fused_iso_work::<f32, Lorentzian<f32>, 3, 8>(c, "f32");
+    fused_iso_work::<f64, Lorentzian<f64>, 3, 8>(c, "f64");
+}
+
+criterion_group!(superposition, benches, par_benches, fused_benches);
 
 criterion_main!(superposition);

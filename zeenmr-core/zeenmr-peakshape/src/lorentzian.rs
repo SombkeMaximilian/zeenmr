@@ -1,4 +1,4 @@
-use crate::{Evaluate, FromArray, PeakShape};
+use crate::{Evaluate, EvaluateParts, FromArray, PeakShape};
 use num_traits::{Float, FloatConst};
 
 #[cfg(feature = "serde")]
@@ -104,6 +104,25 @@ where
 {
     fn evaluate(&self, at: T) -> T {
         self.amp_scale / (self.scale2 + (at - self.center).powi(2))
+    }
+}
+
+impl<T> EvaluateParts<T> for Lorentzian<T>
+where
+    T: Float,
+{
+    fn parts(&self, at: T) -> (T, T) {
+        let den = self.scale2 + (at - self.center).powi(2);
+
+        (self.amp_scale, den)
+    }
+
+    fn den_bounds(&self, lo: T, hi: T) -> (T, T) {
+        let near = self.center - self.center.max(lo).min(hi);
+        let den_lo = (lo - self.center).powi(2);
+        let den_hi = (hi - self.center).powi(2);
+
+        (self.scale2 + near.powi(2), self.scale2 + den_lo.max(den_hi))
     }
 }
 

@@ -1,4 +1,6 @@
-use num_traits::Zero;
+use crate::util::fuse_fold;
+use num_traits::{One, Zero};
+use std::ops::Div;
 
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
@@ -45,6 +47,27 @@ where
     fn evaluate(&self, at: T) -> T {
         (**self).evaluate(at)
     }
+}
+
+/// A function `f(x) = num(x) / den(x)` with strictly positive parts.
+///
+/// Implementing this trait enables fused evaluation that avoids 1 division
+/// per fusion at the cost 1 addition and 3 multiplications, which is generally
+/// worth it. However, these multiplications can lead to overflow if too many
+/// fusions are performed.
+///
+/// # Correctness
+///
+/// Implementors must guarantee `num(x) > 0` and `den(x) > 0` for all finite
+/// `x`. Violating this invalidates the error bounds of the fused kernels.
+pub trait EvaluateParts<T>: Evaluate<T> {
+    /// Returns `(num, den)`.
+    fn parts(&self, at: T) -> (T, T);
+
+    /// Bounds on `den` over the closed interval `[lo, hi]`.
+    ///
+    /// Must satisfy `0 < lo_bound ≤ den(x) ≤ hi_bound` for all `x` in range.
+    fn den_bounds(&self, lo: T, hi: T) -> (T, T);
 }
 
 /// Extension trait for iterators of functions that provides superposition of
@@ -153,6 +176,44 @@ where
     {
         self.fold(|| T::zero(), |acc, e| acc + e.evaluate(at))
             .reduce(|| T::zero(), |a, b| a + b)
+    }
+}
+
+/// Extension trait for iterators of functions that provides superposition of
+/// their values at a point using a fusion transformation.
+pub trait FusedSuperposition<T>: ExactSizeIterator {
+    /// Evaluate each function in the iterator at the given point using a fusion
+    /// algorithm and return the sum of the results.
+    fn fused_superposition<const K: usize>(self, at: T) -> T
+    where
+        Self::Item: EvaluateParts<T>;
+}
+
+impl<T, E, I> FusedSuperposition<T> for I
+where
+    T: Copy + PartialEq + Div<Output = T> + One + Zero,
+    E: EvaluateParts<T>,
+    I: ExactSizeIterator<Item = E>,
+{
+    fn fused_superposition<const K: usize>(mut self, at: T) -> T
+    where
+        Self::Item: EvaluateParts<T>,
+    {
+        let mut acc = T::zero();
+        loop {
+            let n = self.len().min(K);
+            if n == 0 {
+                break;
+            }
+            let mut buf = [(T::zero(), T::one()); K];
+            for slot in buf.iter_mut().take(n) {
+                *slot = self.next().expect("len() >= n").parts(at);
+            }
+            let (num, den) = fuse_fold::<T, K>(buf);
+            acc = acc + num / den;
+        }
+
+        acc
     }
 }
 
