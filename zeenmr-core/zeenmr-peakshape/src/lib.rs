@@ -3,6 +3,8 @@
 
 //! Data structures for representing and manipulating NMR peak shapes.
 
+pub mod approximations;
+
 mod peak_shape;
 pub use peak_shape::{FromArray, PeakShape};
 
