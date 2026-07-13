@@ -67,7 +67,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// When the `serde` feature is enabled, `Voigt` can be serialized and
 /// deserialized using `serde`.
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Voigt<T> {
     /// Peak height.
@@ -116,7 +116,7 @@ where
     }
 
     fn full_width(&self) -> T {
-        (T::one() + T::one()) / self.half_width()
+        (T::one() + T::one()) * self.half_width()
     }
 
     fn area(&self) -> T {
