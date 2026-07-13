@@ -1,7 +1,7 @@
 use crate::iter::EvaluateMap;
 use crate::util::fuse_fold;
 use crate::{Evaluate, EvaluateParts};
-use num_traits::Zero;
+use num_traits::{Float, Zero};
 use std::ops::{Div, Mul};
 
 #[cfg(feature = "rayon")]
@@ -136,30 +136,6 @@ where
     }
 }
 
-/// A collection of functions that can be superposed over a grid of points using
-/// a fusion transformation.
-pub trait FusedBatchSuperposition<T> {
-    /// Performs the fused superposition with the given strategy.
-    fn fused_superposition_with<const K: usize>(&self, at: &[T], strategy: Strategy) -> Vec<T>;
-
-    /// F(x) = (f₁(x₁) + … + fₙ(x₁), ..., f₁(xₘ) + … + fₙ(xₘ)).
-    fn fused_superposition<const K: usize>(&self, at: &[T]) -> Vec<T> {
-        self.fused_superposition_with::<K>(at, Strategy::Auto)
-    }
-}
-
-impl<T, E> FusedBatchSuperposition<T> for [E]
-where
-    T: Copy + Mul<T, Output = T> + Div<T, Output = T> + Zero,
-    E: EvaluateParts<T>,
-{
-    fn fused_superposition_with<const K: usize>(&self, at: &[T], strategy: Strategy) -> Vec<T> {
-        let (rows, cols) = strategy.resolve(self.len(), at.len());
-
-        schedule_fused_to_owned::<T, E, K>(self, at, rows, cols)
-    }
-}
-
 /// Schedules the superposition into (row, col) chunks of `M` and returns it as
 /// an owned `Vec<T>`.
 fn schedule_to_owned<T, E>(functions: &[E], at: &[T], rows: usize, cols: usize) -> Vec<T>
@@ -194,6 +170,132 @@ where
     }
 }
 
+/// A collection of functions that can be superposed over a grid of points using
+/// a fusion transformation.
+pub trait FusedBatchSuperposition<T> {
+    /// Performs the fused superposition with the given strategy.
+    fn fused_superposition_with(&self, at: &[T], strategy: Strategy, width: FuseWidth) -> Vec<T>;
+
+    /// F(x) = (f₁(x₁) + … + fₙ(x₁), ..., f₁(xₘ) + … + fₙ(xₘ)).
+    fn fused_superposition(&self, at: &[T]) -> Vec<T> {
+        self.fused_superposition_with(at, Strategy::Auto, FuseWidth::PickBest)
+    }
+}
+
+impl<T, E> FusedBatchSuperposition<T> for [E]
+where
+    T: Float,
+    E: EvaluateParts<T>,
+{
+    fn fused_superposition_with(&self, at: &[T], strategy: Strategy, width: FuseWidth) -> Vec<T> {
+        let (rows, cols) = strategy.resolve(self.len(), at.len());
+
+        match width.resolve(self, at) {
+            FuseWidth::Eight => schedule_fused_to_owned::<T, E, 8>(self, at, rows, cols),
+            FuseWidth::Four => schedule_fused_to_owned::<T, E, 4>(self, at, rows, cols),
+            FuseWidth::Two => schedule_fused_to_owned::<T, E, 2>(self, at, rows, cols),
+            _ => schedule_to_owned(self, at, rows, cols),
+        }
+    }
+}
+
+/// Number of evaluations to fuse.
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Default)]
+#[repr(u8)]
+pub enum FuseWidth {
+    /// Automatically picks the highest width that carries no risk of over- or
+    /// underflow.
+    #[default]
+    PickBest = 0,
+    /// No fusing, equivalent to regular evaluation.
+    One = 1,
+    /// Fuses two evaluations.
+    Two = 2,
+    /// Fuses four evaluations.
+    Four = 4,
+    /// Fuses eight evaluations.
+    Eight = 8,
+}
+
+impl FuseWidth {
+    /// Returns an iterator over the variants that are not `PickBest`.
+    pub fn iter() -> impl DoubleEndedIterator<Item = FuseWidth> {
+        [
+            FuseWidth::One,
+            FuseWidth::Two,
+            FuseWidth::Four,
+            FuseWidth::Eight,
+        ]
+        .into_iter()
+    }
+
+    /// Resolves `PickBest` against the data and returns self otherwise.
+    ///
+    /// Largest `K ∈ {16, 8, 4, 2}` for which the fused kernel cannot overflow
+    /// or underflow on this data. Returns 1 if no fusion is safe.
+    ///
+    /// Never returns `PickBest`.
+    fn resolve<T, E>(self, functions: &[E], at: &[T]) -> FuseWidth
+    where
+        T: Float,
+        E: EvaluateParts<T>,
+    {
+        if functions.is_empty() || at.is_empty() {
+            return FuseWidth::One;
+        }
+
+        match self {
+            FuseWidth::PickBest => {
+                let (lo, hi) = at
+                    .iter()
+                    .fold((T::infinity(), T::neg_infinity()), |(lo, hi), &x| {
+                        (lo.min(x), hi.max(x))
+                    });
+                let (d_min, d_max, n_max) = functions.iter().fold(
+                    (T::infinity(), T::neg_infinity(), T::zero()),
+                    |(d_min, d_max, n_max), f| {
+                        let (d_lo, d_hi) = f.den_bounds(lo, hi);
+                        let (_, n_hi) = f.num_bounds(lo, hi);
+
+                        (d_min.min(d_lo), d_max.max(d_hi), n_max.max(n_hi))
+                    },
+                );
+
+                FuseWidth::iter()
+                    .rev()
+                    .find(|&k| k.is_safe((d_min, d_max), n_max))
+                    .unwrap_or(FuseWidth::One)
+            }
+            _ => self,
+        }
+    }
+
+    /// Returns `true` if this fuse width does not cause over- or underflow.
+    fn is_safe<T>(&self, (d_min, d_max): (T, T), n_max: T) -> bool
+    where
+        T: Float,
+    {
+        let k = if let Self::PickBest = self {
+            return false;
+        } else {
+            *self as i32
+        };
+
+        let margin = T::from(1e3_f64).expect("conversion from f64 to T must never fail");
+        let max = T::max_value() / margin;
+        let min = T::min_positive_value() * margin;
+        let k_as_t = T::from(k).expect("conversion from i32 to T must never fail");
+
+        // fused denominator multiplies K such values, which can overflow
+        d_max.powi(k) < max
+            // or underflow
+            && d_min.powi(k) > min
+            // numerator sums K mixed products with K terms each
+            && k_as_t * n_max * d_max.powi(k - 1) < max
+    }
+}
+
+/// [`schedule_to_owned`] with fused evaluations of width `K`.
 fn schedule_fused_to_owned<T, E, const K: usize>(
     functions: &[E],
     at: &[T],
@@ -210,6 +312,7 @@ where
     out
 }
 
+/// [`schedule`] with fused evaluations of width `K`.
 fn schedule_fused<T, E, const K: usize>(
     functions: &[E],
     at: &[T],
@@ -220,6 +323,11 @@ fn schedule_fused<T, E, const K: usize>(
     T: Copy + Mul<T, Output = T> + Div<T, Output = T> + Zero,
     E: EvaluateParts<T>,
 {
+    // round up to nearest multiple of K. this might overflow if rows is near
+    // usize::MAX but at that point something went wrong already anyway
+    debug_assert!(rows.checked_add(K).is_some());
+    let rows = (rows + K - 1) & !(K - 1);
+
     for f_chunk in functions.chunks(rows) {
         for (at_c, out_c) in at.chunks(cols).zip(out.chunks_mut(cols)) {
             let mut groups = f_chunk.chunks_exact(K);

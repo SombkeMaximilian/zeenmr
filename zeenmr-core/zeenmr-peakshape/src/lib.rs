@@ -12,7 +12,7 @@ pub use evaluate::{Evaluate, EvaluateParts};
 mod batch_superposition;
 #[cfg(feature = "rayon")]
 pub use batch_superposition::ParBatchSuperposition;
-pub use batch_superposition::{BatchSuperposition, FusedBatchSuperposition, Strategy};
+pub use batch_superposition::{BatchSuperposition, FuseWidth, FusedBatchSuperposition, Strategy};
 
 pub mod iter {
     //! Iterator adapter traits for peak shapes.
