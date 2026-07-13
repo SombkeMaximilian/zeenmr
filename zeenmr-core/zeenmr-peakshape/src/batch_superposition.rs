@@ -2,7 +2,6 @@ use crate::iter::EvaluateMap;
 use crate::util::fuse_fold;
 use crate::{Evaluate, EvaluateParts};
 use num_traits::{Float, Zero};
-use std::ops::{Div, Mul};
 
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
@@ -303,7 +302,7 @@ fn schedule_fused_to_owned<T, E, const K: usize>(
     cols: usize,
 ) -> Vec<T>
 where
-    T: Copy + Mul<T, Output = T> + Div<T, Output = T> + Zero,
+    T: Float,
     E: EvaluateParts<T>,
 {
     let mut out = vec![T::zero(); at.len()];
@@ -320,7 +319,7 @@ fn schedule_fused<T, E, const K: usize>(
     rows: usize,
     cols: usize,
 ) where
-    T: Copy + Mul<T, Output = T> + Div<T, Output = T> + Zero,
+    T: Float,
     E: EvaluateParts<T>,
 {
     // round up to nearest multiple of K. this might overflow if rows is near

@@ -1,3 +1,4 @@
+use crate::util::fma;
 use crate::{Evaluate, EvaluateParts, FromArray, PeakShape};
 use num_traits::{Float, FloatConst};
 
@@ -103,7 +104,9 @@ where
     T: Float,
 {
     fn evaluate(&self, at: T) -> T {
-        self.amp_scale / (self.scale2 + (at - self.center).powi(2))
+        let d = at - self.center;
+
+        self.amp_scale / fma(d, d, self.scale2)
     }
 }
 
@@ -112,9 +115,9 @@ where
     T: Float,
 {
     fn parts(&self, at: T) -> (T, T) {
-        let den = self.scale2 + (at - self.center).powi(2);
+        let d = at - self.center;
 
-        (self.amp_scale, den)
+        (self.amp_scale, fma(d, d, self.scale2))
     }
 
     fn num_bounds(&self, _: T, _: T) -> (T, T) {

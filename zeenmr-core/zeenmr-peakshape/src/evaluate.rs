@@ -1,6 +1,5 @@
 use crate::util::fuse_fold;
-use num_traits::{One, Zero};
-use std::ops::Div;
+use num_traits::{Float, Zero};
 
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
@@ -230,7 +229,7 @@ pub trait FusedSuperposition<T>: ExactSizeIterator {
 
 impl<T, E, I> FusedSuperposition<T> for I
 where
-    T: Copy + PartialEq + Div<Output = T> + One + Zero,
+    T: Float,
     E: EvaluateParts<T>,
     I: ExactSizeIterator<Item = E>,
 {
