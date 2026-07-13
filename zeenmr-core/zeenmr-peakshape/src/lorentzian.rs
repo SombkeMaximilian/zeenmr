@@ -117,6 +117,10 @@ where
         (self.amp_scale, den)
     }
 
+    fn num_bounds(&self, _: T, _: T) -> (T, T) {
+        (self.amp_scale, self.amp_scale)
+    }
+
     fn den_bounds(&self, lo: T, hi: T) -> (T, T) {
         let near = self.center - self.center.max(lo).min(hi);
         let den_lo = (lo - self.center).powi(2);

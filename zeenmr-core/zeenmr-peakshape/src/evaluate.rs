@@ -64,10 +64,49 @@ pub trait EvaluateParts<T>: Evaluate<T> {
     /// Returns `(num, den)`.
     fn parts(&self, at: T) -> (T, T);
 
+    /// Bounds on `num` over the closed interval `[lo, hi]`.
+    ///
+    /// Must satisfy `0 < lo_bound <= num(x) <= hi_bound` for all `x` in range.
+    fn num_bounds(&self, lo: T, hi: T) -> (T, T);
+
     /// Bounds on `den` over the closed interval `[lo, hi]`.
     ///
-    /// Must satisfy `0 < lo_bound ≤ den(x) ≤ hi_bound` for all `x` in range.
+    /// Must satisfy `0 < lo_bound <= den(x) <= hi_bound` for all `x` in range.
     fn den_bounds(&self, lo: T, hi: T) -> (T, T);
+}
+
+impl<T, E> EvaluateParts<T> for &E
+where
+    E: EvaluateParts<T>,
+{
+    fn parts(&self, at: T) -> (T, T) {
+        (**self).parts(at)
+    }
+
+    fn num_bounds(&self, lo: T, hi: T) -> (T, T) {
+        (**self).num_bounds(lo, hi)
+    }
+
+    fn den_bounds(&self, lo: T, hi: T) -> (T, T) {
+        (**self).den_bounds(lo, hi)
+    }
+}
+
+impl<T, E> EvaluateParts<T> for &mut E
+where
+    E: EvaluateParts<T>,
+{
+    fn parts(&self, at: T) -> (T, T) {
+        (**self).parts(at)
+    }
+
+    fn num_bounds(&self, lo: T, hi: T) -> (T, T) {
+        (**self).num_bounds(lo, hi)
+    }
+
+    fn den_bounds(&self, lo: T, hi: T) -> (T, T) {
+        (**self).den_bounds(lo, hi)
+    }
 }
 
 /// Extension trait for iterators of functions that provides superposition of
