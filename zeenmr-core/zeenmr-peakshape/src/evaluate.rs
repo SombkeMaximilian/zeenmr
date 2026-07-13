@@ -140,7 +140,7 @@ where
 /// let powers = [Power(2), Power(2), Power(3)];
 /// assert_eq!(powers.into_iter().superposition(3.0), 45.0);
 /// ```
-pub trait Superposition<T>: ExactSizeIterator {
+pub trait Superposition<T>: Iterator {
     /// Evaluate each function in the iterator at the given point and return
     /// the sum of the results.
     fn superposition(self, at: T) -> T
@@ -152,7 +152,7 @@ impl<T, E, I> Superposition<T> for I
 where
     T: Copy + Zero,
     E: Evaluate<T>,
-    I: ExactSizeIterator<Item = E>,
+    I: Iterator<Item = E>,
 {
     fn superposition(self, at: T) -> T
     where
@@ -194,7 +194,7 @@ where
 /// assert_eq!(powers.into_par_iter().superposition(3.0), 45.0);
 /// ```
 #[cfg(feature = "rayon")]
-pub trait ParSuperposition<T: Send + Sync>: IndexedParallelIterator {
+pub trait ParSuperposition<T: Send + Sync>: ParallelIterator {
     /// Evaluate each function in the parallel iterator at the given point and
     /// return the sum of the results.
     fn superposition(self, at: T) -> T
@@ -207,7 +207,7 @@ impl<T, E, I> ParSuperposition<T> for I
 where
     T: Copy + Send + Sync + Zero,
     E: Evaluate<T> + Send + Sync,
-    I: IndexedParallelIterator<Item = E>,
+    I: ParallelIterator<Item = E>,
 {
     fn superposition(self, at: T) -> T
     where
@@ -292,19 +292,19 @@ where
 /// assert_eq!(squares[1], 9.0);
 /// assert_eq!(squares[2], 16.0);
 /// ```
-pub trait EvaluateMap<T>: ExactSizeIterator {
+pub trait EvaluateMap<T>: Iterator {
     /// Apply the given evaluator to each item in the iterator, producing an
     /// iterator of evaluated results.
-    fn evaluate<E>(self, evaluator: E) -> impl ExactSizeIterator<Item = T>
+    fn evaluate<E>(self, evaluator: E) -> impl Iterator<Item = T>
     where
         E: Evaluate<T>;
 }
 
 impl<T, I> EvaluateMap<T> for I
 where
-    I: ExactSizeIterator<Item = T>,
+    I: Iterator<Item = T>,
 {
-    fn evaluate<E>(self, evaluator: E) -> impl ExactSizeIterator<Item = T>
+    fn evaluate<E>(self, evaluator: E) -> impl Iterator<Item = T>
     where
         E: Evaluate<T>,
     {
@@ -349,10 +349,10 @@ where
 /// assert_eq!(squares[2], 16.0);
 /// ```
 #[cfg(feature = "rayon")]
-pub trait ParEvaluateMap<T: Send>: IndexedParallelIterator {
+pub trait ParEvaluateMap<T: Send>: ParallelIterator {
     /// Apply the given evaluator to each item in the indexed parallel iterator,
     /// producing an indexed parallel iterator of evaluated results.
-    fn evaluate<E>(self, evaluator: E) -> impl IndexedParallelIterator<Item = T>
+    fn evaluate<E>(self, evaluator: E) -> impl ParallelIterator<Item = T>
     where
         E: Evaluate<T> + Send + Sync;
 }
@@ -361,9 +361,9 @@ pub trait ParEvaluateMap<T: Send>: IndexedParallelIterator {
 impl<T, I> ParEvaluateMap<T> for I
 where
     T: Send,
-    I: IndexedParallelIterator<Item = T>,
+    I: ParallelIterator<Item = T>,
 {
-    fn evaluate<E>(self, evaluator: E) -> impl IndexedParallelIterator<Item = T>
+    fn evaluate<E>(self, evaluator: E) -> impl ParallelIterator<Item = T>
     where
         E: Evaluate<T> + Send + Sync,
     {
