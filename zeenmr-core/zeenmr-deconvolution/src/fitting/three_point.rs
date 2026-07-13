@@ -16,6 +16,13 @@ use zeenmr_peakshape::ParBatchSuperposition;
 use serde::{Deserialize, Serialize};
 
 /// Trait for estimating parameters of a peak shape from three data points.
+///
+/// The three points are expected to bracket a peak, with `x[1]` the apex sample
+/// and `x[0]`, `x[2]` placed at approximately equal distances on either side.
+/// The implementations are conditioned for this near-symmetric spacing. It
+/// cannot be assumed that the flanking samples fall at any particular height on
+/// the profile since overlapping peaks distort the lineshape and displace
+/// features such as the inflection points.
 pub trait ThreePointStencil<T> {
     /// Estimate the parameters of the peak shape from three data points.
     fn estimate_parameters(x: [T; 3], y: [T; 3]) -> Self;
@@ -26,22 +33,26 @@ where
     T: Float,
 {
     fn estimate_parameters(x: [T; 3], y: [T; 3]) -> Self {
-        let half = T::one() / (T::one() + T::one());
-        let z = [y[0].ln(), y[1].ln(), y[2].ln()];
+        let two = T::one() + T::one();
 
-        let numerator = x[0].powi(2) * (z[1] - z[2])
-            + x[1].powi(2) * (z[2] - z[0])
-            + x[2].powi(2) * (z[0] - z[1]);
-        let denominator = x[0] * (z[1] - z[2]) + x[1] * (z[2] - z[0]) + x[2] * (z[0] - z[1]);
-        let center = half * numerator / denominator;
+        let left_spacing = x[1] - x[0];
+        let right_spacing = x[2] - x[1];
+        let total_spacing = left_spacing + right_spacing;
 
-        let left = ((x[1] - center).powi(2) - (x[0] - center).powi(2)) / (z[0] - z[1]);
-        let right = ((x[2] - center).powi(2) - (x[1] - center).powi(2)) / (z[1] - z[2]);
-        let double_scale2 = half * (left + right);
+        let left_log_drop = (y[0] / y[1]).log2();
+        let right_log_drop = (y[2] / y[1]).log2();
 
-        let amp = y[1] * ((x[1] - center).powi(2) / double_scale2).exp();
+        let left_slope = left_log_drop / left_spacing;
+        let right_slope = right_log_drop / right_spacing;
 
-        Gaussian::new(amp, double_scale2, center)
+        let curvature = (left_slope + right_slope) / total_spacing;
+        let apex_slope = (left_spacing * right_slope - right_spacing * left_slope) / total_spacing;
+
+        let apex_offset = apex_slope / (two * curvature);
+        let center = x[1] - apex_offset;
+        let amp = y[1] * (-curvature * apex_offset * apex_offset).exp2();
+
+        Gaussian::new(amp, curvature, center)
     }
 }
 
@@ -51,23 +62,28 @@ where
 {
     fn estimate_parameters(x: [T; 3], y: [T; 3]) -> Self {
         let half = T::one() / (T::one() + T::one());
+        let two = T::one() + T::one();
 
-        let numerator = x[0].powi(2) * y[0] * (y[1] - y[2])
-            + x[1].powi(2) * y[1] * (y[2] - y[0])
-            + x[2].powi(2) * y[2] * (y[0] - y[1]);
-        let denominator =
-            y[0] * y[1] * (x[0] - x[1]) + y[1] * y[2] * (x[1] - x[2]) + y[2] * y[0] * (x[2] - x[0]);
-        let center = half * numerator / denominator;
+        let left_spacing = x[1] - x[0];
+        let right_spacing = x[2] - x[1];
+        let total_spacing = left_spacing + right_spacing;
+        let left_rise = (y[1] / y[0] - T::one()) / y[1];
+        let right_rise = (y[1] / y[2] - T::one()) / y[1];
+        let left_slope = left_rise / left_spacing;
+        let right_slope = right_rise / right_spacing;
+        let curvature = (left_slope + right_slope) / total_spacing;
+        let apex_slope = (left_spacing * right_slope - right_spacing * left_slope) / total_spacing;
+        let apex_offset = apex_slope / (two * curvature);
+        let center = x[1] - apex_offset;
 
-        let left =
-            (y[0] * (x[0] - center).powi(2) - y[1] * (x[1] - center).powi(2)) / (y[1] - y[0]);
-        let right =
-            (y[1] * (x[1] - center).powi(2) - y[2] * (x[2] - center).powi(2)) / (y[2] - y[1]);
-        let inv_scale2 = T::one() / (half * (left + right));
+        let apex_dist2 = apex_offset * apex_offset;
+        let left_scale2 = (y[0] * (x[0] - center).powi(2) - y[1] * apex_dist2) / (y[1] - y[0]);
+        let right_scale2 = (y[1] * apex_dist2 - y[2] * (x[2] - center).powi(2)) / (y[2] - y[1]);
+        let scale2 = half * (left_scale2 + right_scale2);
 
-        let amp_scale = y[1] * (inv_scale2 + (x[1] - center).powi(2));
+        let amp_scale = y[1] * (scale2 + apex_dist2);
 
-        Lorentzian::new(amp_scale, inv_scale2, center)
+        Lorentzian::new(amp_scale, scale2, center)
     }
 }
 
@@ -154,12 +170,10 @@ where
     /// Mirrors the left/right data points onto the right/left data point if the
     /// intensities are ascending/descending from left to center to right.
     ///
-    /// For cases where the peak is a shoulder of another, larger peak, it is
-    /// required to make an assumption about the shape of the peak. This method
-    /// assumes that the peak is symmetric about the center data point and
-    /// mirrors the data point for which the intensity is lower than the center
-    /// data point onto the other side. This is done to ensure that the 3-point
-    /// stencil is working with data that has a peak-like shape.
+    /// While this might result in the chemical shift of the stencil getting
+    /// desynced from the reduced spectrum by 1~2 data points, the spectrum is
+    /// assumed to be continuous enough to where this does not cause an issue.
+    /// Empirically, this seems to hold.
     fn mirror_shoulder(&mut self) {
         let two = T::one() + T::one();
         let increasing = self.intensities[0] <= self.intensities[1]
@@ -383,7 +397,7 @@ mod tests {
 
     #[test]
     fn gaussian_stencil() {
-        recover_peak_shape(Gaussian::new(1_f32, 1_f32, 0_f32));
-        recover_peak_shape(Gaussian::new(1_f64, 1_f64, 0_f64));
+        recover_peak_shape(Gaussian::new(1_f32, -1_f32, 0_f32));
+        recover_peak_shape(Gaussian::new(1_f64, -1_f64, 0_f64));
     }
 }
