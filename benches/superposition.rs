@@ -9,7 +9,7 @@ use std::hint::black_box;
 use std::time::Duration;
 use zeenmr::peak_shape::{
     BatchSuperposition, Evaluate, EvaluateParts, FromArray, FuseWidth, FusedBatchSuperposition,
-    Gaussian, Lorentzian, ParBatchSuperposition, Strategy,
+    Gaussian, Lorentzian, ParBatchSuperposition, ParFusedBatchSuperposition, Strategy,
 };
 
 const SEED: u64 = 0xC0FF_EE15_600D;
@@ -135,7 +135,7 @@ where
                 .num_threads(t)
                 .build()
                 .unwrap();
-            let id = format!("{t} - {n}x{m}");
+            let id = format!("{t}_threads_{n}x{m}");
             for (name, strategy) in &STRATEGIES[1..] {
                 group.bench_with_input(BenchmarkId::new(*name, &id), &strategy, |b, &s| {
                     b.iter(|| {
@@ -166,22 +166,22 @@ where
         group.throughput(Throughput::Elements((n * m) as u64));
         let functions = make_functions::<T, E, N>(&mut rng, &dist, *n);
         let at = make_grid::<T>(*m);
-        for width in FuseWidth::iter() {
-            let id = format!("{}_fused_{n}x{m}", width as u8);
+        for w in FuseWidth::iter() {
+            let id = format!("{}_fused_{n}x{m}", w as u8);
             for (name, strategy) in STRATEGIES {
                 let reference = functions.superposition_with(&at, strategy);
-                let fused = functions.fused_superposition_with(&at, strategy, width);
+                let fused = functions.fused_superposition_with(&at, strategy, w);
                 let tol = T::from(8.0 * *n as f64).unwrap() * T::epsilon();
                 for (a, b) in fused.iter().zip(&reference) {
                     assert!(
                         (*a - *b).abs() <= tol * b.abs(),
                         "{name}: K={} @ {n}x{m}",
-                        width as u8
+                        w as u8
                     );
                 }
                 group.bench_with_input(BenchmarkId::new(name, &id), &strategy, |b, &s| {
                     b.iter(|| {
-                        black_box(&functions[..]).fused_superposition_with(black_box(&at), s, width)
+                        black_box(&functions[..]).fused_superposition_with(black_box(&at), s, w)
                     })
                 });
             }
@@ -190,18 +190,66 @@ where
     group.finish()
 }
 
+fn par_fused_iso_work<T, E, const N: usize>(c: &mut Criterion, dtype: &str)
+where
+    T: Float + SampleUniform + Debug + Send + Sync,
+    E: EvaluateParts<T> + FromArray<T, N> + PeakName + Sync,
+    [E]: ParBatchSuperposition<T>,
+{
+    let mut rng = StdRng::seed_from_u64(SEED);
+    let dist = Uniform::new(T::one(), T::from(100).unwrap()).unwrap();
+    let mut group = c.benchmark_group(format!("{}/{dtype}/par_fused_iso_work", E::NAME));
+    group
+        .sample_size(SAMPLES)
+        .measurement_time(Duration::from_secs(TIME_SECONDS));
+    for (n, m) in &ISO_WORK[..1] {
+        group.throughput(Throughput::Elements((n * m) as u64));
+        let functions = make_functions::<T, E, N>(&mut rng, &dist, *n);
+        let at = make_grid::<T>(*m);
+        for w in FuseWidth::iter() {
+            for t in THREADS {
+                let threads = ThreadPoolBuilder::new()
+                    .num_threads(t)
+                    .build()
+                    .unwrap();
+                let id = format!("{t}_threads_{}_fused_{n}x{m}", w as u8);
+                for (name, strategy) in &STRATEGIES[2..] {
+                    let reference = functions.superposition_with(&at, *strategy);
+                    let fused = functions.par_fused_superposition_with(&at, *strategy, w);
+                    let tol = T::from(8.0 * *n as f64).unwrap() * T::epsilon();
+                    for (a, b) in fused.iter().zip(&reference) {
+                        assert!(
+                            (*a - *b).abs() <= tol * b.abs(),
+                            "{name}: K={} @ {n}x{m}",
+                            w as u8
+                        );
+                    }
+                    group.bench_with_input(BenchmarkId::new(*name, &id), &strategy, |b, &s| {
+                        b.iter(|| {
+                            threads.install(|| {
+                                black_box(&functions[..]).par_fused_superposition_with(
+                                    black_box(&at),
+                                    *s,
+                                    w,
+                                )
+                            })
+                        })
+                    });
+                }
+            }
+        }
+    }
+    group.finish();
+}
+
 fn benches(c: &mut Criterion) {
     iso_work::<f32, Lorentzian<f32>, 3>(c, "f32");
     iso_work::<f64, Lorentzian<f64>, 3>(c, "f64");
-    iso_work::<f32, Gaussian<f32>, 3>(c, "f32");
-    iso_work::<f64, Gaussian<f64>, 3>(c, "f64");
 }
 
 fn par_benches(c: &mut Criterion) {
     par_iso_work::<f32, Lorentzian<f32>, 3>(c, "f32");
     par_iso_work::<f64, Lorentzian<f64>, 3>(c, "f64");
-    par_iso_work::<f32, Gaussian<f32>, 3>(c, "f32");
-    par_iso_work::<f64, Gaussian<f64>, 3>(c, "f64");
 }
 
 fn fused_benches(c: &mut Criterion) {
@@ -209,6 +257,17 @@ fn fused_benches(c: &mut Criterion) {
     fused_iso_work::<f64, Lorentzian<f64>, 3>(c, "f64");
 }
 
-criterion_group!(superposition, benches, par_benches, fused_benches);
+fn par_fused_benches(c: &mut Criterion) {
+    par_fused_iso_work::<f32, Lorentzian<f32>, 3>(c, "f32");
+    par_fused_iso_work::<f64, Lorentzian<f64>, 3>(c, "f64");
+}
+
+criterion_group!(
+    superposition,
+    benches,
+    par_benches,
+    fused_benches,
+    par_fused_benches
+);
 
 criterion_main!(superposition);

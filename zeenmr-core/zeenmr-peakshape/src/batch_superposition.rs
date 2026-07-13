@@ -172,7 +172,7 @@ where
 /// A collection of functions that can be superposed over a grid of points using
 /// a fusion transformation.
 pub trait FusedBatchSuperposition<T> {
-    /// Performs the fused superposition with the given strategy.
+    /// Performs the fused superposition.
     fn fused_superposition_with(&self, at: &[T], strategy: Strategy, width: FuseWidth) -> Vec<T>;
 
     /// F(x) = (f₁(x₁) + … + fₙ(x₁), ..., f₁(xₘ) + … + fₙ(xₘ)).
@@ -195,6 +195,69 @@ where
             FuseWidth::Two => schedule_fused_to_owned::<T, E, 2>(self, at, rows, cols),
             _ => schedule_to_owned(self, at, rows, cols),
         }
+    }
+}
+
+/// A collection of functions that can be superposed over a grid of points using
+/// a fusion transformation in parallel.
+#[cfg(feature = "rayon")]
+pub trait ParFusedBatchSuperposition<T> {
+    /// Performs the fused superposition in parallel.
+    fn par_fused_superposition_with(
+        &self,
+        at: &[T],
+        strategy: Strategy,
+        width: FuseWidth,
+    ) -> Vec<T>;
+
+    /// F(x) = (f₁(x₁) + … + fₙ(x₁), ..., f₁(xₘ) + … + fₙ(xₘ)).
+    fn par_fused_superposition(&self, at: &[T]) -> Vec<T> {
+        self.par_fused_superposition_with(at, Strategy::Auto, FuseWidth::PickBest)
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl<T, E> ParFusedBatchSuperposition<T> for [E]
+where
+    T: Float + Send + Sync,
+    E: EvaluateParts<T> + Sync,
+{
+    fn par_fused_superposition_with(
+        &self,
+        at: &[T],
+        strategy: Strategy,
+        width: FuseWidth,
+    ) -> Vec<T> {
+        let (rows, cols) = strategy.resolve(self.len(), at.len());
+
+        if self.len().saturating_mul(at.len()) < PAR_THRESHOLD {
+            return match width.resolve(self, at) {
+                FuseWidth::Eight => schedule_fused_to_owned::<T, E, 8>(self, at, rows, cols),
+                FuseWidth::Four => schedule_fused_to_owned::<T, E, 4>(self, at, rows, cols),
+                FuseWidth::Two => schedule_fused_to_owned::<T, E, 2>(self, at, rows, cols),
+                _ => schedule_to_owned(self, at, rows, cols),
+            };
+        }
+
+        let mut out = vec![T::zero(); at.len()];
+        let task_size = task_size(at.len(), cols);
+        let iter = out
+            .par_chunks_mut(task_size)
+            .zip(at.par_chunks(task_size));
+        match width.resolve(self, at) {
+            FuseWidth::Eight => {
+                iter.for_each(|(out, at)| schedule_fused::<T, E, 8>(self, at, out, rows, cols))
+            }
+            FuseWidth::Four => {
+                iter.for_each(|(out, at)| schedule_fused::<T, E, 4>(self, at, out, rows, cols))
+            }
+            FuseWidth::Two => {
+                iter.for_each(|(out, at)| schedule_fused::<T, E, 2>(self, at, out, rows, cols))
+            }
+            _ => iter.for_each(|(out, at)| schedule(self, at, out, rows, cols)),
+        }
+
+        out
     }
 }
 
@@ -259,11 +322,18 @@ impl FuseWidth {
                         (d_min.min(d_lo), d_max.max(d_hi), n_max.max(n_hi))
                     },
                 );
-
-                FuseWidth::iter()
+                let widest_safe = FuseWidth::iter()
                     .rev()
                     .find(|&k| k.is_safe((d_min, d_max), n_max))
-                    .unwrap_or(FuseWidth::One)
+                    .unwrap_or(FuseWidth::One);
+
+                match size_of::<T>() {
+                    // override for f32 from benchmark
+                    4 if widest_safe as u32 >= 4 => FuseWidth::Four,
+                    // override for f64 from benchmark
+                    8 if widest_safe as u32 >= 8 => FuseWidth::Eight,
+                    _ => widest_safe,
+                }
             }
             _ => self,
         }
