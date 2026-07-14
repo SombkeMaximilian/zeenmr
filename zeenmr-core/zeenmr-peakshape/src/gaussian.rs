@@ -93,7 +93,7 @@ where
     ///
     /// Order: `amp`, `exp2_scale`, `center`.
     fn from_array(array: [T; 3]) -> Self {
-        Self::new(array[0], array[1], array[2])
+        Self::new(array[0], -array[1], array[2])
     }
 }
 
@@ -102,7 +102,7 @@ where
     T: Exp2,
 {
     fn evaluate(&self, at: T) -> T {
-        self.amp * ((at - self.center).powi(2) * self.exp2_scale).exp2_fast()
+        self.amp * ((at - self.center).powi(2) * self.exp2_scale).exp2_fast_nonpos()
     }
 }
 
