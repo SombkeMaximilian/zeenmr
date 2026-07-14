@@ -85,10 +85,11 @@ where
         .sample_size(SAMPLES)
         .measurement_time(Duration::from_secs(TIME_SECONDS));
     for (n, m) in &ISO_WORK {
-        group.throughput(Throughput::Elements((n * m) as u64));
+        group.throughput(Throughput::Elements((n * m.pow(2)) as u64));
         let functions = make_functions::<T, E, N>(&mut rng, &dist, *n);
         let at = make_grid::<T>(*m);
         let reference = functions.superposition_with(&at, Strategy::FunctionsOuter);
+        assert!(reference.iter().all(|x| x.is_finite()));
         for (name, s) in STRATEGIES {
             assert_eq!(
                 functions.superposition_with(&at, s),
@@ -118,11 +119,12 @@ where
     group
         .sample_size(SAMPLES)
         .measurement_time(Duration::from_secs(TIME_SECONDS));
-    for (n, m) in &ISO_WORK[..1] {
-        group.throughput(Throughput::Elements((n * m) as u64));
+    for (n, m) in &ISO_WORK {
+        group.throughput(Throughput::Elements((n * m.pow(2)) as u64));
         let functions = make_functions::<T, E, N>(&mut rng, &dist, *n);
         let at = make_grid::<T>(*m);
         let reference = functions.superposition_with(&at, Strategy::FunctionsOuter);
+        assert!(reference.iter().all(|x| x.is_finite()));
         for (name, s) in STRATEGIES {
             assert_eq!(
                 functions.par_superposition_with(&at, s),
@@ -163,13 +165,14 @@ where
         .sample_size(SAMPLES)
         .measurement_time(Duration::from_secs(TIME_SECONDS));
     for (n, m) in &ISO_WORK[..1] {
-        group.throughput(Throughput::Elements((n * m) as u64));
+        group.throughput(Throughput::Elements((n * m.pow(2)) as u64));
         let functions = make_functions::<T, E, N>(&mut rng, &dist, *n);
         let at = make_grid::<T>(*m);
         for w in FuseWidth::iter() {
             let id = format!("{}_fused_{n}x{m}", w as u8);
             for (name, strategy) in STRATEGIES {
                 let reference = functions.superposition_with(&at, strategy);
+                assert!(reference.iter().all(|x| x.is_finite()));
                 let fused = functions.fused_superposition_with(&at, strategy, w);
                 let tol = T::from(8.0 * *n as f64).unwrap() * T::epsilon();
                 for (a, b) in fused.iter().zip(&reference) {
@@ -203,7 +206,7 @@ where
         .sample_size(SAMPLES)
         .measurement_time(Duration::from_secs(TIME_SECONDS));
     for (n, m) in &ISO_WORK[..1] {
-        group.throughput(Throughput::Elements((n * m) as u64));
+        group.throughput(Throughput::Elements((n * m.pow(2)) as u64));
         let functions = make_functions::<T, E, N>(&mut rng, &dist, *n);
         let at = make_grid::<T>(*m);
         for w in FuseWidth::iter() {
@@ -215,6 +218,7 @@ where
                 let id = format!("{t}_threads_{}_fused_{n}x{m}", w as u8);
                 for (name, strategy) in &STRATEGIES[2..] {
                     let reference = functions.superposition_with(&at, *strategy);
+                    assert!(reference.iter().all(|x| x.is_finite()));
                     let fused = functions.par_fused_superposition_with(&at, *strategy, w);
                     let tol = T::from(8.0 * *n as f64).unwrap() * T::epsilon();
                     for (a, b) in fused.iter().zip(&reference) {
@@ -245,11 +249,15 @@ where
 fn benches(c: &mut Criterion) {
     iso_work::<f32, Lorentzian<f32>, 3>(c, "f32");
     iso_work::<f64, Lorentzian<f64>, 3>(c, "f64");
+    iso_work::<f32, Gaussian<f32>, 3>(c, "f32");
+    iso_work::<f64, Gaussian<f64>, 3>(c, "f64");
 }
 
 fn par_benches(c: &mut Criterion) {
     par_iso_work::<f32, Lorentzian<f32>, 3>(c, "f32");
     par_iso_work::<f64, Lorentzian<f64>, 3>(c, "f64");
+    par_iso_work::<f32, Gaussian<f32>, 3>(c, "f32");
+    par_iso_work::<f64, Gaussian<f64>, 3>(c, "f64");
 }
 
 fn fused_benches(c: &mut Criterion) {
