@@ -15,6 +15,7 @@ pub trait Exp2: Float {
     }
 }
 
+#[rustfmt::skip]
 // Sollya script:
 //
 //prec = 1000!;
