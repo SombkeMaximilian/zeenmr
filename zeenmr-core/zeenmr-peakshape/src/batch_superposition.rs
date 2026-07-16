@@ -21,19 +21,19 @@ const TASKS_PER_THREAD: usize = 4;
 ///
 /// # Formulation
 ///
-/// Let `x` be the `m`-dimensional vector of points to compute the superposition
-/// at, and `f₁, …, fₙ` be the functions. Further, let `M` be the `n x m` matrix
+/// Let `x` be the `n`-dimensional vector of points to compute the superposition
+/// at, and `f₁, …, fₘ` be the functions. Further, let `M` be the `n x m` matrix
 /// of function evaluations:
 ///
 /// ```text
-/// Mᵢⱼ = fᵢ(xⱼ)
+/// Mᵢⱼ = fⱼ(xᵢ)
 /// ```
 ///
 /// The evaluation of the superposition is then `y = M 1` where `1` is the
 /// column vector filled with the multiplicative identity:
 ///
 /// ```text
-/// yᵢ = F(xᵢ) = f₁(xᵢ) + f₂(xᵢ) + ... + fₙ(xᵢ)
+/// yᵢ = F(xᵢ) = f₁(xᵢ) + f₂(xᵢ) + ... + fₘ(xᵢ)
 /// ```
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Default)]
 pub enum Strategy {
@@ -81,7 +81,7 @@ pub trait BatchSuperposition<T> {
     /// Performs superposition with the given strategy.
     fn superposition_with(&self, at: &[T], strategy: Strategy) -> Vec<T>;
 
-    /// F(x) = (f₁(x₁) + … + fₙ(x₁), ..., f₁(xₘ) + … + fₙ(xₘ)).
+    /// F(x) = (f₁(x₁) + … + fₘ(x₁), ..., f₁(xₙ) + … + fₘ(xₙ)).
     fn superposition(&self, at: &[T]) -> Vec<T> {
         self.superposition_with(at, Strategy::Auto)
     }
@@ -106,7 +106,7 @@ pub trait ParBatchSuperposition<T> {
     /// Performs superposition with the given strategy.
     fn par_superposition_with(&self, at: &[T], strategy: Strategy) -> Vec<T>;
 
-    /// F(x) = (f₁(x₁) + … + fₙ(x₁), ..., f₁(xₘ) + … + fₙ(xₘ)).
+    /// F(x) = (f₁(x₁) + … + fₘ(x₁), ..., f₁(xₙ) + … + fₘ(xₙ)).
     fn par_superposition(&self, at: &[T]) -> Vec<T> {
         self.par_superposition_with(at, Strategy::Auto)
     }
@@ -175,7 +175,7 @@ pub trait FusedBatchSuperposition<T> {
     /// Performs the fused superposition.
     fn fused_superposition_with(&self, at: &[T], strategy: Strategy, width: FuseWidth) -> Vec<T>;
 
-    /// F(x) = (f₁(x₁) + … + fₙ(x₁), ..., f₁(xₘ) + … + fₙ(xₘ)).
+    /// F(x) = (f₁(x₁) + … + fₘ(x₁), ..., f₁(xₙ) + … + fₘ(xₙ)).
     fn fused_superposition(&self, at: &[T]) -> Vec<T> {
         self.fused_superposition_with(at, Strategy::Auto, FuseWidth::PickBest)
     }
@@ -210,7 +210,7 @@ pub trait ParFusedBatchSuperposition<T> {
         width: FuseWidth,
     ) -> Vec<T>;
 
-    /// F(x) = (f₁(x₁) + … + fₙ(x₁), ..., f₁(xₘ) + … + fₙ(xₘ)).
+    /// F(x) = (f₁(x₁) + … + fₘ(x₁), ..., f₁(xₙ) + … + fₘ(xₙ)).
     fn par_fused_superposition(&self, at: &[T]) -> Vec<T> {
         self.par_fused_superposition_with(at, Strategy::Auto, FuseWidth::PickBest)
     }
