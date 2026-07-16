@@ -28,6 +28,7 @@ categories = [
 default = []
 rayon = ["zeenmr-spectrum/rayon", "zeenmr-peakshape/rayon", "zeenmr-deconvolution/rayon"]
 serde = ["zeenmr-spectrum/serde", "zeenmr-parse/serde", "zeenmr-peakshape/serde", "zeenmr-deconvolution/serde"]
+detect-cpu-features = ["zeenmr-peakshape/detect-cpu-features"]
 
 [dependencies]
 zeenmr-parse = { workspace = true }

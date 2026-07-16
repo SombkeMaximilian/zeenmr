@@ -37,6 +37,8 @@ strum = { version = "0.28.0", features = ["derive"] }
 criterion = { version = "0.8.2" }
 rand = { version = "0.10.2" }
 
+hwlocality = { version = "1.0.0-alpha.12" }
+
 [profile.bench]
 codegen-units = 1
 lto = true

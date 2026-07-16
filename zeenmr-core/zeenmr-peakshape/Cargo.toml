@@ -24,6 +24,7 @@ categories = [
 default = []
 rayon = ["dep:rayon"]
 serde = ["dep:serde"]
+detect-cpu-features = ["dep:hwlocality"]
 
 [dependencies]
 num-traits = { workspace = true }
@@ -33,6 +34,9 @@ serde = { workspace = true, optional = true }
 [dev-dependencies]
 float-cmp = { workspace = true }
 static_assertions = { workspace = true }
+
+[build-dependencies]
+hwlocality = { workspace = true, optional = true }
 
 [lints]
 workspace = true
