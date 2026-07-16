@@ -65,13 +65,15 @@ pub enum Strategy {
 
 impl Strategy {
     /// Resolve to `(rows, cols)`.
+    ///
+    /// `n` is the number of points and `m` is the number of functions.
     fn resolve(self, n: usize, m: usize) -> (usize, usize) {
         match self {
             // current best from benchmarks
-            Strategy::Auto => (4096.min(n), 128.min(m)),
+            Strategy::Auto => (256.min(n), 2048.min(m)),
             Strategy::FunctionsOuter => (n.max(1), m.max(1)),
-            Strategy::Subvectors { p } => (n.max(1), p.min(m).max(1)),
-            Strategy::Submatrices { p, f } => (f.min(n).max(1), p.min(m).max(1)),
+            Strategy::Subvectors { p } => (p.min(n).max(1), m.max(1)),
+            Strategy::Submatrices { p, f } => (p.min(n).max(1), f.min(m).max(1)),
         }
     }
 }
@@ -93,7 +95,7 @@ where
     E: Evaluate<T>,
 {
     fn superposition_with(&self, at: &[T], strategy: Strategy) -> Vec<T> {
-        let (rows, cols) = strategy.resolve(self.len(), at.len());
+        let (rows, cols) = strategy.resolve(at.len(), self.len());
 
         schedule_to_owned(self, at, rows, cols)
     }
@@ -119,14 +121,14 @@ where
     E: Evaluate<T> + Sync,
 {
     fn par_superposition_with(&self, at: &[T], strategy: Strategy) -> Vec<T> {
-        let (rows, cols) = strategy.resolve(self.len(), at.len());
+        let (rows, cols) = strategy.resolve(at.len(), self.len());
 
         if self.len().saturating_mul(at.len()) < PAR_THRESHOLD {
             return schedule_to_owned(self, at, rows, cols);
         }
 
         let mut out = vec![T::zero(); at.len()];
-        let task_size = task_size(at.len(), cols);
+        let task_size = task_size(at.len(), rows);
         out.par_chunks_mut(task_size)
             .zip(at.par_chunks(task_size))
             .for_each(|(out, at)| schedule(self, at, out, rows, cols));
@@ -155,8 +157,8 @@ where
     T: Copy + Zero,
     E: Evaluate<T>,
 {
-    for f_chunk in functions.chunks(rows) {
-        for (at_chunk, dest_chunk) in at.chunks(cols).zip(dest.chunks_mut(cols)) {
+    for f_chunk in functions.chunks(cols) {
+        for (at_chunk, dest_chunk) in at.chunks(rows).zip(dest.chunks_mut(rows)) {
             for f in f_chunk {
                 for (d, eval) in dest_chunk
                     .iter_mut()
@@ -187,7 +189,7 @@ where
     E: EvaluateParts<T>,
 {
     fn fused_superposition_with(&self, at: &[T], strategy: Strategy, width: FuseWidth) -> Vec<T> {
-        let (rows, cols) = strategy.resolve(self.len(), at.len());
+        let (rows, cols) = strategy.resolve(at.len(), self.len());
 
         match width.resolve(self, at) {
             FuseWidth::Eight => schedule_fused_to_owned::<T, E, 8>(self, at, rows, cols),
@@ -228,7 +230,7 @@ where
         strategy: Strategy,
         width: FuseWidth,
     ) -> Vec<T> {
-        let (rows, cols) = strategy.resolve(self.len(), at.len());
+        let (rows, cols) = strategy.resolve(at.len(), self.len());
 
         if self.len().saturating_mul(at.len()) < PAR_THRESHOLD {
             return match width.resolve(self, at) {
@@ -240,7 +242,7 @@ where
         }
 
         let mut out = vec![T::zero(); at.len()];
-        let task_size = task_size(at.len(), cols);
+        let task_size = task_size(at.len(), rows);
         let iter = out
             .par_chunks_mut(task_size)
             .zip(at.par_chunks(task_size));
@@ -394,11 +396,11 @@ fn schedule_fused<T, E, const K: usize>(
 {
     // round up to nearest multiple of K. this might overflow if rows is near
     // usize::MAX but at that point something went wrong already anyway
-    debug_assert!(rows.checked_add(K).is_some());
-    let rows = (rows + K - 1) & !(K - 1);
+    debug_assert!(cols.checked_add(K).is_some());
+    let cols = (cols + K - 1) & !(K - 1);
 
-    for f_chunk in functions.chunks(rows) {
-        for (at_c, out_c) in at.chunks(cols).zip(out.chunks_mut(cols)) {
+    for f_chunk in functions.chunks(cols) {
+        for (at_c, out_c) in at.chunks(rows).zip(out.chunks_mut(rows)) {
             let mut groups = f_chunk.chunks_exact(K);
             for g in &mut groups {
                 let g: &[E; K] = g.try_into().expect("chunks_exact yields K");
@@ -419,13 +421,13 @@ fn schedule_fused<T, E, const K: usize>(
 /// Computes the task size depending on the number of points and columns of the
 /// resolved strategy.
 #[cfg(feature = "rayon")]
-fn task_size(points: usize, cols: usize) -> usize {
+fn task_size(points: usize, rows: usize) -> usize {
     let threads = rayon::current_num_threads().max(1);
     let target = points.div_ceil(threads * TASKS_PER_THREAD).max(1);
 
-    if target <= cols {
+    if target <= rows {
         target
     } else {
-        target.div_ceil(cols) * cols
+        target.div_ceil(rows) * rows
     }
 }
