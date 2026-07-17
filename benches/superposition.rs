@@ -54,7 +54,7 @@ fn make_grid<T: Float>(m: usize) -> Vec<T> {
 const STRATEGIES: [(&str, Strategy); 3] = [
     ("functions_outer", Strategy::FunctionsOuter),
     ("subvectors", Strategy::Subvectors { p: 1024 }),
-    ("submatrices", Strategy::Submatrices { p: 4096, f: 128 }),
+    ("auto", Strategy::Auto),
 ];
 
 /// (evaluators, points).

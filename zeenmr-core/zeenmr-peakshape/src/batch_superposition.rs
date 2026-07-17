@@ -6,15 +6,62 @@ use num_traits::{Float, Zero};
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
-/// Problem size threshold below which parallelization does not make sense.
+mod cache_topology {
+    //! Contains cache size constants in bytes.
+
+    include!(concat!(env!("OUT_DIR"), "/cache.rs"));
+}
+
+/// Points streamed in multiples of a cache line at a time.
+const POINT_LINES: usize = 8;
+
+/// Problem size (in bytes) threshold below which parallelization does not make
+/// sense.
 #[cfg(feature = "rayon")]
-const PAR_THRESHOLD: usize = 0;
+const PAR_THRESHOLD: usize = 2_usize * cache_topology::L1D;
 
 /// Tasks per thread scale.
 ///
 /// Used to divide the points array into work chunks.
 #[cfg(feature = "rayon")]
 const TASKS_PER_THREAD: usize = 4;
+
+/// Uses the cache topology to determine the optimal submatrix shape
+/// `(rows, cols)`.
+const fn serial_submatrix<T, E>() -> (usize, usize) {
+    submatrix::<T, E>(cache_topology::L1D)
+}
+
+/// Uses the cache topology to determine the optimal parallel submatrix shape
+/// `(rows, cols)`.
+const fn parallel_submatrix<T, E>() -> (usize, usize) {
+    submatrix::<T, E>(cache_topology::L1D_PER_THREAD)
+}
+
+/// Computes submatrix shape `(rows, cols)` that optimally uses the L1 cache.
+const fn submatrix<T, E>(l1: usize) -> (usize, usize) {
+    let t = size_of::<T>();
+    let e = size_of::<E>();
+    assert!(t != 0);
+    assert!(e != 0);
+    assert!(e % t == 0);
+
+    let elem_per_line = match cache_topology::CACHE_LINE / t {
+        0 => 1,
+        elem => elem,
+    };
+    let rows = POINT_LINES * elem_per_line;
+    let point_bytes = 2 * rows * t;
+
+    let usable = l1.saturating_mul(4) / 5;
+    let col_bytes = usable.saturating_sub(point_bytes);
+    let cols = match col_bytes / e {
+        0 => 1,
+        elems => elems,
+    };
+
+    (rows, cols)
+}
 
 /// Superposition strategy for computing the sum of many functions at many
 /// points.
@@ -38,18 +85,20 @@ const TASKS_PER_THREAD: usize = 4;
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Default)]
 pub enum Strategy {
     /// Uses a heuristic to pick the best computation order.
+    ///
+    /// This option should be used unless you have found a reason not to.
     #[default]
     Auto,
     /// Computes the rows of `M` one by one and performs pairwise reduction to
     /// get `y`.
     FunctionsOuter,
-    /// Computes `y` in chunks of subrows of `M`.
+    /// Computes `y` in chunks of subcolumns of `M`.
     ///
     /// Multiplies `M` by vectors filled with `k` consecutive multiplicative
     /// identities and otherwise only zeros.
     ///
     /// This approach pays off when the function parameters fully fit into the
-    /// L1 cache alongside the subrows.
+    /// L1 cache alongside the subcolumns.
     Subvectors {
         /// Number of points to process in each chunk.
         p: usize,
@@ -65,16 +114,20 @@ pub enum Strategy {
 
 impl Strategy {
     /// Resolve to `(rows, cols)`.
-    ///
-    /// `n` is the number of points and `m` is the number of functions.
-    fn resolve(self, n: usize, m: usize) -> (usize, usize) {
-        match self {
+    fn resolve<T, E>(self, functions: &[E], at: &[T], parallel: bool) -> (usize, usize) {
+        let (n, m) = (at.len(), functions.len());
+        let (rows, cols) = match self {
             // current best from benchmarks
-            Strategy::Auto => (256.min(n), 2048.min(m)),
-            Strategy::FunctionsOuter => (n.max(1), m.max(1)),
-            Strategy::Subvectors { p } => (p.min(n).max(1), m.max(1)),
-            Strategy::Submatrices { p, f } => (p.min(n).max(1), f.min(m).max(1)),
-        }
+            Strategy::Auto => match parallel {
+                false => serial_submatrix::<T, E>(),
+                true => parallel_submatrix::<T, E>(),
+            },
+            Strategy::FunctionsOuter => (n, m),
+            Strategy::Subvectors { p } => (p, m),
+            Strategy::Submatrices { p, f } => (p, f),
+        };
+
+        (rows.min(n).max(1), cols.min(m).max(1))
     }
 }
 
@@ -95,7 +148,7 @@ where
     E: Evaluate<T>,
 {
     fn superposition_with(&self, at: &[T], strategy: Strategy) -> Vec<T> {
-        let (rows, cols) = strategy.resolve(at.len(), self.len());
+        let (rows, cols) = strategy.resolve::<T, E>(self, at, false);
 
         schedule_to_owned(self, at, rows, cols)
     }
@@ -121,14 +174,15 @@ where
     E: Evaluate<T> + Sync,
 {
     fn par_superposition_with(&self, at: &[T], strategy: Strategy) -> Vec<T> {
-        let (rows, cols) = strategy.resolve(at.len(), self.len());
+        let parallel = working_set(self, at) >= PAR_THRESHOLD;
+        let (rows, cols) = strategy.resolve::<T, E>(self, at, parallel);
 
-        if self.len().saturating_mul(at.len()) < PAR_THRESHOLD {
+        if !parallel {
             return schedule_to_owned(self, at, rows, cols);
         }
 
         let mut out = vec![T::zero(); at.len()];
-        let task_size = task_size(at.len(), rows);
+        let task_size = task_size::<T>(at.len(), rows);
         out.par_chunks_mut(task_size)
             .zip(at.par_chunks(task_size))
             .for_each(|(out, at)| schedule(self, at, out, rows, cols));
@@ -189,7 +243,7 @@ where
     E: EvaluateParts<T>,
 {
     fn fused_superposition_with(&self, at: &[T], strategy: Strategy, width: FuseWidth) -> Vec<T> {
-        let (rows, cols) = strategy.resolve(at.len(), self.len());
+        let (rows, cols) = strategy.resolve::<T, E>(self, at, false);
 
         match width.resolve(self, at) {
             FuseWidth::Eight => schedule_fused_to_owned::<T, E, 8>(self, at, rows, cols),
@@ -230,10 +284,12 @@ where
         strategy: Strategy,
         width: FuseWidth,
     ) -> Vec<T> {
-        let (rows, cols) = strategy.resolve(at.len(), self.len());
+        let width = width.resolve(self, at);
+        let parallel = working_set(self, at) >= PAR_THRESHOLD;
+        let (rows, cols) = strategy.resolve::<T, E>(self, at, parallel);
 
-        if self.len().saturating_mul(at.len()) < PAR_THRESHOLD {
-            return match width.resolve(self, at) {
+        if !parallel {
+            return match width {
                 FuseWidth::Eight => schedule_fused_to_owned::<T, E, 8>(self, at, rows, cols),
                 FuseWidth::Four => schedule_fused_to_owned::<T, E, 4>(self, at, rows, cols),
                 FuseWidth::Two => schedule_fused_to_owned::<T, E, 2>(self, at, rows, cols),
@@ -242,11 +298,11 @@ where
         }
 
         let mut out = vec![T::zero(); at.len()];
-        let task_size = task_size(at.len(), rows);
+        let task_size = task_size::<T>(at.len(), rows);
         let iter = out
             .par_chunks_mut(task_size)
             .zip(at.par_chunks(task_size));
-        match width.resolve(self, at) {
+        match width {
             FuseWidth::Eight => {
                 iter.for_each(|(out, at)| schedule_fused::<T, E, 8>(self, at, out, rows, cols))
             }
@@ -418,12 +474,28 @@ fn schedule_fused<T, E, const K: usize>(
     }
 }
 
+/// Computes the size of the working set.
+#[cfg(feature = "rayon")]
+fn working_set<T, E>(functions: &[E], at: &[T]) -> usize {
+    let t_2 = 2 * size_of::<T>();
+    let e = size_of::<E>();
+    let functions_bytes = e.saturating_mul(functions.len());
+    let points_bytes = t_2.saturating_mul(at.len());
+
+    functions_bytes.saturating_add(points_bytes)
+}
+
 /// Computes the task size depending on the number of points and columns of the
 /// resolved strategy.
 #[cfg(feature = "rayon")]
-fn task_size(points: usize, rows: usize) -> usize {
+fn task_size<T>(points: usize, rows: usize) -> usize {
+    let l2_cap = (cache_topology::L2_PER_THREAD / (2 * size_of::<T>())).max(1);
+
     let threads = rayon::current_num_threads().max(1);
-    let target = points.div_ceil(threads * TASKS_PER_THREAD).max(1);
+    let target = points
+        .div_ceil(threads * TASKS_PER_THREAD)
+        .max(1)
+        .min(l2_cap);
 
     if target <= rows {
         target
