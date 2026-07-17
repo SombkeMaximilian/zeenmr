@@ -16,6 +16,7 @@ pub trait Exp2: Float {
 }
 
 #[rustfmt::skip]
+mod __comment {
 // Sollya script:
 //
 //prec = 1000!;
@@ -92,6 +93,7 @@ pub trait Exp2: Float {
 //    print("),");
 //};
 //print("];");
+}
 
 impl Exp2 for f32 {
     #[inline(always)]
