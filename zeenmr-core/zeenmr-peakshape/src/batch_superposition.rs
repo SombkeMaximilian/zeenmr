@@ -351,8 +351,8 @@ impl FuseWidth {
 
     /// Resolves `PickBest` against the data and returns self otherwise.
     ///
-    /// Largest `K ∈ {16, 8, 4, 2}` for which the fused kernel cannot overflow
-    /// or underflow on this data. Returns 1 if no fusion is safe.
+    /// Largest `K ∈ {8, 4, 2}` for which the fused kernel cannot overflow or
+    /// underflow on this data. Returns 1 if no fusion is safe.
     ///
     /// Never returns `PickBest`.
     fn resolve<T, E>(self, functions: &[E], at: &[T]) -> FuseWidth
