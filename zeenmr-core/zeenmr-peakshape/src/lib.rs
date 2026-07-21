@@ -5,23 +5,20 @@
 
 pub mod approximations;
 
+pub mod batch_superposition;
+
 mod peak_shape;
 pub use peak_shape::{FromArray, PeakShape};
 
 mod evaluate;
 pub use evaluate::{Evaluate, EvaluateParts};
 
-mod batch_superposition;
-pub use batch_superposition::{BatchSuperposition, FuseWidth, FusedBatchSuperposition, Strategy};
-#[cfg(feature = "rayon")]
-pub use batch_superposition::{ParBatchSuperposition, ParFusedBatchSuperposition};
-
 pub mod iter {
     //! Iterator adapter traits for peak shapes.
 
-    pub use crate::evaluate::{EvaluateMap, FusedSuperposition, Superposition};
+    pub use crate::evaluate::EvaluateMap;
     #[cfg(feature = "rayon")]
-    pub use crate::evaluate::{ParEvaluateMap, ParSuperposition};
+    pub use crate::evaluate::ParEvaluateMap;
 }
 
 mod lorentzian;

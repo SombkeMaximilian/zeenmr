@@ -5,7 +5,8 @@ use crate::peak_finding::Find;
 use crate::smoothing::Smooth;
 use num_traits::Float;
 use std::ops::Range;
-use zeenmr_peakshape::{BatchSuperposition, PeakShape};
+use zeenmr_peakshape::PeakShape;
+use zeenmr_peakshape::batch_superposition::{Standard, SuperpositionKernel};
 use zeenmr_spectrum::Spectrum1D;
 use zeenmr_spectrum::frequency_axis::range::{FiniteBounds, ShiftRange};
 use zeenmr_spectrum::intensity_array::Storage;
@@ -14,6 +15,9 @@ use zeenmr_spectrum::intensity_array::Storage;
 use crate::fitting::ParFit;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
+
+/// Temporary way to make the new API work.
+const SUPERPOSITION: Standard = Standard::new();
 
 /// Trait for deconvoluting a spectrum into its constituent signals.
 ///
@@ -431,7 +435,7 @@ where
                 .skip(start)
                 .take(end - start)
                 .collect::<Vec<T>>();
-            let superposition = peak_shapes.superposition(&shifts);
+            let superposition = SUPERPOSITION.superposition(peak_shapes, &shifts);
 
             let residual = superposition
                 .iter()

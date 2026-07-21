@@ -1,3 +1,22 @@
+//! Superposition kernels for large data.
+//!
+//! # Formulation
+//!
+//! Let `x` be the `n`-dimensional vector of points to compute the superposition
+//! at, and `f₁, …, fₘ` be the functions. Further, let `M` be the `n x m` matrix
+//! of function evaluations:
+//!
+//! ```text
+//! Mᵢⱼ = fⱼ(xᵢ)
+//! ```
+//!
+//! The evaluation of the superposition is then `y = M 1` where `1` is the
+//! column vector filled with the multiplicative identity:
+//!
+//! ```text
+//! yᵢ = F(xᵢ) = f₁(xᵢ) + f₂(xᵢ) + ... + fₘ(xᵢ)
+//! ```
+
 use crate::iter::EvaluateMap;
 use crate::util::fuse_fold;
 use crate::{Evaluate, EvaluateParts};
@@ -25,6 +44,455 @@ const PAR_THRESHOLD: usize = 2_usize * cache_topology::L1D;
 /// Used to divide the points array into work chunks.
 #[cfg(feature = "rayon")]
 const TASKS_PER_THREAD: usize = 4;
+
+/// Superposition implementation.
+pub trait SuperpositionKernel<T, E> {
+    /// Accumulates the superposition.
+    ///
+    /// Only the first `min(at.len(), acc.len())` points are computed. If the
+    /// lengths differ the result is a partial superposition. Callers are
+    /// responsible for matching them.
+    fn accumulate(&self, functions: &[E], at: &[T], acc: &mut [T]);
+
+    /// Computes the superposition and returns it as an owned `Vec<T>`.
+    ///
+    /// # Note for Implementors
+    ///
+    /// This method should almost always use the provided implementation,
+    /// unless there is a provably more efficient version.
+    fn superposition(&self, functions: &[E], at: &[T]) -> Vec<T>
+    where
+        T: Copy + Zero,
+    {
+        let mut acc = vec![T::zero(); at.len()];
+        self.accumulate(functions, at, &mut acc);
+
+        acc
+    }
+}
+
+impl<T, E, K> SuperpositionKernel<T, E> for &K
+where
+    K: SuperpositionKernel<T, E> + ?Sized,
+{
+    fn accumulate(&self, functions: &[E], at: &[T], acc: &mut [T]) {
+        (**self).accumulate(functions, at, acc);
+    }
+
+    fn superposition(&self, functions: &[E], at: &[T]) -> Vec<T>
+    where
+        T: Copy + Zero,
+    {
+        (**self).superposition(functions, at)
+    }
+}
+
+impl<T, E, K> SuperpositionKernel<T, E> for &mut K
+where
+    K: SuperpositionKernel<T, E> + ?Sized,
+{
+    fn accumulate(&self, functions: &[E], at: &[T], acc: &mut [T]) {
+        (**self).accumulate(functions, at, acc);
+    }
+
+    fn superposition(&self, functions: &[E], at: &[T]) -> Vec<T>
+    where
+        T: Copy + Zero,
+    {
+        (**self).superposition(functions, at)
+    }
+}
+
+/// Parallel superposition implementation.
+#[cfg(feature = "rayon")]
+pub trait ParSuperpositionKernel<T, E> {
+    /// Accumulates the superposition in parallel.
+    ///
+    /// Only the first `min(at.len(), acc.len())` points are computed. If the
+    /// lengths differ the result is a partial superposition. Callers are
+    /// responsible for matching them.
+    fn par_accumulate(&self, functions: &[E], at: &[T], acc: &mut [T]);
+
+    /// Computes the superposition in parallel and returns it as an owned
+    /// `Vec<T>`.
+    ///
+    /// # Note for Implementors
+    ///
+    /// This method should almost always use the provided implementation,
+    /// unless there is a provably more efficient version.
+    fn par_superposition(&self, functions: &[E], at: &[T]) -> Vec<T>
+    where
+        T: Copy + Zero,
+    {
+        let mut acc = vec![T::zero(); at.len()];
+        self.par_accumulate(functions, at, &mut acc);
+
+        acc
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl<T, E, K> ParSuperpositionKernel<T, E> for &K
+where
+    K: ParSuperpositionKernel<T, E> + ?Sized,
+{
+    fn par_accumulate(&self, functions: &[E], at: &[T], acc: &mut [T]) {
+        (**self).par_accumulate(functions, at, acc);
+    }
+
+    fn par_superposition(&self, functions: &[E], at: &[T]) -> Vec<T>
+    where
+        T: Copy + Zero,
+    {
+        (**self).par_superposition(functions, at)
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl<T, E, K> ParSuperpositionKernel<T, E> for &mut K
+where
+    K: ParSuperpositionKernel<T, E> + ?Sized,
+{
+    fn par_accumulate(&self, functions: &[E], at: &[T], acc: &mut [T]) {
+        (**self).par_accumulate(functions, at, acc);
+    }
+
+    fn par_superposition(&self, functions: &[E], at: &[T]) -> Vec<T>
+    where
+        T: Copy + Zero,
+    {
+        (**self).par_superposition(functions, at)
+    }
+}
+
+/// Superposition strategy for computing the sum of many functions at many
+/// points.
+#[non_exhaustive]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Default)]
+pub enum Strategy {
+    /// Uses a heuristic to pick the best computation order.
+    ///
+    /// This option should be used unless you have found a reason not to.
+    #[default]
+    Auto,
+    /// Computes `y` by processing the columns of `M` one by one.
+    FunctionsOuter,
+    /// Computes `y` in chunks of subcolumns of `M`.
+    Subvectors {
+        /// Number of points to process in each chunk.
+        p: usize,
+    },
+    /// Computes `y` in chunks of submatrices of `M`.
+    Submatrices {
+        /// Number of points to process in each chunk.
+        p: usize,
+        /// Number of functions to process in each chunk.
+        f: usize,
+    },
+}
+
+impl Strategy {
+    /// Resolve to `(rows, cols)`.
+    fn resolve<T, E>(self, functions: &[E], at: &[T], parallel: bool) -> (usize, usize) {
+        let (n, m) = (at.len(), functions.len());
+        let (rows, cols) = match self {
+            // current best from benchmarks
+            Strategy::Auto => match parallel {
+                false => serial_submatrix::<T, E>(),
+                true => parallel_submatrix::<T, E>(),
+            },
+            Strategy::FunctionsOuter => (n, m),
+            Strategy::Subvectors { p } => (p, m),
+            Strategy::Submatrices { p, f } => (p, f),
+        };
+
+        (rows.min(n).max(1), cols.min(m).max(1))
+    }
+}
+
+/// Standard formulation of the superposition problem.
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Default)]
+pub struct Standard {
+    /// Scheduling strategy used for computing the superposition.
+    strategy: Strategy,
+}
+
+impl<T, E> SuperpositionKernel<T, E> for Standard
+where
+    T: Copy + Zero,
+    E: Evaluate<T>,
+{
+    fn accumulate(&self, functions: &[E], at: &[T], acc: &mut [T]) {
+        let (rows, cols) = self.strategy.resolve(functions, at, false);
+        schedule(functions, at, acc, rows, cols);
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl<T, E> ParSuperpositionKernel<T, E> for Standard
+where
+    T: Copy + Send + Sync + Zero,
+    E: Evaluate<T> + Sync,
+{
+    fn par_accumulate(&self, functions: &[E], at: &[T], acc: &mut [T]) {
+        let parallel = working_set(functions, at) >= PAR_THRESHOLD;
+        let (rows, cols) = self.strategy.resolve(functions, at, parallel);
+        if !parallel {
+            schedule(functions, at, acc, rows, cols);
+        } else {
+            let task_size = task_size::<T>(at.len(), rows);
+            acc.par_chunks_mut(task_size)
+                .zip(at.par_chunks(task_size))
+                .for_each(|(acc, at)| schedule(functions, at, acc, rows, cols))
+        }
+    }
+}
+
+impl Standard {
+    /// Creates a new `Standard` superposition kernel.
+    pub const fn new() -> Self {
+        Self {
+            strategy: Strategy::Auto,
+        }
+    }
+
+    /// Sets the scheduling strategy.
+    pub const fn with_strategy(self, strategy: Strategy) -> Self {
+        Self { strategy }
+    }
+}
+
+/// Number of evaluations to fuse.
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Default)]
+#[non_exhaustive]
+#[repr(u8)]
+pub enum FuseWidth {
+    /// Automatically picks the highest width that carries no risk of over- or
+    /// underflow.
+    #[default]
+    PickBest = 0,
+    /// No fusing, equivalent to regular evaluation.
+    One = 1,
+    /// Fuses two evaluations.
+    Two = 2,
+    /// Fuses four evaluations.
+    Four = 4,
+    /// Fuses eight evaluations.
+    Eight = 8,
+}
+
+impl FuseWidth {
+    /// Returns the scheduling function for the fuse width.
+    fn resolve<T, E>(self, functions: &[E], at: &[T]) -> fn(&[E], &[T], &mut [T], usize, usize)
+    where
+        T: Float,
+        E: EvaluateParts<T>,
+    {
+        if functions.is_empty() || at.is_empty() {
+            return schedule::<T, E>;
+        }
+        let width = match self {
+            FuseWidth::PickBest => Self::pick_best(functions, at),
+            _ => self,
+        };
+
+        match width {
+            FuseWidth::Eight => schedule_fused::<T, E, 8>,
+            FuseWidth::Four => schedule_fused::<T, E, 4>,
+            FuseWidth::Two => schedule_fused::<T, E, 2>,
+            _ => schedule::<T, E>,
+        }
+    }
+
+    /// Checks against the data and returns the optimal, safe fuse width.
+    ///
+    /// Largest `K ∈ {8, 4, 2}` for which the fused kernel cannot overflow or
+    /// underflow on this data. Returns `1` if no fusion is safe.
+    fn pick_best<T, E>(functions: &[E], at: &[T]) -> Self
+    where
+        T: Float,
+        E: EvaluateParts<T>,
+    {
+        let (lo, hi) = at
+            .iter()
+            .fold((T::infinity(), T::neg_infinity()), |(lo, hi), &x| {
+                (lo.min(x), hi.max(x))
+            });
+        let (d_min, d_max, n_max) = functions.iter().fold(
+            (T::infinity(), T::neg_infinity(), T::zero()),
+            |(d_min, d_max, n_max), f| {
+                let (d_lo, d_hi) = f.den_bounds(lo, hi);
+                let (_, n_hi) = f.num_bounds(lo, hi);
+
+                (d_min.min(d_lo), d_max.max(d_hi), n_max.max(n_hi))
+            },
+        );
+        let widest_safe = [FuseWidth::Eight, FuseWidth::Four, FuseWidth::Two]
+            .into_iter()
+            .find(|&k| k.is_safe((d_min, d_max), n_max))
+            .unwrap_or(FuseWidth::One);
+
+        match size_of::<T>() {
+            // override for f32 from benchmark
+            4 if widest_safe as u8 >= 4 => FuseWidth::Four,
+            // override for f64 from benchmark
+            8 if widest_safe as u8 >= 8 => FuseWidth::Eight,
+            _ => widest_safe,
+        }
+    }
+
+    /// Returns `true` if this fuse width does not cause over- or underflow.
+    fn is_safe<T>(self, (d_min, d_max): (T, T), n_max: T) -> bool
+    where
+        T: Float,
+    {
+        let k = if let Self::PickBest = self {
+            return false;
+        } else {
+            self as i32
+        };
+
+        let margin = T::from(1e3_f64).expect("conversion from f64 to T must never fail");
+        let max = T::max_value() / margin;
+        let min = T::min_positive_value() * margin;
+        let k_as_t = T::from(k).expect("conversion from i32 to T must never fail");
+
+        // fused denominator multiplies K such values, which can overflow
+        d_max.powi(k) < max
+            // or underflow
+            && d_min.powi(k) > min
+            // numerator sums K mixed products with K terms each
+            && k_as_t * n_max * d_max.powi(k - 1) < max
+    }
+}
+
+/// Fused formulation of the superposition problem.
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Default)]
+pub struct Fused {
+    /// Scheduling strategy used for computing the superposition.
+    strategy: Strategy,
+    /// Number of evaluations to fuse.
+    width: FuseWidth,
+}
+
+impl<T, E> SuperpositionKernel<T, E> for Fused
+where
+    T: Float,
+    E: EvaluateParts<T>,
+{
+    fn accumulate(&self, functions: &[E], at: &[T], acc: &mut [T]) {
+        let (rows, cols) = self.strategy.resolve(functions, at, false);
+        self.width.resolve(functions, at)(functions, at, acc, rows, cols);
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl<T, E> ParSuperpositionKernel<T, E> for Fused
+where
+    T: Float + Send + Sync,
+    E: EvaluateParts<T> + Sync,
+{
+    fn par_accumulate(&self, functions: &[E], at: &[T], acc: &mut [T]) {
+        let parallel = working_set(functions, at) >= PAR_THRESHOLD;
+        let (rows, cols) = self.strategy.resolve(functions, at, parallel);
+        let resolved_schedule = self.width.resolve(functions, at);
+        if !parallel {
+            resolved_schedule(functions, at, acc, rows, cols);
+        } else {
+            let task_size = task_size::<T>(at.len(), rows);
+            acc.par_chunks_mut(task_size)
+                .zip(at.par_chunks(task_size))
+                .for_each(|(acc, at)| resolved_schedule(functions, at, acc, rows, cols));
+        }
+    }
+}
+
+impl Fused {
+    /// Creates a new `Fused` superposition kernel.
+    pub const fn new() -> Self {
+        Self {
+            strategy: Strategy::Auto,
+            width: FuseWidth::PickBest,
+        }
+    }
+
+    /// Sets the scheduling strategy.
+    pub const fn with_strategy(self, strategy: Strategy) -> Self {
+        Self {
+            strategy,
+            width: self.width,
+        }
+    }
+
+    /// Sets the fuse width.
+    pub const fn with_width(self, width: FuseWidth) -> Self {
+        Self {
+            width,
+            strategy: self.strategy,
+        }
+    }
+}
+
+/// Schedules the superposition into (row, col) chunks of `M`, writing it into
+/// `acc`.
+fn schedule<T, E>(functions: &[E], at: &[T], acc: &mut [T], rows: usize, cols: usize)
+where
+    T: Copy + Zero,
+    E: Evaluate<T>,
+{
+    for f_chunk in functions.chunks(cols) {
+        for (at_c, acc_c) in at.chunks(rows).zip(acc.chunks_mut(rows)) {
+            for f in f_chunk {
+                for (a, eval) in acc_c
+                    .iter_mut()
+                    .zip(at_c.iter().copied().evaluate(f))
+                {
+                    *a = *a + eval;
+                }
+            }
+        }
+    }
+}
+
+/// [`schedule`] with fused evaluations of width `K`.
+fn schedule_fused<T, E, const K: usize>(
+    functions: &[E],
+    at: &[T],
+    acc: &mut [T],
+    rows: usize,
+    cols: usize,
+) where
+    T: Float,
+    E: EvaluateParts<T>,
+{
+    // round up to nearest multiple of K. this might overflow if cols is near
+    // usize::MAX but at that point something went wrong already anyway
+    debug_assert!(K.is_power_of_two());
+    debug_assert!(cols.checked_add(K).is_some());
+    let cols = (cols + K - 1) & !(K - 1);
+
+    for f_chunk in functions.chunks(cols) {
+        for (at_c, acc_c) in at.chunks(rows).zip(acc.chunks_mut(rows)) {
+            let mut fuse_groups = f_chunk.chunks_exact(K);
+            for f_group in &mut fuse_groups {
+                let f_group: &[E; K] = f_group.try_into().expect("chunks_exact yields K");
+                for (a, &x) in acc_c.iter_mut().zip(at_c) {
+                    let (num, den) =
+                        fuse_fold::<T, K>(std::array::from_fn(|i| f_group[i].parts(x)));
+                    *a = *a + num / den;
+                }
+            }
+            for f in fuse_groups.remainder() {
+                for (a, eval) in acc_c
+                    .iter_mut()
+                    .zip(at_c.iter().copied().evaluate(f))
+                {
+                    *a = *a + eval;
+                }
+            }
+        }
+    }
+}
 
 /// Uses the cache topology to determine the optimal submatrix shape
 /// `(rows, cols)`.
@@ -63,420 +531,9 @@ const fn submatrix<T, E>(l1: usize) -> (usize, usize) {
     (rows, cols)
 }
 
-/// Superposition strategy for computing the sum of many functions at many
-/// points.
-///
-/// # Formulation
-///
-/// Let `x` be the `n`-dimensional vector of points to compute the superposition
-/// at, and `f₁, …, fₘ` be the functions. Further, let `M` be the `n x m` matrix
-/// of function evaluations:
-///
-/// ```text
-/// Mᵢⱼ = fⱼ(xᵢ)
-/// ```
-///
-/// The evaluation of the superposition is then `y = M 1` where `1` is the
-/// column vector filled with the multiplicative identity:
-///
-/// ```text
-/// yᵢ = F(xᵢ) = f₁(xᵢ) + f₂(xᵢ) + ... + fₘ(xᵢ)
-/// ```
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Default)]
-pub enum Strategy {
-    /// Uses a heuristic to pick the best computation order.
-    ///
-    /// This option should be used unless you have found a reason not to.
-    #[default]
-    Auto,
-    /// Computes the rows of `M` one by one and performs pairwise reduction to
-    /// get `y`.
-    FunctionsOuter,
-    /// Computes `y` in chunks of subcolumns of `M`.
-    ///
-    /// Multiplies `M` by vectors filled with `k` consecutive multiplicative
-    /// identities and otherwise only zeros.
-    ///
-    /// This approach pays off when the function parameters fully fit into the
-    /// L1 cache alongside the subcolumns.
-    Subvectors {
-        /// Number of points to process in each chunk.
-        p: usize,
-    },
-    /// Computes `y` in chunks of submatrices of `M`.
-    Submatrices {
-        /// Number of points to process in each chunk.
-        p: usize,
-        /// Number of functions to process in each chunk.
-        f: usize,
-    },
-}
-
-impl Strategy {
-    /// Resolve to `(rows, cols)`.
-    fn resolve<T, E>(self, functions: &[E], at: &[T], parallel: bool) -> (usize, usize) {
-        let (n, m) = (at.len(), functions.len());
-        let (rows, cols) = match self {
-            // current best from benchmarks
-            Strategy::Auto => match parallel {
-                false => serial_submatrix::<T, E>(),
-                true => parallel_submatrix::<T, E>(),
-            },
-            Strategy::FunctionsOuter => (n, m),
-            Strategy::Subvectors { p } => (p, m),
-            Strategy::Submatrices { p, f } => (p, f),
-        };
-
-        (rows.min(n).max(1), cols.min(m).max(1))
-    }
-}
-
-/// A collection of functions that can be superposed over a grid of points.
-pub trait BatchSuperposition<T> {
-    /// Performs superposition with the given strategy.
-    fn superposition_with(&self, at: &[T], strategy: Strategy) -> Vec<T>;
-
-    /// F(x) = (f₁(x₁) + … + fₘ(x₁), ..., f₁(xₙ) + … + fₘ(xₙ)).
-    fn superposition(&self, at: &[T]) -> Vec<T> {
-        self.superposition_with(at, Strategy::Auto)
-    }
-}
-
-impl<T, E> BatchSuperposition<T> for [E]
-where
-    T: Copy + Zero,
-    E: Evaluate<T>,
-{
-    fn superposition_with(&self, at: &[T], strategy: Strategy) -> Vec<T> {
-        let (rows, cols) = strategy.resolve::<T, E>(self, at, false);
-
-        schedule_to_owned(self, at, rows, cols)
-    }
-}
-
-/// A collection of functions that can be superposed over a grid of points in
-/// parallel.
-#[cfg(feature = "rayon")]
-pub trait ParBatchSuperposition<T> {
-    /// Performs superposition with the given strategy.
-    fn par_superposition_with(&self, at: &[T], strategy: Strategy) -> Vec<T>;
-
-    /// F(x) = (f₁(x₁) + … + fₘ(x₁), ..., f₁(xₙ) + … + fₘ(xₙ)).
-    fn par_superposition(&self, at: &[T]) -> Vec<T> {
-        self.par_superposition_with(at, Strategy::Auto)
-    }
-}
-
-#[cfg(feature = "rayon")]
-impl<T, E> ParBatchSuperposition<T> for [E]
-where
-    T: Copy + Zero + Send + Sync,
-    E: Evaluate<T> + Sync,
-{
-    fn par_superposition_with(&self, at: &[T], strategy: Strategy) -> Vec<T> {
-        let parallel = working_set(self, at) >= PAR_THRESHOLD;
-        let (rows, cols) = strategy.resolve::<T, E>(self, at, parallel);
-
-        if !parallel {
-            return schedule_to_owned(self, at, rows, cols);
-        }
-
-        let mut out = vec![T::zero(); at.len()];
-        let task_size = task_size::<T>(at.len(), rows);
-        out.par_chunks_mut(task_size)
-            .zip(at.par_chunks(task_size))
-            .for_each(|(out, at)| schedule(self, at, out, rows, cols));
-
-        out
-    }
-}
-
-/// Schedules the superposition into (row, col) chunks of `M` and returns it as
-/// an owned `Vec<T>`.
-fn schedule_to_owned<T, E>(functions: &[E], at: &[T], rows: usize, cols: usize) -> Vec<T>
-where
-    T: Copy + Zero,
-    E: Evaluate<T>,
-{
-    let mut out = vec![T::zero(); at.len()];
-    schedule(functions, at, &mut out, rows, cols);
-
-    out
-}
-
-/// Schedules the superposition into (row, col) chunks of `M`, writing it into
-/// `out`.
-fn schedule<T, E>(functions: &[E], at: &[T], dest: &mut [T], rows: usize, cols: usize)
-where
-    T: Copy + Zero,
-    E: Evaluate<T>,
-{
-    for f_chunk in functions.chunks(cols) {
-        for (at_chunk, dest_chunk) in at.chunks(rows).zip(dest.chunks_mut(rows)) {
-            for f in f_chunk {
-                for (d, eval) in dest_chunk
-                    .iter_mut()
-                    .zip(at_chunk.iter().copied().evaluate(f))
-                {
-                    *d = *d + eval;
-                }
-            }
-        }
-    }
-}
-
-/// A collection of functions that can be superposed over a grid of points using
-/// a fusion transformation.
-pub trait FusedBatchSuperposition<T> {
-    /// Performs the fused superposition.
-    fn fused_superposition_with(&self, at: &[T], strategy: Strategy, width: FuseWidth) -> Vec<T>;
-
-    /// F(x) = (f₁(x₁) + … + fₘ(x₁), ..., f₁(xₙ) + … + fₘ(xₙ)).
-    fn fused_superposition(&self, at: &[T]) -> Vec<T> {
-        self.fused_superposition_with(at, Strategy::Auto, FuseWidth::PickBest)
-    }
-}
-
-impl<T, E> FusedBatchSuperposition<T> for [E]
-where
-    T: Float,
-    E: EvaluateParts<T>,
-{
-    fn fused_superposition_with(&self, at: &[T], strategy: Strategy, width: FuseWidth) -> Vec<T> {
-        let (rows, cols) = strategy.resolve::<T, E>(self, at, false);
-
-        match width.resolve(self, at) {
-            FuseWidth::Eight => schedule_fused_to_owned::<T, E, 8>(self, at, rows, cols),
-            FuseWidth::Four => schedule_fused_to_owned::<T, E, 4>(self, at, rows, cols),
-            FuseWidth::Two => schedule_fused_to_owned::<T, E, 2>(self, at, rows, cols),
-            _ => schedule_to_owned(self, at, rows, cols),
-        }
-    }
-}
-
-/// A collection of functions that can be superposed over a grid of points using
-/// a fusion transformation in parallel.
-#[cfg(feature = "rayon")]
-pub trait ParFusedBatchSuperposition<T> {
-    /// Performs the fused superposition in parallel.
-    fn par_fused_superposition_with(
-        &self,
-        at: &[T],
-        strategy: Strategy,
-        width: FuseWidth,
-    ) -> Vec<T>;
-
-    /// F(x) = (f₁(x₁) + … + fₘ(x₁), ..., f₁(xₙ) + … + fₘ(xₙ)).
-    fn par_fused_superposition(&self, at: &[T]) -> Vec<T> {
-        self.par_fused_superposition_with(at, Strategy::Auto, FuseWidth::PickBest)
-    }
-}
-
-#[cfg(feature = "rayon")]
-impl<T, E> ParFusedBatchSuperposition<T> for [E]
-where
-    T: Float + Send + Sync,
-    E: EvaluateParts<T> + Sync,
-{
-    fn par_fused_superposition_with(
-        &self,
-        at: &[T],
-        strategy: Strategy,
-        width: FuseWidth,
-    ) -> Vec<T> {
-        let width = width.resolve(self, at);
-        let parallel = working_set(self, at) >= PAR_THRESHOLD;
-        let (rows, cols) = strategy.resolve::<T, E>(self, at, parallel);
-
-        if !parallel {
-            return match width {
-                FuseWidth::Eight => schedule_fused_to_owned::<T, E, 8>(self, at, rows, cols),
-                FuseWidth::Four => schedule_fused_to_owned::<T, E, 4>(self, at, rows, cols),
-                FuseWidth::Two => schedule_fused_to_owned::<T, E, 2>(self, at, rows, cols),
-                _ => schedule_to_owned(self, at, rows, cols),
-            };
-        }
-
-        let mut out = vec![T::zero(); at.len()];
-        let task_size = task_size::<T>(at.len(), rows);
-        let iter = out
-            .par_chunks_mut(task_size)
-            .zip(at.par_chunks(task_size));
-        match width {
-            FuseWidth::Eight => {
-                iter.for_each(|(out, at)| schedule_fused::<T, E, 8>(self, at, out, rows, cols))
-            }
-            FuseWidth::Four => {
-                iter.for_each(|(out, at)| schedule_fused::<T, E, 4>(self, at, out, rows, cols))
-            }
-            FuseWidth::Two => {
-                iter.for_each(|(out, at)| schedule_fused::<T, E, 2>(self, at, out, rows, cols))
-            }
-            _ => iter.for_each(|(out, at)| schedule(self, at, out, rows, cols)),
-        }
-
-        out
-    }
-}
-
-/// Number of evaluations to fuse.
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Default)]
-#[repr(u8)]
-pub enum FuseWidth {
-    /// Automatically picks the highest width that carries no risk of over- or
-    /// underflow.
-    #[default]
-    PickBest = 0,
-    /// No fusing, equivalent to regular evaluation.
-    One = 1,
-    /// Fuses two evaluations.
-    Two = 2,
-    /// Fuses four evaluations.
-    Four = 4,
-    /// Fuses eight evaluations.
-    Eight = 8,
-}
-
-impl FuseWidth {
-    /// Returns an iterator over the variants that are not `PickBest`.
-    pub fn iter() -> impl DoubleEndedIterator<Item = FuseWidth> {
-        [
-            FuseWidth::One,
-            FuseWidth::Two,
-            FuseWidth::Four,
-            FuseWidth::Eight,
-        ]
-        .into_iter()
-    }
-
-    /// Resolves `PickBest` against the data and returns self otherwise.
-    ///
-    /// Largest `K ∈ {8, 4, 2}` for which the fused kernel cannot overflow or
-    /// underflow on this data. Returns 1 if no fusion is safe.
-    ///
-    /// Never returns `PickBest`.
-    fn resolve<T, E>(self, functions: &[E], at: &[T]) -> FuseWidth
-    where
-        T: Float,
-        E: EvaluateParts<T>,
-    {
-        if functions.is_empty() || at.is_empty() {
-            return FuseWidth::One;
-        }
-
-        match self {
-            FuseWidth::PickBest => {
-                let (lo, hi) = at
-                    .iter()
-                    .fold((T::infinity(), T::neg_infinity()), |(lo, hi), &x| {
-                        (lo.min(x), hi.max(x))
-                    });
-                let (d_min, d_max, n_max) = functions.iter().fold(
-                    (T::infinity(), T::neg_infinity(), T::zero()),
-                    |(d_min, d_max, n_max), f| {
-                        let (d_lo, d_hi) = f.den_bounds(lo, hi);
-                        let (_, n_hi) = f.num_bounds(lo, hi);
-
-                        (d_min.min(d_lo), d_max.max(d_hi), n_max.max(n_hi))
-                    },
-                );
-                let widest_safe = FuseWidth::iter()
-                    .rev()
-                    .find(|&k| k.is_safe((d_min, d_max), n_max))
-                    .unwrap_or(FuseWidth::One);
-
-                match size_of::<T>() {
-                    // override for f32 from benchmark
-                    4 if widest_safe as u32 >= 4 => FuseWidth::Four,
-                    // override for f64 from benchmark
-                    8 if widest_safe as u32 >= 8 => FuseWidth::Eight,
-                    _ => widest_safe,
-                }
-            }
-            _ => self,
-        }
-    }
-
-    /// Returns `true` if this fuse width does not cause over- or underflow.
-    fn is_safe<T>(&self, (d_min, d_max): (T, T), n_max: T) -> bool
-    where
-        T: Float,
-    {
-        let k = if let Self::PickBest = self {
-            return false;
-        } else {
-            *self as i32
-        };
-
-        let margin = T::from(1e3_f64).expect("conversion from f64 to T must never fail");
-        let max = T::max_value() / margin;
-        let min = T::min_positive_value() * margin;
-        let k_as_t = T::from(k).expect("conversion from i32 to T must never fail");
-
-        // fused denominator multiplies K such values, which can overflow
-        d_max.powi(k) < max
-            // or underflow
-            && d_min.powi(k) > min
-            // numerator sums K mixed products with K terms each
-            && k_as_t * n_max * d_max.powi(k - 1) < max
-    }
-}
-
-/// [`schedule_to_owned`] with fused evaluations of width `K`.
-fn schedule_fused_to_owned<T, E, const K: usize>(
-    functions: &[E],
-    at: &[T],
-    rows: usize,
-    cols: usize,
-) -> Vec<T>
-where
-    T: Float,
-    E: EvaluateParts<T>,
-{
-    let mut out = vec![T::zero(); at.len()];
-    schedule_fused::<T, E, K>(functions, at, &mut out, rows, cols);
-
-    out
-}
-
-/// [`schedule`] with fused evaluations of width `K`.
-fn schedule_fused<T, E, const K: usize>(
-    functions: &[E],
-    at: &[T],
-    out: &mut [T],
-    rows: usize,
-    cols: usize,
-) where
-    T: Float,
-    E: EvaluateParts<T>,
-{
-    // round up to nearest multiple of K. this might overflow if rows is near
-    // usize::MAX but at that point something went wrong already anyway
-    debug_assert!(cols.checked_add(K).is_some());
-    let cols = (cols + K - 1) & !(K - 1);
-
-    for f_chunk in functions.chunks(cols) {
-        for (at_c, out_c) in at.chunks(rows).zip(out.chunks_mut(rows)) {
-            let mut groups = f_chunk.chunks_exact(K);
-            for g in &mut groups {
-                let g: &[E; K] = g.try_into().expect("chunks_exact yields K");
-                for (o, &x) in out_c.iter_mut().zip(at_c) {
-                    let (num, den) = fuse_fold::<T, K>(std::array::from_fn(|i| g[i].parts(x)));
-                    *o = *o + num / den;
-                }
-            }
-            for f in groups.remainder() {
-                for (o, &x) in out_c.iter_mut().zip(at_c) {
-                    *o = *o + f.evaluate(x);
-                }
-            }
-        }
-    }
-}
-
 /// Computes the size of the working set.
 #[cfg(feature = "rayon")]
-fn working_set<T, E>(functions: &[E], at: &[T]) -> usize {
+const fn working_set<T, E>(functions: &[E], at: &[T]) -> usize {
     let t_2 = 2 * size_of::<T>();
     let e = size_of::<E>();
     let functions_bytes = e.saturating_mul(functions.len());
