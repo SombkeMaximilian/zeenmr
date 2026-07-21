@@ -135,7 +135,7 @@ pub struct NeedsFinder;
 pub struct NeedsFitter;
 
 /// Deconvolution config for processing spectra into their constituent signals.
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct Deconvoluter<T, C1, C2, C3> {
     /// Smoothing algorithm.
     ///
