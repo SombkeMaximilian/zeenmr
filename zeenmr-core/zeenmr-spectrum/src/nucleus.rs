@@ -889,6 +889,7 @@ mod tests {
         let expected = Nucleus::iter()
             .chain(std::iter::once(Nucleus::Other("Leed 207".to_string())))
             .collect::<Vec<Nucleus>>();
+
         assert_eq!(expected, nuclei);
     }
 
@@ -898,9 +899,10 @@ mod tests {
         let nuclei = Nucleus::iter().chain(std::iter::once(Nucleus::Other("Leed 207".to_string())));
         let deserialized = nuclei
             .clone()
-            .map(|nucleus| serde_json::to_string(&nucleus).unwrap())
-            .map(|serialized| serde_json::from_str::<Nucleus>(&serialized).unwrap())
+            .map(|nucleus| serde_json5::to_string(&nucleus).unwrap())
+            .map(|serialized| serde_json5::from_str::<Nucleus>(&serialized).unwrap())
             .collect::<Vec<Nucleus>>();
+
         assert_eq!(nuclei.collect::<Vec<Nucleus>>(), deserialized);
     }
 }
