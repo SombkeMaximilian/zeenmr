@@ -3,6 +3,8 @@
 
 //! Data structures for representing and manipulating NMR peak shapes.
 
+mod util;
+
 pub mod approximations;
 
 pub mod batch_superposition;
@@ -29,5 +31,3 @@ pub use gaussian::Gaussian;
 
 mod voigt;
 pub use voigt::Voigt;
-
-mod util;
