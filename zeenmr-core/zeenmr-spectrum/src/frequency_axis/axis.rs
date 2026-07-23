@@ -83,7 +83,7 @@ where
 
     /// Returns the chemical shift range.
     pub fn shift_range(&self) -> ShiftRange<T> {
-        let offset = self.reference.offset_unchecked(self.larmor);
+        let offset = self.reference.offset_unvalidated(self.larmor);
 
         ShiftRange::new(
             self.range.start() / self.larmor + offset,
@@ -113,7 +113,7 @@ where
             return None;
         }
 
-        Some(freq / self.larmor + self.reference.offset_unchecked(self.larmor))
+        Some(freq / self.larmor + self.reference.offset_unvalidated(self.larmor))
     }
 
     /// Converts a chemical shift to a frequency.
@@ -122,7 +122,7 @@ where
             return None;
         }
 
-        Some((shift - self.reference.offset_unchecked(self.larmor)) * self.larmor)
+        Some((shift - self.reference.offset_unvalidated(self.larmor)) * self.larmor)
     }
 
     /// Converts a frequency to a relative coordinate in terms of the width.
@@ -504,13 +504,13 @@ mod tests {
         forward_range_zero_reference,
         FrequencyRange::new(0.0, 12000.0).unwrap(),
         600.25,
-        ShiftReference::from_freq(3000.0).unwrap()
+        ShiftReference::from_frequency(3000.0).unwrap()
     );
     axis_tests!(
         backward_range_zero_reference,
         FrequencyRange::new(12000.0, 0.0).unwrap(),
         600.25,
-        ShiftReference::from_freq(3000.0).unwrap()
+        ShiftReference::from_frequency(3000.0).unwrap()
     );
     axis_tests!(
         forward_range_non_zero_reference,
