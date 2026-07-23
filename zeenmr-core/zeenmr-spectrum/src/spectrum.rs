@@ -17,7 +17,10 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
-    serde(rename_all = "camelCase")
+    serde(
+        rename_all = "camelCase",
+        bound(deserialize = "T: Float + Deserialize<'de>, S: Deserialize<'de>")
+    )
 )]
 pub struct Spectrum1D<T, S> {
     /// Frequency axis of the spectrum.

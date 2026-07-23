@@ -26,7 +26,10 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
-    serde(rename_all = "camelCase")
+    serde(
+        rename_all = "camelCase",
+        bound(deserialize = "T: Float + Deserialize<'de>")
+    )
 )]
 pub struct Axis<T> {
     /// Frequency range of the full axis.
