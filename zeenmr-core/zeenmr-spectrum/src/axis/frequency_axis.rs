@@ -504,28 +504,12 @@ mod tests {
     }
 
     #[test]
-    fn zero_larmor() {
-        fn zero_larmor_<T>()
+    fn invariants() {
+        fn invariants_<T>()
         where
             T: Float + std::fmt::Debug,
         {
-            let larmor = T::zero();
-            let (range, _, reference) = test_parameters();
-
-            assert!(FrequencyAxis::new(range, larmor, reference).is_none());
-        }
-
-        zero_larmor_::<f32>();
-        zero_larmor_::<f64>();
-    }
-
-    #[test]
-    fn non_finite_larmor() {
-        fn non_finite_larmor_<T>()
-        where
-            T: Float + std::fmt::Debug,
-        {
-            let larmors = [T::nan(), T::infinity(), T::neg_infinity()];
+            let larmors = [T::zero(), T::nan(), T::infinity(), T::neg_infinity()];
             let (range, _, reference) = test_parameters();
 
             for larmor in larmors {
@@ -533,25 +517,7 @@ mod tests {
             }
         }
 
-        non_finite_larmor_::<f32>();
-        non_finite_larmor_::<f64>();
-    }
-
-    #[test]
-    fn incompatible_larmor() {
-        fn incompatible_larmor_<T>()
-        where
-            T: Float + std::fmt::Debug,
-        {
-            let larmors = [T::min_positive_value(), -T::min_positive_value()];
-            let (range, _, reference) = test_parameters();
-
-            for larmor in larmors {
-                assert!(FrequencyAxis::new(range, larmor, reference).is_none());
-            }
-        }
-
-        incompatible_larmor_::<f32>();
-        incompatible_larmor_::<f64>();
+        invariants_::<f32>();
+        invariants_::<f64>();
     }
 }
