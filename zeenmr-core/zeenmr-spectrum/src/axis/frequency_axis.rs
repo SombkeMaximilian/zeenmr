@@ -30,8 +30,18 @@ use serde::{Deserialize, Serialize};
 ///
 /// [Serde]: https://serde.rs/
 ///
-/// When the `serde` feature is enabled, `FrequencyAxis` can be serialized and
-/// deserialized using `serde`.
+/// With the `serde` feature enabled, `FrequencyAxis` can be serialized using
+/// `serde`. The two directions have different requirements:
+///
+/// - [`Serialize`] needs only `T: Serialize`.
+/// - [`Deserialize`] needs `T: Float + Deserialize<'de>` so that the values can
+///   be checked against the invariants.
+///
+/// [`Serialize`]: https://docs.rs/serde/latest/serde/trait.Serialize.html
+/// [`Deserialize`]: https://docs.rs/serde/latest/serde/trait.Deserialize.html
+///
+/// Deserialization goes through [`FrequencyAxis::new`] and if the values are
+/// invalid according to the invariants.
 #[derive(Copy, Clone, PartialEq, Debug)]
 #[cfg_attr(
     feature = "serde",
@@ -87,7 +97,13 @@ where
         Self::new(self.range, self.larmor, reference)
     }
 
-    /// Attaches a length to the axis.
+    /// Attaches a length to the axis, producing a grid.
+    ///
+    /// # Precision
+    ///
+    /// Passing a `len` that cannot be represented by `T` may lead to
+    /// significant errors (e.g., `len > 2^24` for `f32`) in the downstream
+    /// methods.
     pub fn grid(&self, len: usize) -> FrequencyGrid<'_, T> {
         FrequencyGrid { axis: self, len }
     }
@@ -236,7 +252,7 @@ where
         Some(shift.clamp(shift_range.lower(), shift_range.upper()))
     }
 
-    /// Returns an iterator over `size` equally spaced frequencies spanning the
+    /// Returns an iterator over `len` equally spaced frequencies spanning the
     /// axis.
     ///
     /// Each call of this method recomputes the frequencies on the fly.
@@ -261,7 +277,7 @@ where
         AxisIter::new(start, step, len)
     }
 
-    /// Returns an iterator over `size` equally spaced chemical shifts spanning
+    /// Returns an iterator over `len` equally spaced chemical shifts spanning
     /// the axis.
     ///
     /// Each call of this method recomputes the chemical shifts on the fly.
@@ -292,7 +308,7 @@ impl<T> FrequencyAxis<T>
 where
     T: Float + Send,
 {
-    /// Returns a parallel iterator over `size` equally spaced frequencies
+    /// Returns a parallel iterator over `len` equally spaced frequencies
     /// spanning the axis.
     ///
     /// Each call of this method recomputes the frequencies on the fly.
@@ -317,7 +333,7 @@ where
         ParAxisIter::new(start, step, len)
     }
 
-    /// Returns a parallel iterator over `size` equally spaced chemical shifts
+    /// Returns a parallel iterator over `len` equally spaced chemical shifts
     /// spanning the axis.
     ///
     /// Each call of this method recomputes the chemical shifts on the fly.
