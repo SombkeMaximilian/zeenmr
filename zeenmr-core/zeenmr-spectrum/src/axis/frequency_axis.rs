@@ -47,7 +47,7 @@ use serde::{Deserialize, Serialize};
     feature = "serde",
     derive(Serialize, Deserialize),
     serde(
-        try_from = "RawAxis<T>",
+        try_from = "RawFrequencyAxis<T>",
         bound(deserialize = "T: Float + Deserialize<'de>")
     )
 )]
@@ -452,7 +452,7 @@ where
     derive(Deserialize),
     serde(bound(deserialize = "T: Float + Deserialize<'de>"))
 )]
-struct RawAxis<T> {
+struct RawFrequencyAxis<T> {
     /// Frequency range of the full axis.
     range: FrequencyRange<T>,
     /// Larmor frequency of the nucleus in the experiment.
@@ -464,13 +464,13 @@ struct RawAxis<T> {
 }
 
 #[cfg(feature = "serde")]
-impl<T> TryFrom<RawAxis<T>> for FrequencyAxis<T>
+impl<T> TryFrom<RawFrequencyAxis<T>> for FrequencyAxis<T>
 where
     T: Float,
 {
     type Error = &'static str;
 
-    fn try_from(value: RawAxis<T>) -> Result<Self, Self::Error> {
+    fn try_from(value: RawFrequencyAxis<T>) -> Result<Self, Self::Error> {
         Self::new(value.range, value.larmor, value.reference).ok_or(
             "incompatible chemical shift reference and larmor frequency, \
                  or non-finite computed chemical shift bounds",
