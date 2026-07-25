@@ -137,7 +137,7 @@ where
     ///
     /// Returns an error if validating the intensities fails.
     pub fn magnitude(array: S) -> Result<Self> {
-        Magnitude::validate(&array)?;
+        Magnitude::validate(array.as_ref())?;
 
         Ok(Self {
             axis: NeedsAxis,
@@ -160,7 +160,7 @@ where
     ///
     /// Returns an error if validating the intensities fails.
     pub fn real(array: S) -> Result<Self> {
-        SingleChannel::validate(&array)?;
+        SingleChannel::validate(array.as_ref())?;
 
         Ok(Self {
             axis: NeedsAxis,
@@ -192,7 +192,7 @@ where
     ///
     /// Returns an error if validating the intensities fails.
     pub fn complex(array: S) -> Result<Self> {
-        DualChannel::validate(&array)?;
+        DualChannel::validate(array.as_ref())?;
 
         Ok(Self {
             axis: NeedsAxis,
