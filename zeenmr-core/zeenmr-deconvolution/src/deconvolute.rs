@@ -187,7 +187,7 @@ where
                 let max = start.max(end).floor().to_usize()? + 1;
 
                 // no need to check against len because relative coordinates
-                // returned by `Axis` are always in `[0, 1]`
+                // returned by `FrequencyAxis` are always in `[0, 1]`
                 Some(min..max)
             })
             .collect::<Vec<Range<usize>>>();
@@ -240,7 +240,7 @@ where
                 let max = start.max(end).floor().to_usize()? + 1;
 
                 // no need to check against len because relative coordinates
-                // returned by `Axis` are always in `[0, 1]`
+                // returned by `FrequencyAxis` are always in `[0, 1]`
                 Some(min..max)
             })
             .collect::<Vec<Range<usize>>>();

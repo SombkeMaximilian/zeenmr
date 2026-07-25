@@ -1,4 +1,4 @@
-use crate::frequency_axis::reference::ShiftReference;
+use crate::axis::reference::ShiftReference;
 use crate::range::{FiniteBounds, FrequencyRange, ShiftRange, SpectralRange};
 use num_traits::Float;
 use std::iter::FusedIterator;
@@ -23,16 +23,16 @@ use serde::{Deserialize, Serialize};
 ///
 /// When considering a [`ShiftReference`] and a larmor frequency, we say they
 /// are compatible if [`ShiftReference::offset`] returns a `Some` value when
-/// passed the larmor frequency. The invariant of `Axis` is that its chemical
-/// shift reference is compatible with its larmor frequency, and that every
-/// frequency value within its range maps to a finite chemical shift value.
-/// The latter always holds as long as it holds at the boundaries.
+/// passed the larmor frequency. The invariant of `FrequencyAxis` is that its
+/// chemical shift reference is compatible with its larmor frequency, and that
+/// every frequency value within its range maps to a finite chemical shift
+/// value. The latter always holds as long as it holds at the boundaries.
 ///
 /// # Serialization with [Serde]
 ///
 /// [Serde]: https://serde.rs/
 ///
-/// When the `serde` feature is enabled, `Axis` can be serialized and
+/// When the `serde` feature is enabled, `FrequencyAxis` can be serialized and
 /// deserialized using `serde`.
 #[derive(Copy, Clone, PartialEq, Debug)]
 #[cfg_attr(
@@ -43,7 +43,7 @@ use serde::{Deserialize, Serialize};
         bound(deserialize = "T: Float + Deserialize<'de>")
     )
 )]
-pub struct Axis<T> {
+pub struct FrequencyAxis<T> {
     /// Frequency range of the full axis.
     range: FrequencyRange<T>,
     /// Larmor frequency of the nucleus in the experiment.
@@ -58,11 +58,11 @@ pub struct Axis<T> {
     reference: ShiftReference<T>,
 }
 
-impl<T> Axis<T>
+impl<T> FrequencyAxis<T>
 where
     T: Float,
 {
-    /// Constructs a new `Axis`.
+    /// Constructs a new `FrequencyAxis`.
     ///
     /// Returns `None` if `larmor` is incompatible with `reference`, or if the
     /// frequency range boundaries map to non-finite chemical shifts.
@@ -84,14 +84,14 @@ where
 
     /// Sets a new chemical shift reference.
     ///
-    /// Returns `None` under the same conditions as [`Axis::new`].
+    /// Returns `None` under the same conditions as [`FrequencyAxis::new`].
     pub fn with_reference(self, reference: ShiftReference<T>) -> Option<Self> {
         Self::new(self.range, self.larmor, reference)
     }
 
     /// Attaches a length to the axis.
-    pub fn grid(&self, len: usize) -> AxisGrid<'_, T> {
-        AxisGrid { axis: self, len }
+    pub fn grid(&self, len: usize) -> FrequencyGrid<'_, T> {
+        FrequencyGrid { axis: self, len }
     }
 
     /// Returns the larmor frequency.
@@ -300,7 +300,7 @@ where
 }
 
 #[cfg(feature = "rayon")]
-impl<T> Axis<T>
+impl<T> FrequencyAxis<T>
 where
     T: Float + Send,
 {
@@ -367,18 +367,18 @@ where
 
 /// Convenience wrapper of an axis reference with an attached length.
 ///
-/// An instance of this type can be obtained from [`Axis::grid`].
+/// An instance of this type can be obtained from [`FrequencyAxis::grid`].
 #[derive(Copy, Clone, PartialEq, Debug)]
-pub struct AxisGrid<'axis, T> {
+pub struct FrequencyGrid<'axis, T> {
     /// Reference to the original axis.
     ///
     /// This is not owned in order to enforce single source of truth.
-    axis: &'axis Axis<T>,
+    axis: &'axis FrequencyAxis<T>,
     /// Length of the 1D grid.
     len: usize,
 }
 
-impl<'axis, T> AxisGrid<'axis, T>
+impl<'axis, T> FrequencyGrid<'axis, T>
 where
     T: Float,
 {
@@ -388,7 +388,7 @@ where
     }
 
     /// Returns a reference to the original axis.
-    pub fn axis(&self) -> &'axis Axis<T> {
+    pub fn axis(&self) -> &'axis FrequencyAxis<T> {
         self.axis
     }
 
@@ -404,48 +404,48 @@ where
 
     /// Returns the frequency step size of the grid.
     ///
-    /// See [`Axis::freq_step`] for its exact behavior.
+    /// See [`FrequencyAxis::freq_step`] for its exact behavior.
     pub fn freq_step(&self) -> T {
         self.axis.freq_step(self.len)
     }
 
     /// Returns the chemical shift step size of the grid.
     ///
-    /// See [`Axis::shift_step`] for its exact behavior.
+    /// See [`FrequencyAxis::shift_step`] for its exact behavior.
     pub fn shift_step(&self) -> T {
         self.axis.shift_step(self.len)
     }
 
     /// Returns an iterator over the frequencies in the grid.
     ///
-    /// See [`Axis::freqs`] for its exact behavior.
+    /// See [`FrequencyAxis::freqs`] for its exact behavior.
     pub fn freqs(&self) -> AxisIter<T> {
         self.axis.freqs(self.len)
     }
 
     /// Returns an iterator over the chemical shifts in the grid.
     ///
-    /// See [`Axis::shifts`] for its exact behavior.
+    /// See [`FrequencyAxis::shifts`] for its exact behavior.
     pub fn shifts(&self) -> AxisIter<T> {
         self.axis.shifts(self.len)
     }
 }
 
 #[cfg(feature = "rayon")]
-impl<'axis, T> AxisGrid<'axis, T>
+impl<'axis, T> FrequencyGrid<'axis, T>
 where
     T: Float + Send,
 {
     /// Returns a parallel iterator over the frequencies in the grid.
     ///
-    /// See [`Axis::par_freqs`] for its exact behavior.
+    /// See [`FrequencyAxis::par_freqs`] for its exact behavior.
     pub fn par_freqs(&self) -> ParAxisIter<T> {
         self.axis.par_freqs(self.len)
     }
 
     /// Returns a parallel iterator over the chemical shifts in the grid.
     ///
-    /// See [`Axis::par_shifts`] for its exact behavior.
+    /// See [`FrequencyAxis::par_shifts`] for its exact behavior.
     pub fn par_shifts(&self) -> ParAxisIter<T> {
         self.axis.par_shifts(self.len)
     }
@@ -606,7 +606,7 @@ struct RawAxis<T> {
 }
 
 #[cfg(feature = "serde")]
-impl<T> TryFrom<RawAxis<T>> for Axis<T>
+impl<T> TryFrom<RawAxis<T>> for FrequencyAxis<T>
 where
     T: Float,
 {
@@ -641,8 +641,8 @@ mod tests {
 
     #[test]
     fn thread_safety() {
-        assert_impl_all!(Axis<f32>: Send, Sync);
-        assert_impl_all!(Axis<f64>: Send, Sync);
+        assert_impl_all!(FrequencyAxis<f32>: Send, Sync);
+        assert_impl_all!(FrequencyAxis<f64>: Send, Sync);
     }
 
     #[test]
@@ -654,7 +654,7 @@ mod tests {
             let larmor = T::zero();
             let (range, _, reference) = test_parameters();
 
-            assert!(Axis::new(range, larmor, reference).is_none());
+            assert!(FrequencyAxis::new(range, larmor, reference).is_none());
         }
 
         zero_larmor_::<f32>();
@@ -671,7 +671,7 @@ mod tests {
             let (range, _, reference) = test_parameters();
 
             for larmor in larmors {
-                assert!(Axis::new(range, larmor, reference).is_none());
+                assert!(FrequencyAxis::new(range, larmor, reference).is_none());
             }
         }
 
@@ -689,7 +689,7 @@ mod tests {
             let (range, _, reference) = test_parameters();
 
             for larmor in larmors {
-                assert!(Axis::new(range, larmor, reference).is_none());
+                assert!(FrequencyAxis::new(range, larmor, reference).is_none());
             }
         }
 

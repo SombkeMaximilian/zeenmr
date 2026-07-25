@@ -18,8 +18,8 @@ use zeenmr::{
     peak_shape::Lorentzian,
     spectrum::{
         Spectrum1D,
+        axis::{FrequencyAxis, ShiftReference},
         builder_1d::Builder1D,
-        frequency_axis::{Axis, ShiftReference},
         range::{FiniteBounds, FrequencyRange},
     },
 };
@@ -61,7 +61,7 @@ where
         .and_then(T::from)
         .unwrap();
     let reference = ShiftReference::new(ref_shift, ref_freq).unwrap();
-    let axis = Axis::new(freq_range, larmor, reference).unwrap();
+    let axis = FrequencyAxis::new(freq_range, larmor, reference).unwrap();
     let start = (0.15_f64 * raw.len() as f64) as usize;
     let end = (0.85_f64 * raw.len() as f64) as usize;
 

@@ -5,7 +5,7 @@
 
 pub mod error;
 
-pub mod frequency_axis;
+pub mod axis;
 
 pub mod intensity_array;
 

@@ -1,5 +1,5 @@
+use crate::axis::FrequencyAxis;
 use crate::error::Result;
-use crate::frequency_axis::Axis;
 use crate::intensity_array::Storage;
 use crate::intensity_array::diagnostic_1d::{
     DualChannel, FindSignalRange, Magnitude, SingleChannel, ValidateIntensities,
@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 )]
 pub struct Spectrum1D<T, S> {
     /// Frequency axis of the spectrum.
-    axis: Axis<T>,
+    axis: FrequencyAxis<T>,
     /// Range within the intensities where signals are present.
     signal_range: Range<usize>,
     /// Intensity array.
@@ -33,7 +33,7 @@ pub struct Spectrum1D<T, S> {
 
 impl<T, S> Spectrum1D<T, S> {
     /// Returns the frequency axis.
-    pub fn axis(&self) -> &Axis<T> {
+    pub fn axis(&self) -> &FrequencyAxis<T> {
         &self.axis
     }
 
@@ -112,7 +112,7 @@ pub struct Builder1D<T, S, K, A, R> {
     intensity_kind: PhantomData<K>,
 }
 
-impl<T, S, K> Builder1D<T, S, K, Axis<T>, Range<usize>>
+impl<T, S, K> Builder1D<T, S, K, FrequencyAxis<T>, Range<usize>>
 where
     S: Storage,
 {
@@ -209,7 +209,7 @@ where
     S: Storage,
 {
     /// Sets the frequency axis.
-    pub fn axis(self, axis: Axis<T>) -> Builder1D<T, S, K, Axis<T>, R> {
+    pub fn axis(self, axis: FrequencyAxis<T>) -> Builder1D<T, S, K, FrequencyAxis<T>, R> {
         Builder1D {
             axis,
             signal_range: self.signal_range,
@@ -249,10 +249,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::frequency_axis::ShiftReference;
+    use crate::axis::ShiftReference;
     use crate::range::FrequencyRange;
 
-    fn valid_axis<T>() -> Axis<T>
+    fn valid_axis<T>() -> FrequencyAxis<T>
     where
         T: Float,
     {
@@ -261,7 +261,7 @@ mod tests {
         let larmor = T::from(600.25_f64).unwrap();
         let ref_freq = T::from(3000_u32).unwrap();
 
-        Axis::new(
+        FrequencyAxis::new(
             FrequencyRange::new(start, end).unwrap(),
             larmor,
             ShiftReference::from_freq(ref_freq).unwrap(),
