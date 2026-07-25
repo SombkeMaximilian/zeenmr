@@ -82,6 +82,18 @@ where
         })
     }
 
+    /// Sets a new chemical shift reference.
+    ///
+    /// Returns `None` under the same conditions as [`Axis::new`].
+    pub fn with_reference(self, reference: ShiftReference<T>) -> Option<Self> {
+        Self::new(self.range, self.larmor, reference)
+    }
+
+    /// Attaches a length to the axis.
+    pub fn grid(&self, len: usize) -> AxisGrid<'_, T> {
+        AxisGrid { axis: self, len }
+    }
+
     /// Returns the larmor frequency.
     pub fn larmor(&self) -> T {
         self.larmor
@@ -114,13 +126,13 @@ where
     /// The step size is positive for ascending frequency ranges, negative for
     /// descending ones.
     ///
-    /// If `size <= 1`, the returned step size is `0`.
-    pub fn freq_step(&self, size: usize) -> T {
-        if size <= 1 {
+    /// If `len <= 1`, the returned step size is `0`.
+    pub fn freq_step(&self, len: usize) -> T {
+        if len <= 1 {
             T::zero()
         } else {
             self.range.signed_width()
-                / T::from(size - 1).expect("conversion from usize to T must never fail")
+                / T::from(len - 1).expect("conversion from usize to T must never fail")
         }
     }
 
@@ -129,9 +141,9 @@ where
     /// The step size is positive for ascending chemical shift ranges, negative
     /// for descending ones.
     ///
-    /// If `size <= 1`, the returned step size is `0`.
-    pub fn shift_step(&self, size: usize) -> T {
-        self.freq_step(size) / self.larmor
+    /// If `len <= 1`, the returned step size is `0`.
+    pub fn shift_step(&self, len: usize) -> T {
+        self.freq_step(len) / self.larmor
     }
 
     /// Converts a frequency to a chemical shift.
@@ -231,28 +243,28 @@ where
     ///
     /// Each call of this method recomputes the frequencies on the fly.
     ///
-    /// # Size
+    /// # Length
     ///
-    /// If `size` is `0`, the returned iterator is simply empty. If `size` is
+    /// If `len` is `0`, the returned iterator is simply empty. If `len` is
     /// `1`, the returned iterator contains only the start value of the range.
     /// If the width of the range is `0`, the returned iterator repeats the
-    /// start value of the range `size` times.
+    /// start value of the range `len` times.
     ///
     /// # Precision
     ///
     /// Due to floating point errors when adding and multiplying, the end value
     /// may not be exactly identical to the end of the frequency range. Passing
-    /// a `size` that cannot be represented by `T` may also lead to significant
-    /// errors (e.g., `size > 2^24` for `f32`).
-    pub fn freqs(&self, size: usize) -> AxisIter<T> {
-        let step = self.freq_step(size);
+    /// a `len` that cannot be represented by `T` may also lead to significant
+    /// errors (e.g., `len > 2^24` for `f32`).
+    pub fn freqs(&self, len: usize) -> AxisIter<T> {
+        let step = self.freq_step(len);
         let start = self.range.start();
 
         AxisIter {
             start,
             step,
             front: 0,
-            back: size,
+            back: len,
         }
     }
 
@@ -261,36 +273,29 @@ where
     ///
     /// Each call of this method recomputes the chemical shifts on the fly.
     ///
-    /// # Size
+    /// # Length
     ///
-    /// If `size` is `0`, the returned iterator is simply empty. If `size` is
+    /// If `len` is `0`, the returned iterator is simply empty. If `len` is
     /// `1`, the returned iterator contains only the start value of the range.
     /// If the width of the range is `0`, the returned iterator repeats the
-    /// start value of the range `size` times.
+    /// start value of the range `len` times.
     ///
     /// # Precision
     ///
     /// Due to floating point errors when adding and multiplying, the end value
     /// may not be exactly identical to the end of the frequency range. Passing
-    /// a `size` that cannot be represented by `T` may also lead to significant
-    /// errors (e.g., `size > 2^24` for `f32`).
-    pub fn shifts(&self, size: usize) -> AxisIter<T> {
-        let step = self.shift_step(size);
+    /// a `len` that cannot be represented by `T` may also lead to significant
+    /// errors (e.g., `len > 2^24` for `f32`).
+    pub fn shifts(&self, len: usize) -> AxisIter<T> {
+        let step = self.shift_step(len);
         let start = self.shift_range().start();
 
         AxisIter {
             start,
             step,
             front: 0,
-            back: size,
+            back: len,
         }
-    }
-
-    /// Sets a new chemical shift reference.
-    ///
-    /// Returns `None` under the same conditions as [`Axis::new`].
-    pub fn with_reference(self, reference: ShiftReference<T>) -> Option<Self> {
-        Self::new(self.range, self.larmor, reference)
     }
 }
 
@@ -304,28 +309,28 @@ where
     ///
     /// Each call of this method recomputes the frequencies on the fly.
     ///
-    /// # Size
+    /// # Length
     ///
-    /// If `size` is `0`, the returned iterator is simply empty. If `size` is
+    /// If `len` is `0`, the returned iterator is simply empty. If `len` is
     /// `1`, the returned iterator contains only the start value of the range.
     /// If the width of the range is `0`, the returned iterator repeats the
-    /// start value of the range `size` times.
+    /// start value of the range `len` times.
     ///
     /// # Precision
     ///
     /// Due to floating point errors when adding and multiplying, the end value
     /// may not be exactly identical to the end of the frequency range. Passing
-    /// a `size` that cannot be represented by `T` may also lead to significant
-    /// errors (e.g., `size > 2^24` for `f32`).
-    pub fn par_freqs(&self, size: usize) -> ParAxisIter<T> {
-        let step = self.freq_step(size);
+    /// a `len` that cannot be represented by `T` may also lead to significant
+    /// errors (e.g., `len > 2^24` for `f32`).
+    pub fn par_freqs(&self, len: usize) -> ParAxisIter<T> {
+        let step = self.freq_step(len);
         let start = self.range.start();
 
         ParAxisIter(AxisIter {
             start,
             step,
             front: 0,
-            back: size,
+            back: len,
         })
     }
 
@@ -334,29 +339,115 @@ where
     ///
     /// Each call of this method recomputes the chemical shifts on the fly.
     ///
-    /// # Size
+    /// # Length
     ///
-    /// If `size` is `0`, the returned iterator is simply empty. If `size` is
+    /// If `len` is `0`, the returned iterator is simply empty. If `len` is
     /// `1`, the returned iterator contains only the start value of the range.
     /// If the width of the range is `0`, the returned iterator repeats the
-    /// start value of the range `size` times.
+    /// start value of the range `len` times.
     ///
     /// # Precision
     ///
     /// Due to floating point errors when adding and multiplying, the end value
     /// may not be exactly identical to the end of the frequency range. Passing
-    /// a `size` that cannot be represented by `T` may also lead to significant
-    /// errors (e.g., `size > 2^24` for `f32`).
-    pub fn par_shifts(&self, size: usize) -> ParAxisIter<T> {
-        let step = self.shift_step(size);
+    /// a `len` that cannot be represented by `T` may also lead to significant
+    /// errors (e.g., `len > 2^24` for `f32`).
+    pub fn par_shifts(&self, len: usize) -> ParAxisIter<T> {
+        let step = self.shift_step(len);
         let start = self.shift_range().start();
 
         ParAxisIter(AxisIter {
             start,
             step,
             front: 0,
-            back: size,
+            back: len,
         })
+    }
+}
+
+/// Convenience wrapper of an axis reference with an attached length.
+///
+/// An instance of this type can be obtained from [`Axis::grid`].
+#[derive(Copy, Clone, PartialEq, Debug)]
+pub struct AxisGrid<'axis, T> {
+    /// Reference to the original axis.
+    ///
+    /// This is not owned in order to enforce single source of truth.
+    axis: &'axis Axis<T>,
+    /// Length of the 1D grid.
+    len: usize,
+}
+
+impl<'axis, T> AxisGrid<'axis, T>
+where
+    T: Float,
+{
+    /// Sets the length of the grid.
+    pub fn with_len(self, len: usize) -> Self {
+        Self { len, ..self }
+    }
+
+    /// Returns a reference to the original axis.
+    pub fn axis(&self) -> &'axis Axis<T> {
+        self.axis
+    }
+
+    /// Returns the length of the grid.
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Returns `true` if the grid contains no points.
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// Returns the frequency step size of the grid.
+    ///
+    /// See [`Axis::freq_step`] for its exact behavior.
+    pub fn freq_step(&self) -> T {
+        self.axis.freq_step(self.len)
+    }
+
+    /// Returns the chemical shift step size of the grid.
+    ///
+    /// See [`Axis::shift_step`] for its exact behavior.
+    pub fn shift_step(&self) -> T {
+        self.axis.shift_step(self.len)
+    }
+
+    /// Returns an iterator over the frequencies in the grid.
+    ///
+    /// See [`Axis::freqs`] for its exact behavior.
+    pub fn freqs(&self) -> AxisIter<T> {
+        self.axis.freqs(self.len)
+    }
+
+    /// Returns an iterator over the chemical shifts in the grid.
+    ///
+    /// See [`Axis::shifts`] for its exact behavior.
+    pub fn shifts(&self) -> AxisIter<T> {
+        self.axis.shifts(self.len)
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl<'axis, T> AxisGrid<'axis, T>
+where
+    T: Float + Send,
+{
+    /// Returns a parallel iterator over the frequencies in the grid.
+    ///
+    /// See [`Axis::par_freqs`] for its exact behavior.
+    pub fn par_freqs(&self) -> ParAxisIter<T> {
+        self.axis.par_freqs(self.len)
+    }
+
+    /// Returns a parallel iterator over the chemical shifts in the grid.
+    ///
+    /// See [`Axis::par_shifts`] for its exact behavior.
+    pub fn par_shifts(&self) -> ParAxisIter<T> {
+        self.axis.par_shifts(self.len)
     }
 }
 
@@ -522,11 +613,10 @@ where
     type Error = &'static str;
 
     fn try_from(value: RawAxis<T>) -> Result<Self, Self::Error> {
-        Self::new(value.range, value.larmor, value.reference)
-            .ok_or(
-                "incompatible chemical shift reference and larmor frequency, \
-                 or non-finite computed chemical shift bounds"
-            )
+        Self::new(value.range, value.larmor, value.reference).ok_or(
+            "incompatible chemical shift reference and larmor frequency, \
+                 or non-finite computed chemical shift bounds",
+        )
     }
 }
 

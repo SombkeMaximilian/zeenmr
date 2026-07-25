@@ -3,7 +3,7 @@
 pub mod range;
 
 mod axis;
-pub use axis::Axis;
+pub use axis::{Axis, AxisGrid};
 
 mod reference;
 pub use reference::ShiftReference;
