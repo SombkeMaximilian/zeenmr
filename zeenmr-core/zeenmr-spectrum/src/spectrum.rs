@@ -250,7 +250,7 @@ where
 mod tests {
     use super::*;
     use crate::frequency_axis::ShiftReference;
-    use crate::frequency_axis::range::FrequencyRange;
+    use crate::range::FrequencyRange;
 
     fn valid_axis<T>() -> Axis<T>
     where

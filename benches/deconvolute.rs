@@ -19,8 +19,8 @@ use zeenmr::{
     spectrum::{
         Spectrum1D,
         builder_1d::Builder1D,
-        frequency_axis::range::{FiniteBounds, FrequencyRange},
         frequency_axis::{Axis, ShiftReference},
+        range::{FiniteBounds, FrequencyRange},
     },
 };
 

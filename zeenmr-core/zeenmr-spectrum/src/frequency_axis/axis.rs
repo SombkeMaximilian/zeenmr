@@ -1,5 +1,5 @@
-use crate::frequency_axis::range::{FiniteBounds, FrequencyRange, ShiftRange, SpectralRange};
 use crate::frequency_axis::reference::ShiftReference;
+use crate::range::{FiniteBounds, FrequencyRange, ShiftRange, SpectralRange};
 use num_traits::Float;
 use std::iter::FusedIterator;
 
