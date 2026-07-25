@@ -40,8 +40,8 @@ use serde::{Deserialize, Serialize};
 /// [`Serialize`]: https://docs.rs/serde/latest/serde/trait.Serialize.html
 /// [`Deserialize`]: https://docs.rs/serde/latest/serde/trait.Deserialize.html
 ///
-/// Deserialization goes through [`FrequencyAxis::new`] and if the values are
-/// invalid according to the invariants.
+/// Deserialization goes through [`FrequencyAxis::new`] and fails if the values
+/// are invalid according to the invariants.
 #[derive(Copy, Clone, PartialEq, Debug)]
 #[cfg_attr(
     feature = "serde",
