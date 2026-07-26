@@ -39,7 +39,7 @@ where
     where
         A: Storage<Elem = T>,
     {
-        let array = array.as_ref();
+        let array = array.as_slice();
 
         if array.is_empty() {
             Err(Error::empty_array())
@@ -61,7 +61,7 @@ where
     where
         A: Storage<Elem = T>,
     {
-        let array = array.as_ref();
+        let array = array.as_slice();
 
         if array.is_empty() {
             Err(Error::empty_array())
@@ -81,7 +81,7 @@ where
     where
         A: Storage<Elem = Complex<T>>,
     {
-        let array = array.as_ref();
+        let array = array.as_slice();
 
         if array.is_empty() {
             Err(Error::empty_array())
@@ -117,7 +117,7 @@ impl<T, K> FindSignalRange<T, K> for Range<usize> {
     where
         A: Storage<Elem = T>,
     {
-        if self.start > array.as_ref().len() || self.end > array.as_ref().len() {
+        if self.start > array.as_slice().len() || self.end > array.as_slice().len() {
             Err(Error::out_of_bounds())
         } else if self.is_empty() {
             Err(Error::no_signal())
@@ -152,7 +152,7 @@ where
         A: Storage<Elem = T>,
     {
         let array = array
-            .as_ref()
+            .as_slice()
             .iter()
             .copied()
             .map(T::sqrt)
@@ -181,7 +181,7 @@ where
     where
         A: Storage<Elem = T>,
     {
-        let array = array.as_ref();
+        let array = array.as_slice();
         let (mean, std) = self.edge_stats(array)?;
         if std.abs()
             <= T::from(100_u8).expect("conversion from u8 to T must never fail") * T::epsilon()
@@ -207,7 +207,7 @@ where
         A: Storage<Elem = Complex<T>>,
     {
         let array = array
-            .as_ref()
+            .as_slice()
             .iter()
             .map(|c| c.norm())
             .collect::<Vec<T>>();

@@ -49,7 +49,7 @@ where
 {
     /// Returns a slice containing the intensities.
     pub fn intensities(&self) -> &[S::Elem] {
-        self.intensities.as_ref()
+        self.intensities.as_slice()
     }
 }
 
@@ -63,7 +63,7 @@ where
         SpectrumView1D {
             axis: self.axis,
             signal_range: self.signal_range.clone(),
-            intensities: self.intensities.as_ref(),
+            intensities: self.intensities.as_slice(),
         }
     }
 }
@@ -137,7 +137,7 @@ where
     ///
     /// Returns an error if validating the intensities fails.
     pub fn magnitude(array: S) -> Result<Self> {
-        Magnitude::validate(array.as_ref())?;
+        Magnitude::validate(array.as_slice())?;
 
         Ok(Self {
             axis: NeedsAxis,
@@ -160,7 +160,7 @@ where
     ///
     /// Returns an error if validating the intensities fails.
     pub fn real(array: S) -> Result<Self> {
-        SingleChannel::validate(array.as_ref())?;
+        SingleChannel::validate(array.as_slice())?;
 
         Ok(Self {
             axis: NeedsAxis,
@@ -192,7 +192,7 @@ where
     ///
     /// Returns an error if validating the intensities fails.
     pub fn complex(array: S) -> Result<Self> {
-        DualChannel::validate(array.as_ref())?;
+        DualChannel::validate(array.as_slice())?;
 
         Ok(Self {
             axis: NeedsAxis,
@@ -238,7 +238,7 @@ where
     {
         Ok(Builder1D {
             axis: self.axis,
-            signal_range: finder.find_signal_range(self.intensities.as_ref())?,
+            signal_range: finder.find_signal_range(self.intensities.as_slice())?,
             intensities: self.intensities,
             scalar: PhantomData,
             intensity_kind: self.intensity_kind,
