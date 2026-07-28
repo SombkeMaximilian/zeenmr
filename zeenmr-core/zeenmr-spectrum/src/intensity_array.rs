@@ -3,4 +3,6 @@
 mod storage;
 pub use storage::{Storage, StorageMut, StorageOwned};
 
+mod dimension;
+
 pub mod diagnostic_1d;
