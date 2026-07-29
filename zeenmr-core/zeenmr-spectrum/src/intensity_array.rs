@@ -4,6 +4,6 @@ mod storage;
 pub use storage::{Storage, StorageMut, StorageOwned};
 
 mod dimension;
-pub use dimension::{DimIndex, Dimension, StaticDim, DynDim, Shape, ArrayIndex, Strides, Layout};
+pub use dimension::{ArrayIndex, DimIndex, Dimension, DynDim, Layout, Shape, StaticDim, Strides};
 
 pub mod diagnostic_1d;

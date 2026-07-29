@@ -165,8 +165,7 @@ impl DynDimInner {
     /// Creates a new dynamic dimension from an array.
     fn from_array<const N: usize>(value: [usize; N]) -> Self {
         if N <= MAX_INLINE_RANK {
-            let len = StaticLen::from_u8(N as u8)
-                .expect("above `if` should make this infallible");
+            let len = StaticLen::from_u8(N as u8).expect("above `if` should make this infallible");
             let mut dims = [0; MAX_INLINE_RANK];
             dims[..value.len()].copy_from_slice(&value);
 
@@ -221,8 +220,8 @@ impl Dimension for DynDim {
 
     fn zero(rank: usize) -> Option<Self> {
         if rank <= MAX_INLINE_RANK {
-            let len = StaticLen::from_u8(rank as u8)
-                .expect("above `if` should make this infallible");
+            let len =
+                StaticLen::from_u8(rank as u8).expect("above `if` should make this infallible");
 
             Some(Self(DynDimInner::Stack(len, [0; MAX_INLINE_RANK])))
         } else {
@@ -297,15 +296,15 @@ where
 
     /// Returns the product of array extents, or `None` if overflow occurred.
     pub fn product_checked(&self) -> Option<usize> {
-        self.0.as_slice()
+        self.0
+            .as_slice()
             .iter()
             .try_fold(1_usize, |acc, &d| acc.checked_mul(d))
     }
 
     /// Computes the contiguous strides from the array shape.
     pub fn contiguous_strides(&self) -> Option<Strides<D>> {
-        let mut strides = D::zero(self.0.rank())
-            .expect("`D` can always represent its own rank");
+        let mut strides = D::zero(self.0.rank()).expect("`D` can always represent its own rank");
         if let Some(last) = strides.as_mut_slice().last_mut() {
             let mut product = 1;
             *last = product;
@@ -369,7 +368,9 @@ where
     /// Returns `None` if [`Shape::product_checked`] returns `Some(0)` or `None`
     /// or if no contiguous strides can be computed from `shape`.
     pub fn contiguous(shape: Shape<D>, offset: usize) -> Option<Self> {
-        let len = shape.product_checked().filter(|&size| size != 0)?;
+        let len = shape
+            .product_checked()
+            .filter(|&size| size != 0)?;
         let strides = shape.contiguous_strides()?;
 
         Some(Self {
@@ -411,7 +412,8 @@ where
     ///
     /// Returns `None` if overflow occurs.
     pub fn max_offset(&self) -> Option<usize> {
-        self.shape.0
+        self.shape
+            .0
             .as_slice()
             .iter()
             .zip(self.strides.0.as_slice())
