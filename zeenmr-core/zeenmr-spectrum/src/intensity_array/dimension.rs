@@ -9,7 +9,7 @@ const MAX_INLINE_RANK: usize = 3;
 ///
 /// An array generally has `N` dimensions. This type encapsulates the index `i`
 /// of such a dimension with `0 <= i < N`.
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct DimIndex(pub usize);
 
 impl DimIndex {
@@ -50,13 +50,18 @@ pub trait Dimension: Clone + Eq + Send + Sync {
 }
 
 /// Multidimensional quantity with a size determined at compile-time.
-// TODO: Eq, PartialEq, Ord, PartialOrd and Hash need to be manually written
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct StaticDim<const N: usize>([usize; N]);
 
 impl<const N: usize> From<[usize; N]> for StaticDim<N> {
     fn from(value: [usize; N]) -> Self {
         Self(value)
+    }
+}
+
+impl<const N: usize> Default for StaticDim<N> {
+    fn default() -> Self {
+        Self::from([0; N])
     }
 }
 
@@ -100,8 +105,7 @@ impl<const N: usize> Dimension for StaticDim<N> {
 }
 
 /// Multidimensional quantity representation with a size determined at runtime.
-// TODO: Eq, PartialEq, Ord, PartialOrd and Hash need to be manually written
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+#[derive(Clone, Debug)]
 enum DynDimInner {
     /// On the stack for up to [`MAX_INLINE_RANK`].
     Stack(StaticLen, [usize; MAX_INLINE_RANK]),
@@ -110,7 +114,7 @@ enum DynDimInner {
 }
 
 /// `u8` bounded to `[0, MAX_INLINE_RANK]`.
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Default)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, Default)]
 #[repr(u8)]
 #[allow(missing_docs)]
 enum StaticLen {
@@ -155,6 +159,20 @@ impl DerefMut for DynDimInner {
     }
 }
 
+impl PartialEq for DynDimInner {
+    fn eq(&self, other: &Self) -> bool {
+        self.deref() == other.deref()
+    }
+}
+
+impl Eq for DynDimInner {}
+
+impl std::hash::Hash for DynDimInner {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.deref().hash(state);
+    }
+}
+
 impl Default for DynDimInner {
     fn default() -> Self {
         Self::Stack(StaticLen::Zero, [0; MAX_INLINE_RANK])
@@ -194,24 +212,18 @@ impl DynDimInner {
 }
 
 /// Multidimensional quantity with a size determined at runtime.
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Default)]
 pub struct DynDim(DynDimInner);
-
-impl<const N: usize> From<[usize; N]> for DynDim {
-    fn from(value: [usize; N]) -> Self {
-        Self(DynDimInner::from_array(value))
-    }
-}
 
 impl From<&[usize]> for DynDim {
     fn from(value: &[usize]) -> Self {
-        Self(DynDimInner::from_slice(value))
+        Self::from_slice(value)
     }
 }
 
 impl From<Vec<usize>> for DynDim {
     fn from(value: Vec<usize>) -> Self {
-        Self(DynDimInner::from_slice(value))
+        Self::from_slice(value)
     }
 }
 
@@ -245,8 +257,23 @@ impl Dimension for DynDim {
     }
 }
 
+impl DynDim {
+    /// Creates a new dynamic dimension from an array.
+    pub fn from_array<const N: usize>(value: [usize; N]) -> Self {
+        Self(DynDimInner::from_array(value))
+    }
+
+    /// Creates a new dynamic dimension from a slice.
+    pub fn from_slice<S>(value: S) -> Self
+    where
+        S: AsRef<[usize]> + Into<Vec<usize>>,
+    {
+        Self(DynDimInner::from_slice(value))
+    }
+}
+
 /// Multidimensional index into an array.
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct ArrayIndex<D>(D);
 
 impl<D> ArrayIndex<D>
@@ -272,7 +299,7 @@ where
 /// Shape of an array.
 ///
 /// The entries represent the extent of the array along each dimension.
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct Shape<D>(D);
 
 impl<D> Shape<D>
@@ -328,7 +355,7 @@ where
 ///
 /// The entries represent how far apart elements along a dimension are in the
 /// contiguous buffer.
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct Strides<D>(D);
 
 impl<D> Strides<D>
@@ -347,7 +374,7 @@ where
 }
 
 /// Layout of an array.
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct Layout<D> {
     /// Array shape.
     shape: Shape<D>,
