@@ -12,15 +12,6 @@ const MAX_INLINE_RANK: usize = 3;
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct DimIndex(pub usize);
 
-impl DimIndex {
-    /// Returns the index of the dimension.
-    #[inline(always)]
-    pub fn index(&self) -> usize {
-        // perhaps the contained `usize` could just be pub
-        self.0
-    }
-}
-
 /// Abstraction for multidimensional quantities.
 pub trait Dimension: Clone + Eq + Send + Sync {
     /// Compile time constant rank, if available.
@@ -214,6 +205,12 @@ impl DynDimInner {
 /// Multidimensional quantity with a size determined at runtime.
 #[derive(Clone, Eq, PartialEq, Hash, Debug, Default)]
 pub struct DynDim(DynDimInner);
+
+impl<const N: usize> From<[usize; N]> for DynDim {
+    fn from(value: [usize; N]) -> Self {
+        Self::from_array(value)
+    }
+}
 
 impl From<&[usize]> for DynDim {
     fn from(value: &[usize]) -> Self {
@@ -447,5 +444,172 @@ where
             .try_fold(self.offset, |acc, (&extent, &stride)| {
                 acc.checked_add((extent - 1).checked_mul(stride)?)
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::hash::{Hash, Hasher};
+
+    /// `(extents, contiguous strides, element count)`.
+    const CONTIGUOUS: [(&[usize], &[usize], usize); 9] = [
+        (&[], &[], 1),
+        (&[1], &[1], 1),
+        (&[5], &[1], 5),
+        (&[2, 3], &[3, 1], 6),
+        (&[2, 3, 4], &[12, 4, 1], 24),
+        (&[2, 3, 4, 5], &[60, 20, 5, 1], 120),
+        (&[1, 7, 1], &[7, 1, 1], 7),
+        (&[7, 1, 1], &[1, 1, 1], 7),
+        (&[1, 1, 7], &[7, 7, 1], 7),
+    ];
+
+    #[test]
+    fn static_dynamic_bridge() {
+        let dim0 = DynDim::from_array([]);
+        let dim1 = DynDim::from_array([1]);
+        let dim2 = DynDim::from_array([1, 2]);
+        let dim3 = DynDim::from_array([1, 2, 3]);
+        let dim4 = DynDim::from_array([1, 2, 3, 4]);
+        let dim5 = DynDim::from_array([1, 2, 3, 4, 5]);
+
+        assert!(StaticDim::<0>::from_dimension(&dim0).is_some());
+        assert!(StaticDim::<1>::from_dimension(&dim1).is_some());
+        assert!(StaticDim::<2>::from_dimension(&dim2).is_some());
+        assert!(StaticDim::<3>::from_dimension(&dim3).is_some());
+        assert!(StaticDim::<4>::from_dimension(&dim4).is_some());
+        assert!(StaticDim::<5>::from_dimension(&dim5).is_some());
+    }
+
+    #[test]
+    fn shape() {
+        for (extents, _, len) in CONTIGUOUS {
+            let shape = Shape::new(DynDim::from_slice(extents));
+
+            assert_eq!(shape.product_checked(), Some(len));
+        }
+    }
+
+    #[test]
+    fn contiguous_strides() {
+        for (extents, expected, _) in CONTIGUOUS {
+            let shape = Shape::new(DynDim::from_slice(extents));
+            let strides = shape.contiguous_strides().unwrap();
+
+            assert_eq!(strides.as_slice(), expected);
+        }
+    }
+
+    #[test]
+    fn contiguous_layout() {
+        for (extents, _, len) in CONTIGUOUS {
+            let shape = Shape::new(DynDim::from_slice(extents));
+
+            for offset in [0, 1, 1000] {
+                let layout = Layout::contiguous(shape.clone(), offset).expect("hand verified");
+
+                assert_eq!(layout.len(), len);
+                assert_eq!(layout.max_offset(), Some(offset + len - 1));
+            }
+        }
+    }
+
+    #[test]
+    fn rank_zero_scalar() {
+        let layout =
+            Layout::contiguous(Shape::new(DynDim::from_slice(&[][..])), 9).expect("hand verified");
+
+        assert_eq!(layout.len(), 1);
+        assert_eq!(layout.shape().as_slice(), &[] as &[usize]);
+        assert_eq!(layout.max_offset(), Some(9));
+    }
+
+    #[test]
+    fn extent_zero() {
+        for extents in [&[0][..], &[0, 5][..], &[5, 0][..], &[4, 0, 2][..]] {
+            let shape = Shape::new(DynDim::from_slice(extents));
+
+            assert_eq!(shape.product_checked(), Some(0));
+            assert!(Layout::contiguous(shape, 0).is_none());
+        }
+    }
+
+    #[test]
+    fn extent_overflow() {
+        let half_max = usize::MAX / 2 + 1;
+        let shape = Shape::new(DynDim::from_slice(&[half_max, 4][..]));
+
+        assert!(shape.product_checked().is_none());
+        assert!(shape.contiguous_strides().is_some());
+        assert!(Layout::contiguous(shape, 0).is_none());
+
+        let shape = Shape::new(DynDim::from_slice(&[2, half_max, 4][..]));
+
+        assert!(shape.product_checked().is_none());
+        assert!(shape.contiguous_strides().is_none());
+        assert!(Layout::contiguous(shape, 0).is_none());
+    }
+
+    #[test]
+    fn offset_overflow() {
+        let shape = Shape::new(DynDim::from_slice(&[4][..]));
+        let layout = Layout::contiguous(shape, usize::MAX - 2).expect("hand verified");
+
+        assert!(layout.max_offset().is_none());
+    }
+
+    #[test]
+    fn dyn_dim_dirty() {
+        let clean = DynDim(DynDimInner::Stack(StaticLen::One, [5, 0, 0]));
+        let dirty = DynDim(DynDimInner::Stack(StaticLen::One, [5, 5, 5]));
+
+        assert_eq!(clean, dirty);
+
+        let hash = |d: &DynDim| {
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            d.hash(&mut h);
+
+            h.finish()
+        };
+
+        assert_eq!(hash(&clean), hash(&dirty));
+    }
+
+    #[test]
+    fn dyn_dim_stack_heap() {
+        for rank in 0..=MAX_INLINE_RANK {
+            assert!(matches!(DynDim::zero(rank).unwrap().0, DynDimInner::Stack(..)));
+        }
+        for rank in (MAX_INLINE_RANK + 1)..20 {
+            assert!(matches!(DynDim::zero(rank).unwrap().0, DynDimInner::Heap(..)));
+        }
+    }
+
+    #[test]
+    fn conversion() {
+        let stat = StaticDim::from([1, 2, 3]);
+        let converted = DynDim::from_dimension(&stat).expect("must never fail");
+        let recovered = StaticDim::from_dimension(&converted).expect("round trip must never fail");
+
+        assert_eq!(stat.as_slice(), converted.as_slice());
+        assert_eq!(stat, recovered);
+
+        let dynamic = DynDim::from_array([1, 2, 3, 4, 5]);
+        let converted = StaticDim::<5>::from_dimension(&dynamic).expect("must never fail");
+        let recovered = DynDim::from_dimension(&converted).expect("must never fail");
+
+        assert_eq!(dynamic.as_slice(), converted.as_slice());
+        assert_eq!(dynamic, recovered);
+    }
+
+    #[test]
+    fn zero_respects_rank() {
+        assert!(StaticDim::<3>::zero(3).is_some());
+        assert!(StaticDim::<3>::zero(2).is_none());
+        assert!(StaticDim::<3>::zero(1).is_none());
+        assert!(StaticDim::<3>::zero(0).is_none());
+        assert_eq!(StaticDim::<3>::zero(3).unwrap().as_slice(), &[0; 3]);
+        assert_eq!(DynDim::zero(9).unwrap().as_slice(), &[0; 9]);
     }
 }
