@@ -302,7 +302,7 @@ where
         self.0.as_mut_slice()
     }
 
-    /// Advances the index according to the `extents` in row-major order.
+    /// Increments the index according to the `extents` in row-major order.
     ///
     /// `self` and `extents` must have the same rank, and every component of
     /// `self` must be less than the corresponding extent.
@@ -311,24 +311,89 @@ where
     /// component wraps to zero. This enables `while` loops to be written in the
     /// following way:
     ///
-    /// `while { ...; index.advance_row_major(extents) } {}`
+    /// `while { ...; index.increment_row_major(extents) } {}`
     ///
     /// though callers must not rely on it terminating when any extent is zero.
     /// No component can then reach its extent, so the index never advances past
     /// it. Drive such loops with an external count instead.
-    pub(crate) fn advance_row_major(&mut self, extents: &[usize]) -> bool {
+    pub(crate) fn increment_row_major(&mut self, extents: &[usize]) -> bool {
         debug_assert_eq!(self.rank(), extents.len());
 
         let components = self.0.as_mut_slice();
-        for i in (0..components.len()).rev() {
-            components[i] += 1;
-            if components[i] < extents[i] {
+        for (component, &extent) in components
+            .iter_mut()
+            .zip(extents)
+            .rev()
+        {
+            *component += 1;
+            if *component < extent {
                 return true;
             }
-            components[i] = 0;
+            *component = 0;
         }
 
         false
+    }
+
+    /// Reverses the index according to the `extents` in row-major order.
+    ///
+    /// `self` and `extents` must have the same rank, and every component of
+    /// `self` must be less than the corresponding extent.
+    ///
+    /// Returns `false` if the index was the first one, in which case every
+    /// component wraps to the maximum for the given extents. This enables
+    /// `while` loops to be written in the following way:
+    ///
+    /// `while { ...; index.decrement_row_major(extents) } {}`
+    ///
+    /// though callers must not rely on it terminating when any extent is zero.
+    /// No component can then reach its extent, so the index never advances past
+    /// it. Drive such loops with an external count instead.
+    pub(crate) fn decrement_row_major(&mut self, extents: &[usize]) -> bool {
+        debug_assert_eq!(self.rank(), extents.len());
+
+        let components = self.0.as_mut_slice();
+        for (component, &extent) in components
+            .iter_mut()
+            .zip(extents)
+            .rev()
+        {
+            if *component > 0 {
+                *component -= 1;
+                return true;
+            }
+            *component = extent.saturating_sub(1);
+        }
+
+        false
+    }
+
+    /// Sets the index to the `k`-th one in row-major order.
+    ///
+    /// `self` and `extents` must have the same rank, and every component of
+    /// `self` must be less than the corresponding extent.
+    pub(crate) fn set_linear_row_major(&mut self, mut linear: usize, extents: &[usize]) {
+        debug_assert_eq!(self.rank(), extents.len());
+        debug_assert!(
+            extents
+                .iter()
+                .try_fold(1usize, |a, &e| a.checked_mul(e))
+                .is_none_or(|p| linear < p)
+        );
+
+        let components = self.0.as_mut_slice();
+        for (component, &extent) in components
+            .iter_mut()
+            .zip(extents)
+            .rev()
+        {
+            if extent == 0 {
+                *component = 0;
+            } else {
+                *component = linear % extent;
+                linear /= extent;
+            }
+        }
     }
 }
 
@@ -584,6 +649,8 @@ where
     where
         D2: Dimension,
     {
+        debug_assert_eq!(self.rank(), index.rank());
+
         index
             .as_slice()
             .iter()
