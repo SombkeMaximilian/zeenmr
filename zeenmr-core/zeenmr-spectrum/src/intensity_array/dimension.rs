@@ -296,6 +296,11 @@ where
     pub fn as_slice(&self) -> &[usize] {
         self.0.as_slice()
     }
+
+    /// Returns a mutable slice containing all array indices.
+    pub fn as_mut_slice(&mut self) -> &mut [usize] {
+        self.0.as_mut_slice()
+    }
 }
 
 /// Shape of an array.
@@ -326,6 +331,11 @@ where
     /// Returns a slice containing all array extents.
     pub fn as_slice(&self) -> &[usize] {
         self.0.as_slice()
+    }
+
+    /// Returns a mutable slice containing all array extents.
+    pub fn as_mut_slice(&mut self) -> &mut [usize] {
+        self.0.as_mut_slice()
     }
 
     /// Returns the product of array extents, or `None` if overflow occurred.
