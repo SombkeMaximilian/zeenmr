@@ -1,6 +1,6 @@
 //! Array iterators.
 
-use crate::intensity_array::{ArrayIndex, Dimension, Shape};
+use crate::intensity_array::{ArrayIndex, DimIndex, Dimension, Lane, Layout, Shape};
 use std::iter::FusedIterator;
 
 #[cfg(feature = "rayon")]
@@ -52,9 +52,8 @@ where
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.front < self.back {
             self.back -= 1;
-            let curr = ArrayIndex::linear_in_shape(self.back, &self.shape);
 
-            Some(curr)
+            Some(ArrayIndex::linear_in_shape(self.back, &self.shape))
         } else {
             None
         }
@@ -175,6 +174,175 @@ where
             ..self.0.clone()
         };
         let right = IndicesRowMajor {
+            front: mid,
+            ..self.0
+        };
+
+        (Self(left), Self(right))
+    }
+}
+
+/// Iterator over the lanes of a layout along one dimension.
+///
+/// Yields lanes in row-major order over the dimensions other than the lane
+/// dimension.
+#[derive(Clone, Debug)]
+pub struct LanesRowMajor<D> {
+    /// Underlying layout.
+    layout: Layout<D>,
+    /// Dimension the lanes run along.
+    dim: DimIndex,
+    /// Next lane number from the front.
+    front: usize,
+    /// Next lane number from the back.
+    back: usize,
+}
+
+impl<D> Iterator for LanesRowMajor<D>
+where
+    D: Dimension,
+{
+    type Item = Lane;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.front < self.back {
+            let curr = self.layout.lane_row_major_unvalidated(self.dim, self.front);
+            self.front += 1;
+
+            Some(curr)
+        } else {
+            None
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.back - self.front;
+
+        (remaining, Some(remaining))
+    }
+}
+
+impl<D> DoubleEndedIterator for LanesRowMajor<D>
+where
+    D: Dimension,
+{
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.front < self.back {
+            self.back -= 1;
+
+            Some(self.layout.lane_row_major_unvalidated(self.dim, self.back))
+        } else {
+            None
+        }
+    }
+}
+
+impl<D> ExactSizeIterator for LanesRowMajor<D> where D: Dimension {}
+
+impl<D> FusedIterator for LanesRowMajor<D> where D: Dimension {}
+
+impl<D> LanesRowMajor<D>
+where
+    D: Dimension,
+{
+    /// Creates a row-major iterator over the lanes of `layout` along `dim`.
+    ///
+    /// Returns `None` if `dim` is out of range.
+    pub fn new(layout: Layout<D>, dim: DimIndex) -> Option<Self> {
+        let back = layout.lane_count(dim)?;
+
+        Some(Self { layout, dim, front: 0, back })
+    }
+}
+
+/// Parallel iterator over the lanes of a layout along one dimension.
+///
+/// Yields lanes in row-major order over the dimensions other than the lane
+/// dimension.
+#[cfg(feature = "rayon")]
+#[derive(Clone, Debug)]
+pub struct ParLanesRowMajor<D>(LanesRowMajor<D>);
+
+#[cfg(feature = "rayon")]
+impl<D> ParallelIterator for ParLanesRowMajor<D>
+where
+    D: Dimension,
+{
+    type Item = Lane;
+
+    fn drive_unindexed<C>(self, consumer: C) -> C::Result
+    where
+        C: UnindexedConsumer<Self::Item>,
+    {
+        bridge(self, consumer)
+    }
+
+    fn opt_len(&self) -> Option<usize> {
+        Some(self.0.len())
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl<D> IndexedParallelIterator for ParLanesRowMajor<D>
+where
+    D: Dimension,
+{
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    fn drive<C>(self, consumer: C) -> C::Result
+    where
+        C: Consumer<Self::Item>,
+    {
+        bridge(self, consumer)
+    }
+
+    fn with_producer<CB>(self, callback: CB) -> CB::Output
+    where
+        CB: ProducerCallback<Self::Item>,
+    {
+        callback.callback(LanesRowMajorProducer(self.0))
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl<D> ParLanesRowMajor<D>
+where
+    D: Dimension,
+{
+    /// Creates a row-major, parallel iterator over the lanes of `layout` along
+    /// `dim`.
+    ///
+    /// Returns `None` if `dim` is out of range.
+    pub fn new(layout: Layout<D>, dim: DimIndex) -> Option<Self> {
+        Some(Self(LanesRowMajor::new(layout, dim)?))
+    }
+}
+
+/// Producer for [`ParLanesRowMajor`].
+#[cfg(feature = "rayon")]
+struct LanesRowMajorProducer<D>(LanesRowMajor<D>);
+
+#[cfg(feature = "rayon")]
+impl<D> Producer for LanesRowMajorProducer<D>
+where
+    D: Dimension,
+{
+    type Item = Lane;
+    type IntoIter = LanesRowMajor<D>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0
+    }
+
+    fn split_at(self, index: usize) -> (Self, Self) {
+        let mid = self.0.front + index;
+        let left = LanesRowMajor {
+            back: mid,
+            ..self.0.clone()
+        };
+        let right = LanesRowMajor {
             front: mid,
             ..self.0
         };

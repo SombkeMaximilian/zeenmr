@@ -1,5 +1,8 @@
-use crate::intensity_array::iter::{IndicesRowMajor, ParIndicesRowMajor};
+use crate::intensity_array::iter::{IndicesRowMajor, LanesRowMajor};
 use std::ops::{Deref, DerefMut};
+
+#[cfg(feature = "rayon")]
+use crate::intensity_array::iter::{ParIndicesRowMajor, ParLanesRowMajor};
 
 /// Maximum number of non-heap dimensions in the dynamic case.
 ///
@@ -300,7 +303,7 @@ where
         self.0.rank()
     }
 
-    /// Returns a reference to the array index at the specified `DimIndex`.
+    /// Returns the array index at the specified `DimIndex`.
     pub fn get(&self, index: DimIndex) -> Option<usize> {
         self.0.as_slice().get(index.0).copied()
     }
@@ -418,7 +421,7 @@ where
         self.0.rank()
     }
 
-    /// Returns a reference to the array extent at the specified `DimIndex`.
+    /// Returns the array extent at the specified `DimIndex`.
     pub fn get(&self, index: DimIndex) -> Option<usize> {
         self.0.as_slice().get(index.0).copied()
     }
@@ -498,7 +501,7 @@ where
         self.0.rank()
     }
 
-    /// Returns a reference to the element stride at the specified `DimIndex`.
+    /// Returns the element stride at the specified `DimIndex`.
     pub fn get(&self, index: DimIndex) -> Option<usize> {
         self.0.as_slice().get(index.0).copied()
     }
@@ -595,13 +598,16 @@ where
     /// Dimensions with an extent of 1 are ignored, since their stride is never
     /// used to address an element.
     pub fn is_packed(&self) -> bool {
+        let extents = self.shape.as_slice();
+        let strides = self.strides.as_slice();
+        let order = self.iteration_order();
+
         let mut expected = 1_usize;
-        for (&extent, &stride) in self
-            .shape
+        for (extent, stride) in order
             .as_slice()
             .iter()
-            .zip(self.strides.as_slice())
             .rev()
+            .map(|&dim| (extents[dim], strides[dim]))
         {
             if extent == 1 {
                 continue;
@@ -619,7 +625,129 @@ where
     pub fn is_row_major(&self) -> bool {
         self.shape
             .row_major_strides()
-            .is_some_and(|c_strides| c_strides == self.strides)
+            .is_some_and(|row_major_strides| row_major_strides == self.strides)
+    }
+
+    /// Returns the dimension with the smallest stride.
+    ///
+    /// Dimensions with an extent of 1 are ignored, since their stride never
+    /// addresses an element. Ties are broken toward the later dimension, which
+    /// matches row-major order. Returns `None` if every extent is 1, including
+    /// for rank 0.
+    pub fn fastest_dimension(&self) -> Option<DimIndex> {
+        self.shape
+            .as_slice()
+            .iter()
+            .zip(self.strides.as_slice())
+            .enumerate()
+            .filter(|&(_, (&extent, _))| extent > 1)
+            // breaks ties by picking the last maximum (minimum with `Reverse`)
+            .max_by_key(|&(_, (_, &stride))| std::cmp::Reverse(stride))
+            .map(|(index, _)| DimIndex(index))
+    }
+
+    /// Returns the dimension indices ordered from largest to smallest stride.
+    ///
+    /// Walking dimensions in this order visits the buffer as sequentially as
+    /// the layout permits. Ties are broken by ascending dimension index, so a
+    /// row-major layout yields `0, 1, ..., rank - 1`.
+    pub fn iteration_order(&self) -> D {
+        let rank = self.rank();
+        let strides = self.strides.as_slice();
+        let mut order = D::zero(rank).expect("D can always represent its own rank");
+        let slots = order.as_mut_slice();
+        slots
+            .iter_mut()
+            .enumerate()
+            .for_each(|(index, slot)| *slot = index);
+        for i in 1..rank {
+            let mut j = i;
+            while j > 0 && strides[slots[j - 1]] < strides[slots[j]] {
+                slots.swap(j - 1, j);
+                j -= 1;
+            }
+        }
+
+        order
+    }
+
+    /// Returns an iterator over the lanes in row-major order.
+    ///
+    /// Returns `None` if `dim` is out of range.
+    pub fn lanes_row_major(&self, dim: DimIndex) -> Option<LanesRowMajor<D>> {
+        LanesRowMajor::new(self.clone(), dim)
+    }
+
+    /// Returns a parallel iterator over the lanes in row-major order.
+    ///
+    /// Returns `None` if `dim` is out of range.
+    #[cfg(feature = "rayon")]
+    pub fn par_lanes_row_major(&self, dim: DimIndex) -> Option<ParLanesRowMajor<D>> {
+        ParLanesRowMajor::new(self.clone(), dim)
+    }
+
+    /// Returns the number of lanes along `dim`.
+    ///
+    /// A lane is the one-dimensional sequence of elements obtained by varying
+    /// the index along `dim` while holding all other indices fixed. The count
+    /// is therefore [`Layout::len`] divided by the extent along `dim`.
+    ///
+    /// Returns `None` if `dim` is out of range, which includes every `dim` at
+    /// rank 0.
+    pub fn lane_count(&self, dim: DimIndex) -> Option<usize> {
+        self.shape
+            .get(dim)
+            .map(|extent| self.len / extent)
+    }
+
+    /// Returns the geometry of the `lane`-th lane along `dim`.
+    ///
+    /// `dim` must be in range and `lane` must be less than
+    /// [`lane_count`](Self::lane_count). Otherwise, the result is meaningless.
+    pub(crate) fn lane_row_major_unvalidated(&self, dim: DimIndex, lane: usize) -> Lane {
+        debug_assert!(dim.0 < self.shape.rank());
+        debug_assert!(self.lane_count(dim).is_some_and(|count| lane < count));
+
+        Lane {
+            offset: self.lane_offset_row_major_unvalidated(dim, lane),
+            stride: self.strides.as_slice()[dim.0],
+            count: self.shape.as_slice()[dim.0],
+        }
+    }
+
+    /// Returns the buffer offset of the first element of the `lane`-th lane
+    /// along `dim`, numbered in row-major order over the other dimensions.
+    ///
+    /// `dim` must be in range and `lane` must be less than
+    /// [`lane_count`](Self::lane_count). Otherwise, the result is meaningless.
+    ///
+    /// No arithmetic can overflow under those preconditions: every offset this
+    /// produces is at most [`Layout::max_offset`], which was validated at
+    /// construction.
+    pub(crate) fn lane_offset_row_major_unvalidated(
+        &self,
+        dim: DimIndex,
+        mut lane: usize,
+    ) -> usize {
+        debug_assert!(dim.0 < self.shape.rank());
+        debug_assert!(self.lane_count(dim).is_some_and(|count| lane < count));
+
+        let extents = self.shape.as_slice();
+        let strides = self.strides.as_slice();
+        let dim = dim.0;
+
+        extents
+            .iter()
+            .zip(strides)
+            .enumerate()
+            .rev()
+            .filter(|&(i, _)| i != dim)
+            .fold(self.offset, |acc, (_, (&extent, &stride))| {
+                let acc = acc + (lane % extent) * stride;
+                lane /= extent;
+
+                acc
+            })
     }
 }
 
@@ -678,6 +806,37 @@ where
             .fold(self.offset, |acc, (&index, &stride)| {
                 acc.wrapping_add(index.wrapping_mul(stride))
             })
+    }
+}
+
+/// Geometry of a single lane through an array buffer.
+///
+/// Describes the `count` buffer offsets `offset`, `offset + stride`, ...,
+/// `offset + (count - 1) * stride`. Carries no dimension information: a lane
+/// is a flat walk, and the layout it came from determines what it traverses.
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+pub struct Lane {
+    /// Offset of the first element.
+    pub offset: usize,
+    /// Number of elements between consecutive elements of the lane.
+    pub stride: usize,
+    /// Number of elements in the lane.
+    pub count: usize,
+}
+
+impl Lane {
+    /// Returns the buffer offset of the `index`-th element.
+    #[inline]
+    pub fn offset_of(&self, index: usize) -> usize {
+        debug_assert!(index < self.count);
+
+        self.offset + index * self.stride
+    }
+
+    /// Returns `true` if the lane's elements are adjacent in the buffer.
+    #[inline]
+    pub fn is_contiguous(&self) -> bool {
+        self.stride == 1 || self.count <= 1
     }
 }
 
