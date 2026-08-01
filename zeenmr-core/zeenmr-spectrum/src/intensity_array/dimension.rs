@@ -377,7 +377,7 @@ where
 
     /// Computes the row-major, contiguous strides from the array shape.
     pub fn row_major_strides(&self) -> Option<Strides<D>> {
-        let mut strides = D::zero(self.0.rank()).expect("`D` can always represent its own rank");
+        let mut strides = D::zero(self.0.rank()).expect("D can always represent its own rank");
         if let Some(last) = strides.as_mut_slice().last_mut() {
             let mut product = 1;
             *last = product;
