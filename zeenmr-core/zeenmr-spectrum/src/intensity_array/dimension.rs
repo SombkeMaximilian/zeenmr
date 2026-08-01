@@ -282,6 +282,11 @@ where
         Self(dim)
     }
 
+    /// Returns the rank of `self`.
+    pub fn rank(&self) -> usize {
+        self.0.rank()
+    }
+
     /// Returns a reference to the array index at the specified `DimIndex`.
     pub fn get(&self, index: DimIndex) -> Option<usize> {
         self.0.as_slice().get(index.0).copied()
@@ -306,6 +311,11 @@ where
     /// Creates a new array shape.
     pub fn new(dim: D) -> Self {
         Self(dim)
+    }
+
+    /// Returns the rank of `self`.
+    pub fn rank(&self) -> usize {
+        self.0.rank()
     }
 
     /// Returns a reference to the array extent at the specified `DimIndex`.
@@ -359,6 +369,11 @@ impl<D> Strides<D>
 where
     D: Dimension,
 {
+    /// Returns the rank of `self`.
+    pub fn rank(&self) -> usize {
+        self.0.rank()
+    }
+
     /// Returns a reference to the element stride at the specified `DimIndex`.
     pub fn get(&self, index: DimIndex) -> Option<usize> {
         self.0.as_slice().get(index.0).copied()
@@ -443,6 +458,62 @@ where
             .zip(self.strides.0.as_slice())
             .try_fold(self.offset, |acc, (&extent, &stride)| {
                 acc.checked_add((extent - 1).checked_mul(stride)?)
+            })
+    }
+}
+
+impl<D1> Layout<D1>
+where
+    D1: Dimension,
+{
+    /// Returns the linear buffer offset of `index`.
+    ///
+    /// Returns `None` if `index` has a different rank than the layout, if any
+    /// component is out of bounds, or if the offset overflows.
+    pub fn linear<D2>(&self, index: &ArrayIndex<D2>) -> Option<usize>
+    where
+        D2: Dimension,
+    {
+        if let (Some(self_rank), Some(index_rank)) = (D1::RANK, D2::RANK) {
+            if self_rank != index_rank {
+                return None;
+            }
+        } else if index.rank() != self.shape.rank() {
+            return None;
+        }
+
+        index
+            .as_slice()
+            .iter()
+            .zip(self.shape.as_slice())
+            .zip(self.strides.as_slice())
+            .try_fold(self.offset, |acc, ((&index, &extent), &stride)| {
+                if index >= extent {
+                    return None;
+                }
+
+                acc.checked_add(index.checked_mul(stride)?)
+            })
+    }
+
+    /// Returns the linear buffer offset of `index`, eliding any checks.
+    ///
+    /// In particular, it must hold that
+    /// - `index` and layout have the same rank, and
+    /// - none of the components of `index` is out of bounds, and
+    /// - the offset doesn't overflow for this index.
+    ///
+    /// If any of these conditions do not hold, the result is meaningless.
+    pub fn linear_unvalidated<D2>(&self, index: &ArrayIndex<D2>) -> usize
+    where
+        D2: Dimension,
+    {
+        index
+            .as_slice()
+            .iter()
+            .zip(self.strides.as_slice())
+            .fold(self.offset, |acc, (&index, &stride)| {
+                acc.wrapping_add(index.wrapping_mul(stride))
             })
     }
 }
@@ -579,10 +650,16 @@ mod tests {
     #[test]
     fn dyn_dim_stack_heap() {
         for rank in 0..=MAX_INLINE_RANK {
-            assert!(matches!(DynDim::zero(rank).unwrap().0, DynDimInner::Stack(..)));
+            assert!(matches!(
+                DynDim::zero(rank).unwrap().0,
+                DynDimInner::Stack(..)
+            ));
         }
         for rank in (MAX_INLINE_RANK + 1)..20 {
-            assert!(matches!(DynDim::zero(rank).unwrap().0, DynDimInner::Heap(..)));
+            assert!(matches!(
+                DynDim::zero(rank).unwrap().0,
+                DynDimInner::Heap(..)
+            ));
         }
     }
 
