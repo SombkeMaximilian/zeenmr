@@ -346,8 +346,8 @@ where
             .try_fold(1_usize, |acc, &d| acc.checked_mul(d))
     }
 
-    /// Computes the contiguous strides from the array shape.
-    pub fn contiguous_strides(&self) -> Option<Strides<D>> {
+    /// Computes the row-major, contiguous strides from the array shape.
+    pub fn row_major_strides(&self) -> Option<Strides<D>> {
         let mut strides = D::zero(self.0.rank()).expect("`D` can always represent its own rank");
         if let Some(last) = strides.as_mut_slice().last_mut() {
             let mut product = 1;
@@ -412,15 +412,15 @@ impl<D> Layout<D>
 where
     D: Dimension,
 {
-    /// Creates a contiguous layout with the given shape and offset.
+    /// Creates a row-major, contiguous layout with the given shape and offset.
     ///
     /// Returns `None` if [`Shape::product_checked`] returns `Some(0)` or `None`
     /// or if no contiguous strides can be computed from `shape`.
-    pub fn contiguous(shape: Shape<D>, offset: usize) -> Option<Self> {
+    pub fn row_major(shape: Shape<D>, offset: usize) -> Option<Self> {
         let len = shape
             .product_checked()
             .filter(|&size| size != 0)?;
-        let strides = shape.contiguous_strides()?;
+        let strides = shape.row_major_strides()?;
 
         Some(Self {
             shape,
@@ -474,6 +474,38 @@ where
             .try_fold(self.offset, |acc, (&extent, &stride)| {
                 acc.checked_add((extent - 1).checked_mul(stride)?)
             })
+    }
+
+    /// Returns `true` if the layout covers `offset..offset + len` with no gaps.
+    ///
+    /// Dimensions with an extent of 1 are ignored, since their stride is never
+    /// used to address an element.
+    pub fn is_packed(&self) -> bool {
+        let mut expected = 1_usize;
+        for (&extent, &stride) in self
+            .shape
+            .as_slice()
+            .iter()
+            .zip(self.strides.as_slice())
+            .rev()
+        {
+            if extent == 1 {
+                continue;
+            }
+            if stride != expected {
+                return false;
+            }
+            expected *= extent;
+        }
+
+        true
+    }
+
+    /// Returns `true` if the strides are exactly [`Shape::row_major_strides`].
+    pub fn is_row_major(&self) -> bool {
+        self.shape
+            .row_major_strides()
+            .is_some_and(|c_strides| c_strides == self.strides)
     }
 }
 
@@ -581,7 +613,7 @@ mod tests {
     fn contiguous_strides() {
         for (extents, expected, _) in CONTIGUOUS {
             let shape = Shape::new(DynDim::from_slice(extents));
-            let strides = shape.contiguous_strides().unwrap();
+            let strides = shape.row_major_strides().unwrap();
 
             assert_eq!(strides.as_slice(), expected);
         }
@@ -593,7 +625,7 @@ mod tests {
             let shape = Shape::new(DynDim::from_slice(extents));
 
             for offset in [0, 1, 1000] {
-                let layout = Layout::contiguous(shape.clone(), offset).expect("hand verified");
+                let layout = Layout::row_major(shape.clone(), offset).expect("hand verified");
 
                 assert_eq!(layout.len(), len);
                 assert_eq!(layout.max_offset(), Some(offset + len - 1));
@@ -604,7 +636,7 @@ mod tests {
     #[test]
     fn rank_zero_scalar() {
         let layout =
-            Layout::contiguous(Shape::new(DynDim::from_slice(&[][..])), 9).expect("hand verified");
+            Layout::row_major(Shape::new(DynDim::from_slice(&[][..])), 9).expect("hand verified");
 
         assert_eq!(layout.len(), 1);
         assert_eq!(layout.shape().as_slice(), &[] as &[usize]);
@@ -617,7 +649,7 @@ mod tests {
             let shape = Shape::new(DynDim::from_slice(extents));
 
             assert_eq!(shape.product_checked(), Some(0));
-            assert!(Layout::contiguous(shape, 0).is_none());
+            assert!(Layout::row_major(shape, 0).is_none());
         }
     }
 
@@ -627,20 +659,20 @@ mod tests {
         let shape = Shape::new(DynDim::from_slice(&[half_max, 4][..]));
 
         assert!(shape.product_checked().is_none());
-        assert!(shape.contiguous_strides().is_some());
-        assert!(Layout::contiguous(shape, 0).is_none());
+        assert!(shape.row_major_strides().is_some());
+        assert!(Layout::row_major(shape, 0).is_none());
 
         let shape = Shape::new(DynDim::from_slice(&[2, half_max, 4][..]));
 
         assert!(shape.product_checked().is_none());
-        assert!(shape.contiguous_strides().is_none());
-        assert!(Layout::contiguous(shape, 0).is_none());
+        assert!(shape.row_major_strides().is_none());
+        assert!(Layout::row_major(shape, 0).is_none());
     }
 
     #[test]
     fn offset_overflow() {
         let shape = Shape::new(DynDim::from_slice(&[4][..]));
-        let layout = Layout::contiguous(shape, usize::MAX - 2).expect("hand verified");
+        let layout = Layout::row_major(shape, usize::MAX - 2).expect("hand verified");
 
         assert!(layout.max_offset().is_none());
     }
