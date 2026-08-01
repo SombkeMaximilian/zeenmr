@@ -301,6 +301,35 @@ where
     pub fn as_mut_slice(&mut self) -> &mut [usize] {
         self.0.as_mut_slice()
     }
+
+    /// Advances the index according to the `extents` in row-major order.
+    ///
+    /// `self` and `extents` must have the same rank, and every component of
+    /// `self` must be less than the corresponding extent.
+    ///
+    /// Returns `false` if the index was the last one, in which case every
+    /// component wraps to zero. This enables `while` loops to be written in the
+    /// following way:
+    ///
+    /// `while { ...; index.advance_row_major(extents) } {}`
+    ///
+    /// though callers must not rely on it terminating when any extent is zero.
+    /// No component can then reach its extent, so the index never advances past
+    /// it. Drive such loops with an external count instead.
+    pub(crate) fn advance_row_major(&mut self, extents: &[usize]) -> bool {
+        debug_assert_eq!(self.rank(), extents.len());
+
+        let components = self.0.as_mut_slice();
+        for i in (0..components.len()).rev() {
+            components[i] += 1;
+            if components[i] < extents[i] {
+                return true;
+            }
+            components[i] = 0;
+        }
+
+        false
+    }
 }
 
 /// Shape of an array.
