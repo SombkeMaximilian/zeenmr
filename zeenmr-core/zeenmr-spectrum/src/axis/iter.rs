@@ -127,6 +127,7 @@ where
     }
 }
 
+#[cfg(feature = "rayon")]
 impl<T> ParAxisIter<T>
 where
     T: Float + Send,
