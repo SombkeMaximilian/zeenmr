@@ -1,3 +1,4 @@
+use crate::intensity_array::iter::{IndicesRowMajor, ParIndicesRowMajor};
 use std::ops::{Deref, DerefMut};
 
 /// Maximum number of non-heap dimensions in the dynamic case.
@@ -282,6 +283,18 @@ where
         Self(dim)
     }
 
+    /// Returns the `linear`-th index of `shape` in row-major order.
+    ///
+    /// `linear` must be less than the product of `shape`'s extents. Otherwise,
+    /// the leading component of the result exceeds its extent.
+    pub(crate) fn linear_in_shape(linear: usize, shape: &Shape<D>) -> Self {
+        let mut index =
+            Self::new(D::zero(shape.rank()).expect("`D` can always represent its own rank"));
+        index.set_linear_row_major(linear, shape.as_slice());
+
+        index
+    }
+
     /// Returns the rank of `self`.
     pub fn rank(&self) -> usize {
         self.0.rank()
@@ -320,11 +333,7 @@ where
         debug_assert_eq!(self.rank(), extents.len());
 
         let components = self.0.as_mut_slice();
-        for (component, &extent) in components
-            .iter_mut()
-            .zip(extents)
-            .rev()
-        {
+        for (component, &extent) in components.iter_mut().zip(extents).rev() {
             *component += 1;
             if *component < extent {
                 return true;
@@ -353,11 +362,7 @@ where
         debug_assert_eq!(self.rank(), extents.len());
 
         let components = self.0.as_mut_slice();
-        for (component, &extent) in components
-            .iter_mut()
-            .zip(extents)
-            .rev()
-        {
+        for (component, &extent) in components.iter_mut().zip(extents).rev() {
             if *component > 0 {
                 *component -= 1;
                 return true;
@@ -382,11 +387,7 @@ where
         );
 
         let components = self.0.as_mut_slice();
-        for (component, &extent) in components
-            .iter_mut()
-            .zip(extents)
-            .rev()
-        {
+        for (component, &extent) in components.iter_mut().zip(extents).rev() {
             if extent == 0 {
                 *component = 0;
             } else {
@@ -459,6 +460,25 @@ where
         }
 
         Some(Strides(strides))
+    }
+
+    /// Returns an iterator over the multidimensional indices in row-major
+    /// order.
+    ///
+    /// Returns `None` in the same situations that [`Shape::product_checked`]
+    /// returns `None`.
+    pub fn indices_row_major(&self) -> Option<IndicesRowMajor<D>> {
+        IndicesRowMajor::new(self.clone())
+    }
+
+    /// Returns a parallel iterator over the multidimensional indices in
+    /// row-major order.
+    ///
+    /// Returns `None` in the same situations that [`Shape::product_checked`]
+    /// returns `None`.
+    #[cfg(feature = "rayon")]
+    pub fn par_indices_row_major(&self) -> Option<ParIndicesRowMajor<D>> {
+        ParIndicesRowMajor::new(self.clone())
     }
 }
 
