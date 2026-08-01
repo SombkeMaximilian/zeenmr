@@ -430,6 +430,11 @@ where
         })
     }
 
+    /// Returns the rank of `self`.
+    pub fn rank(&self) -> usize {
+        self.shape.rank()
+    }
+
     /// Returns a reference to the shape of the layout.
     pub fn shape(&self) -> &Shape<D> {
         &self.shape
