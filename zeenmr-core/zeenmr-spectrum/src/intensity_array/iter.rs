@@ -1,6 +1,6 @@
 //! Array iterators.
 
-use crate::intensity_array::{ArrayIndex, DimIndex, Dimension, Lane, Layout, Shape};
+use crate::intensity_array::{ArrayIndex, DimIndex, DimOrder, Dimension, Lane, Layout, Shape};
 use std::iter::FusedIterator;
 
 #[cfg(feature = "rayon")]
@@ -10,18 +10,22 @@ use rayon::prelude::*;
 
 /// Iterator over the multidimensional indices of a shape.
 ///
-/// Yields indices in row-major order: the last dimension varies fastest.
+/// Yields indices in lexicographic order: the last dimension varies fastest.
 #[derive(Clone, Debug)]
-pub struct IndicesRowMajor<D> {
+pub struct Indices<D> {
     /// Underlying shape.
     shape: Shape<D>,
     /// Next linear index from the front.
     front: usize,
     /// Next linear index from the back.
     back: usize,
+    /// Index at `front`, if already computed.
+    front_cached: Option<ArrayIndex<D>>,
+    /// Index at `back - 1`, if already computed.
+    back_cached: Option<ArrayIndex<D>>,
 }
 
-impl<D> Iterator for IndicesRowMajor<D>
+impl<D> Iterator for Indices<D>
 where
     D: Dimension,
 {
@@ -29,7 +33,11 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.front < self.back {
-            let curr = ArrayIndex::linear_in_shape(self.front, &self.shape);
+            let index = self
+                .front_cached
+                .get_or_insert_with(|| ArrayIndex::linear_in_shape(self.front, &self.shape));
+            let curr = index.clone();
+            index.increment_lexicographic(self.shape.as_slice());
             self.front += 1;
 
             Some(curr)
@@ -45,35 +53,42 @@ where
     }
 }
 
-impl<D> DoubleEndedIterator for IndicesRowMajor<D>
+impl<D> DoubleEndedIterator for Indices<D>
 where
     D: Dimension,
 {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.front < self.back {
             self.back -= 1;
+            let index = self
+                .back_cached
+                .get_or_insert_with(|| ArrayIndex::linear_in_shape(self.back, &self.shape));
+            let curr = index.clone();
+            // wraps to zero on the last element, which `front == back` then
+            // makes unreachable
+            index.decrement_lexicographic(self.shape.as_slice());
 
-            Some(ArrayIndex::linear_in_shape(self.back, &self.shape))
+            Some(curr)
         } else {
             None
         }
     }
 }
 
-impl<D> ExactSizeIterator for IndicesRowMajor<D> where D: Dimension {}
+impl<D> ExactSizeIterator for Indices<D> where D: Dimension {}
 
-impl<D> FusedIterator for IndicesRowMajor<D> where D: Dimension {}
+impl<D> FusedIterator for Indices<D> where D: Dimension {}
 
-impl<D> IndicesRowMajor<D>
+impl<D> Indices<D>
 where
     D: Dimension,
 {
-    /// Creates a row-major index iterator.
+    /// Creates a lexicographic index iterator.
     ///
     /// Returns `None` in the same situations that [`Shape::product_checked`]
     /// returns `None`.
     ///
-    /// Prefer the methods on the concrete dimension types.
+    /// Prefer [`Shape::indices_lexicographic`].
     pub fn new(shape: Shape<D>) -> Option<Self> {
         let back = shape.product_checked()?;
 
@@ -81,19 +96,21 @@ where
             shape,
             front: 0,
             back,
+            front_cached: None,
+            back_cached: None,
         })
     }
 }
 
 /// Parallel iterator over the multidimensional indices of a shape.
 ///
-/// Yields indices in row-major order: the last dimension varies fastest.
+/// Yields indices in lexicographic order: the last dimension varies fastest.
 #[cfg(feature = "rayon")]
 #[derive(Clone, Debug)]
-pub struct ParIndicesRowMajor<D>(IndicesRowMajor<D>);
+pub struct ParIndices<D>(Indices<D>);
 
 #[cfg(feature = "rayon")]
-impl<D> ParallelIterator for ParIndicesRowMajor<D>
+impl<D> ParallelIterator for ParIndices<D>
 where
     D: Dimension,
 {
@@ -112,7 +129,7 @@ where
 }
 
 #[cfg(feature = "rayon")]
-impl<D> IndexedParallelIterator for ParIndicesRowMajor<D>
+impl<D> IndexedParallelIterator for ParIndices<D>
 where
     D: Dimension,
 {
@@ -131,37 +148,37 @@ where
     where
         CB: ProducerCallback<Self::Item>,
     {
-        callback.callback(IndicesRowMajorProducer(self.0))
+        callback.callback(IndicesProducer(self.0))
     }
 }
 
 #[cfg(feature = "rayon")]
-impl<D> ParIndicesRowMajor<D>
+impl<D> ParIndices<D>
 where
     D: Dimension,
 {
-    /// Creates a parallel row-major index iterator.
+    /// Creates a parallel lexicographic index iterator.
     ///
     /// Returns `None` in the same situations that [`Shape::product_checked`]
     /// returns `None`.
     ///
-    /// Prefer the methods on the concrete dimension types.
+    /// Prefer [`Shape::par_indices_lexicographic`].
     pub fn new(shape: Shape<D>) -> Option<Self> {
-        Some(Self(IndicesRowMajor::new(shape)?))
+        Some(Self(Indices::new(shape)?))
     }
 }
 
-/// Producer for [`ParIndicesRowMajor`].
+/// Producer for [`ParIndices`].
 #[cfg(feature = "rayon")]
-struct IndicesRowMajorProducer<D>(IndicesRowMajor<D>);
+struct IndicesProducer<D>(Indices<D>);
 
 #[cfg(feature = "rayon")]
-impl<D> Producer for IndicesRowMajorProducer<D>
+impl<D> Producer for IndicesProducer<D>
 where
     D: Dimension,
 {
     type Item = ArrayIndex<D>;
-    type IntoIter = IndicesRowMajor<D>;
+    type IntoIter = Indices<D>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0
@@ -169,13 +186,19 @@ where
 
     fn split_at(self, index: usize) -> (Self, Self) {
         let mid = self.0.front + index;
-        let left = IndicesRowMajor {
+        let left = Indices {
+            shape: self.0.shape.clone(),
+            front: self.0.front,
             back: mid,
-            ..self.0.clone()
+            front_cached: self.0.front_cached,
+            back_cached: None,
         };
-        let right = IndicesRowMajor {
+        let right = Indices {
+            shape: self.0.shape,
             front: mid,
-            ..self.0
+            back: self.0.back,
+            front_cached: None,
+            back_cached: self.0.back_cached,
         };
 
         (Self(left), Self(right))
@@ -183,13 +206,12 @@ where
 }
 
 /// Iterator over the lanes of a layout along one dimension.
-///
-/// Yields lanes in row-major order over the dimensions other than the lane
-/// dimension.
 #[derive(Clone, Debug)]
-pub struct LanesRowMajor<D> {
+pub struct Lanes<D> {
     /// Underlying layout.
     layout: Layout<D>,
+    /// Order of the dimensions.
+    order: DimOrder<D>,
     /// Dimension the lanes run along.
     dim: DimIndex,
     /// Next lane number from the front.
@@ -198,7 +220,7 @@ pub struct LanesRowMajor<D> {
     back: usize,
 }
 
-impl<D> Iterator for LanesRowMajor<D>
+impl<D> Iterator for Lanes<D>
 where
     D: Dimension,
 {
@@ -206,7 +228,7 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.front < self.back {
-            let curr = self.layout.lane_row_major_unvalidated(self.dim, self.front);
+            let curr = self.layout.lane_unvalidated(self.dim, self.front, &self.order);
             self.front += 1;
 
             Some(curr)
@@ -222,7 +244,7 @@ where
     }
 }
 
-impl<D> DoubleEndedIterator for LanesRowMajor<D>
+impl<D> DoubleEndedIterator for Lanes<D>
 where
     D: Dimension,
 {
@@ -230,41 +252,47 @@ where
         if self.front < self.back {
             self.back -= 1;
 
-            Some(self.layout.lane_row_major_unvalidated(self.dim, self.back))
+            Some(self.layout.lane_unvalidated(self.dim, self.back, &self.order))
         } else {
             None
         }
     }
 }
 
-impl<D> ExactSizeIterator for LanesRowMajor<D> where D: Dimension {}
+impl<D> ExactSizeIterator for Lanes<D> where D: Dimension {}
 
-impl<D> FusedIterator for LanesRowMajor<D> where D: Dimension {}
+impl<D> FusedIterator for Lanes<D> where D: Dimension {}
 
-impl<D> LanesRowMajor<D>
+impl<D> Lanes<D>
 where
     D: Dimension,
 {
-    /// Creates a row-major iterator over the lanes of `layout` along `dim`.
+    /// Creates an iterator over the lanes of `layout` along `dim`.
     ///
-    /// Returns `None` if `dim` is out of range.
-    pub fn new(layout: Layout<D>, dim: DimIndex) -> Option<Self> {
+    /// Lanes are numbered according to `order` over the other dimensions.
+    ///
+    /// Returns `None` if `dim` is out of range, or if `order` has a different
+    /// rank than `layout`.
+    ///
+    /// Prefer the `lanes_*` methods on [`Layout`].
+    pub fn new(layout: Layout<D>, dim: DimIndex, order: DimOrder<D>) -> Option<Self> {
+        if order.rank() != layout.rank() {
+            return None;
+        }
+
         let back = layout.lane_count(dim)?;
 
-        Some(Self { layout, dim, front: 0, back })
+        Some(Self { layout, dim, order, front: 0, back })
     }
 }
 
 /// Parallel iterator over the lanes of a layout along one dimension.
-///
-/// Yields lanes in row-major order over the dimensions other than the lane
-/// dimension.
 #[cfg(feature = "rayon")]
 #[derive(Clone, Debug)]
-pub struct ParLanesRowMajor<D>(LanesRowMajor<D>);
+pub struct ParLanes<D>(Lanes<D>);
 
 #[cfg(feature = "rayon")]
-impl<D> ParallelIterator for ParLanesRowMajor<D>
+impl<D> ParallelIterator for ParLanes<D>
 where
     D: Dimension,
 {
@@ -283,7 +311,7 @@ where
 }
 
 #[cfg(feature = "rayon")]
-impl<D> IndexedParallelIterator for ParLanesRowMajor<D>
+impl<D> IndexedParallelIterator for ParLanes<D>
 where
     D: Dimension,
 {
@@ -302,35 +330,39 @@ where
     where
         CB: ProducerCallback<Self::Item>,
     {
-        callback.callback(LanesRowMajorProducer(self.0))
+        callback.callback(LanesProducer(self.0))
     }
 }
 
 #[cfg(feature = "rayon")]
-impl<D> ParLanesRowMajor<D>
+impl<D> ParLanes<D>
 where
     D: Dimension,
 {
-    /// Creates a row-major, parallel iterator over the lanes of `layout` along
-    /// `dim`.
+    /// Creates a parallel iterator over the lanes of `layout` along `dim`.
     ///
-    /// Returns `None` if `dim` is out of range.
-    pub fn new(layout: Layout<D>, dim: DimIndex) -> Option<Self> {
-        Some(Self(LanesRowMajor::new(layout, dim)?))
+    /// Lanes are numbered according to `order` over the other dimensions.
+    ///
+    /// Returns `None` if `dim` is out of range, or if `order` has a different
+    /// rank than `layout`.
+    ///
+    /// Prefer the `par_lanes_*` methods on [`Layout`].
+    pub fn new(layout: Layout<D>, dim: DimIndex, order: DimOrder<D>) -> Option<Self> {
+        Some(Self(Lanes::new(layout, dim, order)?))
     }
 }
 
-/// Producer for [`ParLanesRowMajor`].
+/// Producer for [`ParLanes`].
 #[cfg(feature = "rayon")]
-struct LanesRowMajorProducer<D>(LanesRowMajor<D>);
+struct LanesProducer<D>(Lanes<D>);
 
 #[cfg(feature = "rayon")]
-impl<D> Producer for LanesRowMajorProducer<D>
+impl<D> Producer for LanesProducer<D>
 where
     D: Dimension,
 {
     type Item = Lane;
-    type IntoIter = LanesRowMajor<D>;
+    type IntoIter = Lanes<D>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0
@@ -338,11 +370,11 @@ where
 
     fn split_at(self, index: usize) -> (Self, Self) {
         let mid = self.0.front + index;
-        let left = LanesRowMajor {
+        let left = Lanes {
             back: mid,
             ..self.0.clone()
         };
-        let right = LanesRowMajor {
+        let right = Lanes {
             front: mid,
             ..self.0
         };

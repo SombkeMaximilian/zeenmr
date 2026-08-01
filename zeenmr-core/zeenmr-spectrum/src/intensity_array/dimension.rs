@@ -1,8 +1,8 @@
-use crate::intensity_array::iter::{IndicesRowMajor, LanesRowMajor};
+use crate::intensity_array::iter::{Indices, Lanes};
 use std::ops::{Deref, DerefMut};
 
 #[cfg(feature = "rayon")]
-use crate::intensity_array::iter::{ParIndicesRowMajor, ParLanesRowMajor};
+use crate::intensity_array::iter::{ParIndices, ParLanes};
 
 /// Maximum number of non-heap dimensions in the dynamic case.
 ///
@@ -273,6 +273,101 @@ impl DynDim {
     }
 }
 
+/// Priority order of the dimensions of an array.
+///
+/// The entries are the dimension indices ordered from slowest to fastest
+/// varying. An order is always a permutation of `0..rank`, so no dimension is
+/// visited twice or skipped, and indexing a slice of that rank by any entry is
+/// infallible.
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+pub struct DimOrder<D>(D);
+
+impl<D> DimOrder<D>
+where
+    D: Dimension,
+{
+    /// Creates a new dimension order.
+    ///
+    /// Returns `None` if `dim` is not a permutation of `0..rank`.
+    pub fn new(order: D) -> Option<Self> {
+        if (0..order.rank()).all(|dim| order.as_slice().contains(&dim)) {
+            Some(Self(order))
+        } else {
+            None
+        }
+    }
+
+    /// Returns the order in which the last dimension varies fastest, that is
+    /// `0, 1, ..., rank - 1`.
+    ///
+    /// Returns `None` if `D` cannot represent `rank`.
+    pub fn lexicographic(rank: usize) -> Option<Self> {
+        let mut order = D::zero(rank)?;
+        order
+            .as_mut_slice()
+            .iter_mut()
+            .enumerate()
+            .for_each(|(dim, slot)| *slot = dim);
+
+        Some(Self(order))
+    }
+
+    /// Returns the order in which the first dimension varies fastest, that is
+    /// `rank - 1, ..., 1, 0`.
+    ///
+    /// Returns `None` if `D` cannot represent `rank`.
+    pub fn colexicographic(rank: usize) -> Option<Self> {
+        let mut order = D::zero(rank)?;
+        order
+            .as_mut_slice()
+            .iter_mut()
+            .rev()
+            .enumerate()
+            .for_each(|(dim, slot)| *slot = dim);
+
+        Some(Self(order))
+    }
+
+    /// Returns the rank of `self`.
+    pub fn rank(&self) -> usize {
+        self.0.rank()
+    }
+
+    /// Returns the dimension at the given position in the order.
+    ///
+    /// Position `0` is the slowest varying dimension. Returns `None` if
+    /// `index` is not less than the rank.
+    pub fn get(&self, index: usize) -> Option<DimIndex> {
+        self.0.as_slice().get(index).map(|&dim| DimIndex(dim))
+    }
+
+    /// Returns an iterator over the dimensions from slowest to fastest
+    /// varying.
+    pub fn iter(&self) -> impl DoubleEndedIterator<Item = DimIndex> + ExactSizeIterator {
+        self.0.as_slice().iter().map(|&dim| DimIndex(dim))
+    }
+
+    /// Returns a slice containing all dimension indices.
+    pub(crate) fn as_slice(&self) -> &[usize] {
+        self.0.as_slice()
+    }
+
+    /// Returns the order that maps each dimension to its position in `self`.
+    ///
+    /// The result answers how fast a given dimension varies, which is the
+    /// question [`DimOrder::get`] answers in reverse. Applying `self` and then
+    /// the inverse yields [`DimOrder::lexicographic`].
+    pub fn inverse(&self) -> Self {
+        let mut inverse = D::zero(self.rank()).expect("D can always represent its own rank");
+        let slots = inverse.as_mut_slice();
+        for (position, dim) in self.iter().enumerate() {
+            slots[dim.0] = position;
+        }
+
+        Self(inverse)
+    }
+}
+
 /// Multidimensional index into an array.
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct ArrayIndex<D>(D);
@@ -282,18 +377,18 @@ where
     D: Dimension,
 {
     /// Creates a new multidimensional array index.
-    pub fn new(dim: D) -> Self {
-        Self(dim)
+    pub fn new(indices: D) -> Self {
+        Self(indices)
     }
 
-    /// Returns the `linear`-th index of `shape` in row-major order.
+    /// Returns the `linear`-th index of `shape` in lexicographic order.
     ///
     /// `linear` must be less than the product of `shape`'s extents. Otherwise,
     /// the leading component of the result exceeds its extent.
     pub(crate) fn linear_in_shape(linear: usize, shape: &Shape<D>) -> Self {
         let mut index =
             Self::new(D::zero(shape.rank()).expect("`D` can always represent its own rank"));
-        index.set_linear_row_major(linear, shape.as_slice());
+        index.set_linear(linear, shape.as_slice());
 
         index
     }
@@ -318,7 +413,7 @@ where
         self.0.as_mut_slice()
     }
 
-    /// Increments the index according to the `extents` in row-major order.
+    /// Increments the index according to the `extents` in lexicographic order.
     ///
     /// `self` and `extents` must have the same rank, and every component of
     /// `self` must be less than the corresponding extent.
@@ -327,12 +422,12 @@ where
     /// component wraps to zero. This enables `while` loops to be written in the
     /// following way:
     ///
-    /// `while { ...; index.increment_row_major(extents) } {}`
+    /// `while { ...; index.increment_lexicographic(extents) } {}`
     ///
     /// though callers must not rely on it terminating when any extent is zero.
     /// No component can then reach its extent, so the index never advances past
     /// it. Drive such loops with an external count instead.
-    pub(crate) fn increment_row_major(&mut self, extents: &[usize]) -> bool {
+    pub(crate) fn increment_lexicographic(&mut self, extents: &[usize]) -> bool {
         debug_assert_eq!(self.rank(), extents.len());
 
         let components = self.0.as_mut_slice();
@@ -347,7 +442,7 @@ where
         false
     }
 
-    /// Reverses the index according to the `extents` in row-major order.
+    /// Decrements the index according to the `extents` in lexicographic order.
     ///
     /// `self` and `extents` must have the same rank, and every component of
     /// `self` must be less than the corresponding extent.
@@ -356,12 +451,12 @@ where
     /// component wraps to the maximum for the given extents. This enables
     /// `while` loops to be written in the following way:
     ///
-    /// `while { ...; index.decrement_row_major(extents) } {}`
+    /// `while { ...; index.decrement_lexicographic(extents) } {}`
     ///
     /// though callers must not rely on it terminating when any extent is zero.
     /// No component can then reach its extent, so the index never advances past
     /// it. Drive such loops with an external count instead.
-    pub(crate) fn decrement_row_major(&mut self, extents: &[usize]) -> bool {
+    pub(crate) fn decrement_lexicographic(&mut self, extents: &[usize]) -> bool {
         debug_assert_eq!(self.rank(), extents.len());
 
         let components = self.0.as_mut_slice();
@@ -376,11 +471,11 @@ where
         false
     }
 
-    /// Sets the index to the `k`-th one in row-major order.
+    /// Sets the index to the `k`-th one in lexicographic order.
     ///
     /// `self` and `extents` must have the same rank, and every component of
     /// `self` must be less than the corresponding extent.
-    pub(crate) fn set_linear_row_major(&mut self, mut linear: usize, extents: &[usize]) {
+    pub(crate) fn set_linear(&mut self, mut linear: usize, extents: &[usize]) {
         debug_assert_eq!(self.rank(), extents.len());
         debug_assert!(
             extents
@@ -412,8 +507,8 @@ where
     D: Dimension,
 {
     /// Creates a new array shape.
-    pub fn new(dim: D) -> Self {
-        Self(dim)
+    pub fn new(shape: D) -> Self {
+        Self(shape)
     }
 
     /// Returns the rank of `self`.
@@ -465,23 +560,23 @@ where
         Some(Strides(strides))
     }
 
-    /// Returns an iterator over the multidimensional indices in row-major
+    /// Returns an iterator over the multidimensional indices in lexicographic
     /// order.
     ///
     /// Returns `None` in the same situations that [`Shape::product_checked`]
     /// returns `None`.
-    pub fn indices_row_major(&self) -> Option<IndicesRowMajor<D>> {
-        IndicesRowMajor::new(self.clone())
+    pub fn indices_lexicographic(&self) -> Option<Indices<D>> {
+        Indices::new(self.clone())
     }
 
     /// Returns a parallel iterator over the multidimensional indices in
-    /// row-major order.
+    /// lexicographic order.
     ///
     /// Returns `None` in the same situations that [`Shape::product_checked`]
     /// returns `None`.
     #[cfg(feature = "rayon")]
-    pub fn par_indices_row_major(&self) -> Option<ParIndicesRowMajor<D>> {
-        ParIndicesRowMajor::new(self.clone())
+    pub fn par_indices_lexicographic(&self) -> Option<ParIndices<D>> {
+        ParIndices::new(self.clone())
     }
 }
 
@@ -516,11 +611,16 @@ where
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct Layout<D> {
     /// Array shape.
+    ///
+    /// A `&mut Shape<D>` must *never* escape to anywhere. Otherwise, all
+    /// established invariants may be broken.
     shape: Shape<D>,
     /// Array strides.
     strides: Strides<D>,
     /// Offset from the start of the buffer.
     offset: usize,
+    /// Largest buffer offset this layout can address.
+    max_offset: usize,
     /// Element count of the layout.
     len: usize,
 }
@@ -531,19 +631,49 @@ where
 {
     /// Creates a row-major, contiguous layout with the given shape and offset.
     ///
-    /// Returns `None` if [`Shape::product_checked`] returns `Some(0)` or `None`
-    /// or if no contiguous strides can be computed from `shape`.
+    /// Returns `None` if [`Shape::product_checked`] returns `Some(0)` or
+    /// `None`, or if no contiguous strides can be computed from `shape`, or if
+    /// computing the maximum offset that can be addressed overflows.
     pub fn row_major(shape: Shape<D>, offset: usize) -> Option<Self> {
         let len = shape
             .product_checked()
             .filter(|&size| size != 0)?;
         let strides = shape.row_major_strides()?;
+        let max_offset = Self::max_offset_of(&shape, &strides, offset)?;
+
+        Some(Self { shape, strides, offset, max_offset, len })
+    }
+
+    /// Returns the layout with its dimensions reordered according to `order`.
+    ///
+    /// Dimension `i` of the result is dimension `order[i]` of `self`, for both
+    /// extents and strides. Permuting by [`Layout::memory_order`] yields the
+    /// layout whose lexicographic traversal is the most sequential one.
+    ///
+    /// Returns `None` if `order` has a different rank than `self`.
+    pub fn permuted(&self, order: &DimOrder<D>) -> Option<Self> {
+        if order.rank() != self.rank() {
+            return None;
+        }
+
+        let mut shape = D::zero(self.rank()).expect("`D` can always represent its own rank");
+        let mut strides = D::zero(self.rank()).expect("`D` can always represent its own rank");
+        let (extents, old_strides) = (self.shape.as_slice(), self.strides.as_slice());
+        for (position, dim) in order.iter().enumerate() {
+            shape.as_mut_slice()[position] = extents[dim.0];
+            strides.as_mut_slice()[position] = old_strides[dim.0];
+        }
 
         Some(Self {
             shape,
             strides,
-            offset,
-            len,
+            // these carry over as is (pinky promise) because reordering the
+            // exclusively finite, non-negative terms of a finite sum/product
+            // can't make it overflow if the original didn't overflow (which
+            // all other constructors guarantee) and does not change it
+            offset: self.offset,
+            max_offset: self.max_offset,
+            len: self.len
         })
     }
 
@@ -574,23 +704,15 @@ where
 
     /// Returns `true` if the layout contains no elements.
     ///
-    /// This always returns `false` for contiguous layouts.
+    /// This always returns `false`, since no constructor produces an empty
+    /// layout. It exists as the counterpart to [`Layout::len`].
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
 
     /// Largest buffer offset this layout can address.
-    ///
-    /// Returns `None` if overflow occurs.
-    pub fn max_offset(&self) -> Option<usize> {
-        self.shape
-            .0
-            .as_slice()
-            .iter()
-            .zip(self.strides.0.as_slice())
-            .try_fold(self.offset, |acc, (&extent, &stride)| {
-                acc.checked_add((extent - 1).checked_mul(stride)?)
-            })
+    pub fn max_offset(&self) -> usize {
+        self.max_offset
     }
 
     /// Returns `true` if the layout covers `offset..offset + len` with no gaps.
@@ -600,15 +722,10 @@ where
     pub fn is_packed(&self) -> bool {
         let extents = self.shape.as_slice();
         let strides = self.strides.as_slice();
-        let order = self.iteration_order();
 
         let mut expected = 1_usize;
-        for (extent, stride) in order
-            .as_slice()
-            .iter()
-            .rev()
-            .map(|&dim| (extents[dim], strides[dim]))
-        {
+        for dim in self.memory_order().iter().rev() {
+            let (extent, stride) = (extents[dim.0], strides[dim.0]);
             if extent == 1 {
                 continue;
             }
@@ -630,10 +747,13 @@ where
 
     /// Returns the dimension with the smallest stride.
     ///
+    /// Useful for choosing a processing dimension when none is specified, since
+    /// a lane along this dimension is the cheapest to traverse.
+    ///
     /// Dimensions with an extent of 1 are ignored, since their stride never
-    /// addresses an element. Ties are broken toward the later dimension, which
-    /// matches row-major order. Returns `None` if every extent is 1, including
-    /// for rank 0.
+    /// addresses an element. Ties are broken toward the later dimension.
+    ///
+    /// Returns `None` if every extent is 1, including for rank 0.
     pub fn fastest_dimension(&self) -> Option<DimIndex> {
         self.shape
             .as_slice()
@@ -650,8 +770,9 @@ where
     ///
     /// Walking dimensions in this order visits the buffer as sequentially as
     /// the layout permits. Ties are broken by ascending dimension index, so a
-    /// row-major layout yields `0, 1, ..., rank - 1`.
-    pub fn iteration_order(&self) -> D {
+    /// row-major layout yields [`DimOrder::lexicographic`], while a
+    /// column-major layout yields [`DimOrder::colexicographic`].
+    pub fn memory_order(&self) -> DimOrder<D> {
         let rank = self.rank();
         let strides = self.strides.as_slice();
         let mut order = D::zero(rank).expect("D can always represent its own rank");
@@ -668,22 +789,62 @@ where
             }
         }
 
-        order
+        DimOrder(order)
     }
 
-    /// Returns an iterator over the lanes in row-major order.
+    /// Returns an iterator over the lanes in memory order.
     ///
     /// Returns `None` if `dim` is out of range.
-    pub fn lanes_row_major(&self, dim: DimIndex) -> Option<LanesRowMajor<D>> {
-        LanesRowMajor::new(self.clone(), dim)
+    pub fn lanes_memory_order(&self, dim: DimIndex) -> Option<Lanes<D>> {
+        Lanes::new(self.clone(), dim, self.memory_order())
     }
 
-    /// Returns a parallel iterator over the lanes in row-major order.
+    /// Returns an iterator over the lanes in lexicographic order.
+    ///
+    /// Returns `None` if `dim` is out of range.
+    pub fn lanes_lexicographic(&self, dim: DimIndex) -> Option<Lanes<D>> {
+        let order = DimOrder::lexicographic(self.rank()).expect("D can always represent its own rank");
+
+        Lanes::new(self.clone(), dim, order)
+    }
+
+    /// Returns an iterator over the lanes in the provided order.
+    ///
+    /// Lanes are numbered according to `order` over the other dimensions.
+    ///
+    /// Returns `None` if `dim` is out of range, or if `order` has a different
+    /// rank than `self`.
+    pub fn lanes_with_order(&self, dim: DimIndex, order: DimOrder<D>) -> Option<Lanes<D>> {
+        Lanes::new(self.clone(), dim, order)
+    }
+
+    /// Returns a parallel iterator over the lanes in memory order.
     ///
     /// Returns `None` if `dim` is out of range.
     #[cfg(feature = "rayon")]
-    pub fn par_lanes_row_major(&self, dim: DimIndex) -> Option<ParLanesRowMajor<D>> {
-        ParLanesRowMajor::new(self.clone(), dim)
+    pub fn par_lanes_memory_order(&self, dim: DimIndex) -> Option<ParLanes<D>> {
+        ParLanes::new(self.clone(), dim, self.memory_order())
+    }
+
+    /// Returns a parallel iterator over the lanes in lexicographic order.
+    ///
+    /// Returns `None` if `dim` is out of range.
+    #[cfg(feature = "rayon")]
+    pub fn par_lanes_lexicographic(&self, dim: DimIndex) -> Option<ParLanes<D>> {
+        let order = DimOrder::lexicographic(self.rank()).expect("D can always represent its own rank");
+
+        ParLanes::new(self.clone(), dim, order)
+    }
+
+    /// Returns a parallel iterator over the lanes in the provided order.
+    ///
+    /// Lanes are numbered according to `order` over the other dimensions.
+    ///
+    /// Returns `None` if `dim` is out of range, or if `order` has a different
+    /// rank than `self`.
+    #[cfg(feature = "rayon")]
+    pub fn par_lanes_with_order(&self, dim: DimIndex, order: DimOrder<D>) -> Option<ParLanes<D>> {
+        ParLanes::new(self.clone(), dim, order)
     }
 
     /// Returns the number of lanes along `dim`.
@@ -702,21 +863,28 @@ where
 
     /// Returns the geometry of the `lane`-th lane along `dim`.
     ///
-    /// `dim` must be in range and `lane` must be less than
-    /// [`lane_count`](Self::lane_count). Otherwise, the result is meaningless.
-    pub(crate) fn lane_row_major_unvalidated(&self, dim: DimIndex, lane: usize) -> Lane {
-        debug_assert!(dim.0 < self.shape.rank());
-        debug_assert!(self.lane_count(dim).is_some_and(|count| lane < count));
-
+    /// Lanes are numbered according to `order` over the other dimensions.
+    ///
+    /// `dim` must be in range, `order` must have the same rank as the layout,
+    /// and `lane` must be less than [`Layout::lane_count`]. Otherwise, the
+    /// result is meaningless.
+    pub(crate) fn lane_unvalidated(
+        &self,
+        dim: DimIndex,
+        lane: usize,
+        order: &DimOrder<D>,
+    ) -> Lane {
         Lane {
-            offset: self.lane_offset_row_major_unvalidated(dim, lane),
+            offset: self.lane_offset_unvalidated(dim, lane, order),
             stride: self.strides.as_slice()[dim.0],
             count: self.shape.as_slice()[dim.0],
         }
     }
 
     /// Returns the buffer offset of the first element of the `lane`-th lane
-    /// along `dim`, numbered in row-major order over the other dimensions.
+    /// along `dim`.
+    ///
+    /// Lanes are numbered according to `order` over the other dimensions.
     ///
     /// `dim` must be in range and `lane` must be less than
     /// [`lane_count`](Self::lane_count). Otherwise, the result is meaningless.
@@ -724,29 +892,43 @@ where
     /// No arithmetic can overflow under those preconditions: every offset this
     /// produces is at most [`Layout::max_offset`], which was validated at
     /// construction.
-    pub(crate) fn lane_offset_row_major_unvalidated(
+    pub(crate) fn lane_offset_unvalidated(
         &self,
         dim: DimIndex,
         mut lane: usize,
+        order: &DimOrder<D>,
     ) -> usize {
-        debug_assert!(dim.0 < self.shape.rank());
+        debug_assert!(dim.0 < self.rank());
+        debug_assert_eq!(order.rank(), self.rank());
         debug_assert!(self.lane_count(dim).is_some_and(|count| lane < count));
 
         let extents = self.shape.as_slice();
         let strides = self.strides.as_slice();
-        let dim = dim.0;
 
-        extents
+        order
+            .as_slice()
             .iter()
-            .zip(strides)
-            .enumerate()
             .rev()
-            .filter(|&(i, _)| i != dim)
-            .fold(self.offset, |acc, (_, (&extent, &stride))| {
-                let acc = acc + (lane % extent) * stride;
-                lane /= extent;
+            .copied()
+            .filter(|&d| d != dim.0)
+            .fold(self.offset, |acc, d| {
+                let acc = acc + (lane % extents[d]) * strides[d];
+                lane /= extents[d];
 
                 acc
+            })
+    }
+
+    /// Returns the largest buffer offset addressable by `shape` and `strides`
+    /// starting at `offset`, or `None` if the computation overflows or any
+    /// extent is zero.
+    fn max_offset_of(shape: &Shape<D>, strides: &Strides<D>, offset: usize) -> Option<usize> {
+        shape
+            .as_slice()
+            .iter()
+            .zip(strides.as_slice())
+            .try_fold(offset, |acc, (&extent, &stride)| {
+                acc.checked_add(extent.checked_sub(1)?.checked_mul(stride)?)
             })
     }
 }
@@ -757,8 +939,8 @@ where
 {
     /// Returns the linear buffer offset of `index`.
     ///
-    /// Returns `None` if `index` has a different rank than the layout, if any
-    /// component is out of bounds, or if the offset overflows.
+    /// Returns `None` if `index` has a different rank than the layout, or if
+    /// any component is out of bounds.
     pub fn linear<D2>(&self, index: &ArrayIndex<D2>) -> Option<usize>
     where
         D2: Dimension,
@@ -787,12 +969,9 @@ where
 
     /// Returns the linear buffer offset of `index`, eliding any checks.
     ///
-    /// In particular, it must hold that
-    /// - `index` and layout have the same rank, and
-    /// - none of the components of `index` is out of bounds, and
-    /// - the offset doesn't overflow for this index.
-    ///
-    /// If any of these conditions do not hold, the result is meaningless.
+    /// In particular, it must hold that `index` and layout have the same rank,
+    /// and none of the components of `index` is out of bounds. If any of these
+    /// conditions do not hold, the result is meaningless.
     pub fn linear_unvalidated<D2>(&self, index: &ArrayIndex<D2>) -> usize
     where
         D2: Dimension,
@@ -806,6 +985,45 @@ where
             .fold(self.offset, |acc, (&index, &stride)| {
                 acc.wrapping_add(index.wrapping_mul(stride))
             })
+    }
+
+    /// Returns the lane along `dim` that passes through `index`.
+    ///
+    /// The component of `index` at `dim` is ignored, so an index anywhere on
+    /// the lane selects it. Unlike the numbering used by the `lanes_*`
+    /// iterators, this identifies a lane absolutely and needs no order.
+    ///
+    /// Returns `None` if `dim` is out of range, if `index` has a different
+    /// rank than the layout, or if any other component is out of bounds.
+    pub fn lane_at<D2>(&self, dim: DimIndex, index: &ArrayIndex<D2>) -> Option<Lane>
+    where
+        D2: Dimension,
+    {
+        if let (Some(self_rank), Some(index_rank)) = (D1::RANK, D2::RANK) {
+            if self_rank != index_rank || dim.0 >= self_rank {
+                return None;
+            }
+        } else if index.rank() != self.rank() || dim.0 >= self.rank() {
+            return None;
+        }
+
+        let (extents, strides) = (self.shape.as_slice(), self.strides.as_slice());
+        let offset = index
+            .as_slice()
+            .iter()
+            .zip(extents)
+            .zip(strides)
+            .enumerate()
+            .filter(|&(component, _)| component != dim.0)
+            .try_fold(self.offset, |acc, (_, ((&index, &extent), &stride))| {
+                (index < extent).then(|| acc + index * stride)
+            })?;
+
+        Some(Lane {
+            offset,
+            stride: strides[dim.0],
+            count: extents[dim.0],
+        })
     }
 }
 
@@ -903,7 +1121,7 @@ mod tests {
                 let layout = Layout::row_major(shape.clone(), offset).expect("hand verified");
 
                 assert_eq!(layout.len(), len);
-                assert_eq!(layout.max_offset(), Some(offset + len - 1));
+                assert_eq!(layout.max_offset(), offset + len - 1);
             }
         }
     }
@@ -915,7 +1133,7 @@ mod tests {
 
         assert_eq!(layout.len(), 1);
         assert_eq!(layout.shape().as_slice(), &[] as &[usize]);
-        assert_eq!(layout.max_offset(), Some(9));
+        assert_eq!(layout.max_offset(), 9);
     }
 
     #[test]
@@ -947,9 +1165,10 @@ mod tests {
     #[test]
     fn offset_overflow() {
         let shape = Shape::new(DynDim::from_slice(&[4][..]));
-        let layout = Layout::row_major(shape, usize::MAX - 2).expect("hand verified");
+        assert!(Layout::row_major(shape, usize::MAX - 3).is_some());
 
-        assert!(layout.max_offset().is_none());
+        let shape = Shape::new(DynDim::from_slice(&[4][..]));
+        assert!(Layout::row_major(shape, usize::MAX - 2).is_none());
     }
 
     #[test]
