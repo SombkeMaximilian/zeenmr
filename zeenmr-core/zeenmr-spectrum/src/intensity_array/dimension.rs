@@ -421,28 +421,18 @@ where
     /// `self` and `extents` must have the same rank, and every component of
     /// `self` must be less than the corresponding extent.
     ///
-    /// Returns `false` if the index was the last one, in which case every
-    /// component wraps to zero. This enables `while` loops to be written in the
-    /// following way:
-    ///
-    /// `while { ...; index.increment_lexicographic(extents) } {}`
-    ///
-    /// though callers must not rely on it terminating when any extent is zero.
-    /// No component can then reach its extent, so the index never advances past
-    /// it. Drive such loops with an external count instead.
-    pub(crate) fn increment_lexicographic(&mut self, extents: &[usize]) -> bool {
+    /// Wraps around when reaching the last index.
+    pub(crate) fn increment_lexicographic(&mut self, extents: &[usize]) {
         debug_assert_eq!(self.rank(), extents.len());
 
         let components = self.0.as_mut_slice();
         for (component, &extent) in components.iter_mut().zip(extents).rev() {
             *component += 1;
             if *component < extent {
-                return true;
+                break;
             }
             *component = 0;
         }
-
-        false
     }
 
     /// Decrements the index according to the `extents` in lexicographic order.
@@ -450,28 +440,18 @@ where
     /// `self` and `extents` must have the same rank, and every component of
     /// `self` must be less than the corresponding extent.
     ///
-    /// Returns `false` if the index was the first one, in which case every
-    /// component wraps to the maximum for the given extents. This enables
-    /// `while` loops to be written in the following way:
-    ///
-    /// `while { ...; index.decrement_lexicographic(extents) } {}`
-    ///
-    /// though callers must not rely on it terminating when any extent is zero.
-    /// No component can then reach its extent, so the index never advances past
-    /// it. Drive such loops with an external count instead.
-    pub(crate) fn decrement_lexicographic(&mut self, extents: &[usize]) -> bool {
+    /// Wraps around when reaching the first index.
+    pub(crate) fn decrement_lexicographic(&mut self, extents: &[usize]) {
         debug_assert_eq!(self.rank(), extents.len());
 
         let components = self.0.as_mut_slice();
         for (component, &extent) in components.iter_mut().zip(extents).rev() {
             if *component > 0 {
                 *component -= 1;
-                return true;
+                break;
             }
             *component = extent.saturating_sub(1);
         }
-
-        false
     }
 
     /// Sets the index to the `k`-th one in lexicographic order.
