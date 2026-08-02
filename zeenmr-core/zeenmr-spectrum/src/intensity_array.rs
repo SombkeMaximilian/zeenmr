@@ -1,7 +1,10 @@
 //! Types and traits for representing spectrum intensities.
 
 mod array;
-pub use array::Array;
+pub use array::{
+    Array, Array1D, Array2D, Array3D, ArrayArc, ArrayCow, ArrayDyn, ArrayOwned, ArrayRc, ArrayView,
+    ArrayViewMut,
+};
 
 mod storage;
 pub use storage::{Storage, StorageMut, StorageOwned};

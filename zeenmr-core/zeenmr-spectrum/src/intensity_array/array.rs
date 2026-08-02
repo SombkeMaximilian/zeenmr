@@ -1,6 +1,39 @@
 use crate::intensity_array::{
-    ArrayIndex, Dimension, Layout, Shape, Storage, StorageMut, StorageOwned,
+    ArrayIndex, Dimension, DynDim, Layout, Shape, StaticDim, Storage, StorageMut, StorageOwned,
 };
+use std::borrow::Cow;
+use std::rc::Rc;
+use std::sync::Arc;
+
+/// Array borrowing its storage immutably.
+pub type ArrayView<'s, T, D> = Array<&'s [T], D>;
+
+/// Array borrowing its storage mutably.
+pub type ArrayViewMut<'s, T, D> = Array<&'s mut [T], D>;
+
+/// Array owning its storage.
+pub type ArrayOwned<T, D> = Array<Box<[T]>, D>;
+
+/// Array using clone-on-write storage.
+pub type ArrayCow<'s, T, D> = Array<Cow<'s, [T]>, D>;
+
+/// Array using referencing counting.
+pub type ArrayRc<T, D> = Array<Rc<[T]>, D>;
+
+/// Array using atomic reference counting.
+pub type ArrayArc<T, D> = Array<Arc<[T]>, D>;
+
+/// Array of rank 1.
+pub type Array1D<S> = Array<S, StaticDim<1>>;
+
+/// Array of rank 2.
+pub type Array2D<S> = Array<S, StaticDim<2>>;
+
+/// Array of rank 3.
+pub type Array3D<S> = Array<S, StaticDim<3>>;
+
+/// Array of a rank determined at runtime.
+pub type ArrayDyn<S> = Array<S, DynDim>;
 
 /// Array type with arbitrary dimensions.
 #[derive(Debug)]
@@ -76,6 +109,51 @@ where
         }
 
         Some(Self { storage, layout })
+    }
+
+    /// Returns an immutable view of the entire array.
+    pub fn view(&self) -> ArrayView<'_, S::Elem, D> {
+        Array {
+            storage: self.storage.as_slice(),
+            layout: self.layout.clone(),
+        }
+    }
+
+    /// Returns the equivalent array with a rank determined at runtime.
+    pub fn into_dyn(self) -> Array<S, DynDim> {
+        Array {
+            storage: self.storage,
+            layout: self.layout.into_dyn(),
+        }
+    }
+
+    /// Returns the equivalent array of rank `N`.
+    ///
+    /// Returns `Err(self)` if `self` does not have rank `N`.
+    pub fn try_into_static<const N: usize>(self) -> Result<Array<S, StaticDim<N>>, Self> {
+        match self.layout.to_dimension() {
+            Some(layout) => Ok(Array {
+                storage: self.storage,
+                layout,
+            }),
+            None => Err(self),
+        }
+    }
+}
+
+impl<S, D> Array<S, D>
+where
+    S: StorageMut,
+    D: Dimension,
+{
+    /// Returns a mutable view of the entire array.
+    pub fn view_mut(&mut self) -> ArrayViewMut<'_, S::Elem, D> {
+        let layout = self.layout.clone();
+
+        Array {
+            storage: self.storage.as_mut_slice(),
+            layout,
+        }
     }
 }
 

@@ -375,6 +375,15 @@ where
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct ArrayIndex<D>(D);
 
+impl<D, const N: usize> From<[usize; N]> for ArrayIndex<D>
+where
+    D: Dimension + From<[usize; N]>,
+{
+    fn from(value: [usize; N]) -> Self {
+        Self(D::from(value))
+    }
+}
+
 impl<D> ArrayIndex<D>
 where
     D: Dimension,
@@ -382,6 +391,19 @@ where
     /// Creates a new multidimensional array index.
     pub fn new(indices: D) -> Self {
         Self(indices)
+    }
+
+    /// Returns the equivalent index with a rank determined at runtime.
+    pub fn into_dyn(self) -> ArrayIndex<DynDim> {
+        self.to_dimension()
+            .expect("DynDim can represent any rank")
+    }
+
+    /// Returns the equivalent index of rank `N`.
+    ///
+    /// Returns `None` if `self` does not have rank `N`.
+    pub fn try_into_static<const N: usize>(self) -> Option<ArrayIndex<StaticDim<N>>> {
+        self.to_dimension()
     }
 
     /// Returns the `linear`-th index of `shape` in lexicographic order.
@@ -479,11 +501,35 @@ where
     }
 }
 
+impl<D1> ArrayIndex<D1>
+where
+    D1: Dimension,
+{
+    /// Returns the equivalent index over `D2`.
+    ///
+    /// Returns `None` if `D2` cannot represent the rank of `self`.
+    pub fn to_dimension<D2>(&self) -> Option<ArrayIndex<D2>>
+    where
+        D2: Dimension,
+    {
+        Some(ArrayIndex(D2::from_dimension(&self.0)?))
+    }
+}
+
 /// Shape of an array.
 ///
 /// The entries represent the extent of the array along each dimension.
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct Shape<D>(D);
+
+impl<D, const N: usize> From<[usize; N]> for Shape<D>
+where
+    D: Dimension + From<[usize; N]>,
+{
+    fn from(value: [usize; N]) -> Self {
+        Self(D::from(value))
+    }
+}
 
 impl<D> Shape<D>
 where
@@ -492,6 +538,19 @@ where
     /// Creates a new array shape.
     pub fn new(shape: D) -> Self {
         Self(shape)
+    }
+
+    /// Returns the equivalent shape with a rank determined at runtime.
+    pub fn into_dyn(self) -> Shape<DynDim> {
+        self.to_dimension()
+            .expect("DynDim can represent any rank")
+    }
+
+    /// Returns the equivalent shape of rank `N`.
+    ///
+    /// Returns `None` if `self` does not have rank `N`.
+    pub fn try_into_static<const N: usize>(self) -> Option<Shape<StaticDim<N>>> {
+        self.to_dimension()
     }
 
     /// Returns the rank of `self`.
@@ -584,6 +643,21 @@ where
     #[cfg(feature = "rayon")]
     pub fn par_indices_lexicographic(&self) -> Option<ParIndices<D>> {
         ParIndices::new(self.clone())
+    }
+}
+
+impl<D1> Shape<D1>
+where
+    D1: Dimension,
+{
+    /// Returns the equivalent shape over `D2`.
+    ///
+    /// Returns `None` if `D2` cannot represent the rank of `self`.
+    pub fn to_dimension<D2>(&self) -> Option<Shape<D2>>
+    where
+        D2: Dimension,
+    {
+        Some(Shape(D2::from_dimension(&self.0)?))
     }
 }
 
@@ -714,6 +788,19 @@ where
             max_offset: self.max_offset,
             len: self.len,
         })
+    }
+
+    /// Returns the equivalent layout with a rank determined at runtime.
+    pub fn into_dyn(self) -> Layout<DynDim> {
+        self.to_dimension()
+            .expect("DynDim can represent any rank")
+    }
+
+    /// Returns the equivalent layout of rank `N`.
+    ///
+    /// Returns `None` if `self` does not have rank `N`.
+    pub fn try_into_static<const N: usize>(self) -> Option<Layout<StaticDim<N>>> {
+        self.to_dimension()
     }
 
     /// Returns the rank of `self`.
@@ -976,6 +1063,22 @@ impl<D1> Layout<D1>
 where
     D1: Dimension,
 {
+    /// Returns the equivalent layout over `D2`.
+    ///
+    /// Returns `None` if `D2` cannot represent the rank of `self`.
+    pub fn to_dimension<D2>(&self) -> Option<Layout<D2>>
+    where
+        D2: Dimension,
+    {
+        Some(Layout {
+            shape: Shape(D2::from_dimension(&self.shape.0)?),
+            strides: Strides(D2::from_dimension(&self.strides.0)?),
+            offset: self.offset,
+            max_offset: self.max_offset,
+            len: self.len,
+        })
+    }
+
     /// Returns the linear buffer offset of `index`.
     ///
     /// Returns `None` if `index` has a different rank than the layout, or if
