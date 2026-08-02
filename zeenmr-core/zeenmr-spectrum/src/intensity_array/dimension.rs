@@ -714,12 +714,13 @@ where
             return None;
         }
 
-        let mut shape = D::zero(self.rank()).expect("`D` can always represent its own rank");
-        let mut strides = D::zero(self.rank()).expect("`D` can always represent its own rank");
+        let zero = D::zero(self.rank()).expect("`D` can always represent its own rank");
+        let mut shape = Shape(zero.clone());
+        let mut strides = Strides(zero);
         let (extents, old_strides) = (self.shape.as_slice(), self.strides.as_slice());
         for (position, dim) in order.iter().enumerate() {
             shape.as_mut_slice()[position] = extents[dim.0];
-            strides.as_mut_slice()[position] = old_strides[dim.0];
+            strides.0.as_mut_slice()[position] = old_strides[dim.0];
         }
 
         Some(Self {
