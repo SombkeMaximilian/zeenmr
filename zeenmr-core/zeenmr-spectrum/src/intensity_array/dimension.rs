@@ -560,6 +560,30 @@ where
         Some(Strides(strides))
     }
 
+    /// Computes the column-major, contiguous strides from the array shape.
+    ///
+    /// This crate stores arrays row-major throughout, so this mainly serves
+    /// data that already arrives in column-major order. Every operation works
+    /// the same on either.
+    pub fn column_major_strides(&self) -> Option<Strides<D>> {
+        let mut strides = D::zero(self.0.rank()).expect("`D` can always represent its own rank");
+        if let Some(first) = strides.as_mut_slice().first_mut() {
+            let mut product = 1;
+            *first = product;
+            for (stride, &extent) in strides
+                .as_mut_slice()
+                .iter_mut()
+                .skip(1)
+                .zip(self.0.as_slice())
+            {
+                product = product.checked_mul(extent)?;
+                *stride = product;
+            }
+        }
+
+        Some(Strides(strides))
+    }
+
     /// Returns an iterator over the multidimensional indices in lexicographic
     /// order.
     ///
@@ -639,6 +663,25 @@ where
             .product_checked()
             .filter(|&size| size != 0)?;
         let strides = shape.row_major_strides()?;
+        let max_offset = Self::max_offset_of(&shape, &strides, offset)?;
+
+        Some(Self { shape, strides, offset, max_offset, len })
+    }
+
+    /// Creates a column-major, contiguous layout with the given shape and
+    /// offset.
+    ///
+    /// Returns `None` if [`Shape::product_checked`] returns `Some(0)` or
+    /// `None`, or if no contiguous strides can be computed from `shape`, or if
+    /// computing the maximum offset that can be addressed overflows.
+    ///
+    /// The library stores arrays row-major throughout. See
+    /// [`Shape::column_major_strides`].
+    pub fn column_major(shape: Shape<D>, offset: usize) -> Option<Self> {
+        let len = shape
+            .product_checked()
+            .filter(|&size| size != 0)?;
+        let strides = shape.column_major_strides()?;
         let max_offset = Self::max_offset_of(&shape, &strides, offset)?;
 
         Some(Self { shape, strides, offset, max_offset, len })
