@@ -338,7 +338,10 @@ where
     /// Position `0` is the slowest varying dimension. Returns `None` if
     /// `index` is not less than the rank.
     pub fn get(&self, index: usize) -> Option<DimIndex> {
-        self.0.as_slice().get(index).map(|&dim| DimIndex(dim))
+        self.0
+            .as_slice()
+            .get(index)
+            .map(|&dim| DimIndex(dim))
     }
 
     /// Returns an iterator over the dimensions from slowest to fastest
@@ -665,7 +668,13 @@ where
         let strides = shape.row_major_strides()?;
         let max_offset = Self::max_offset_of(&shape, &strides, offset)?;
 
-        Some(Self { shape, strides, offset, max_offset, len })
+        Some(Self {
+            shape,
+            strides,
+            offset,
+            max_offset,
+            len,
+        })
     }
 
     /// Creates a column-major, contiguous layout with the given shape and
@@ -684,7 +693,13 @@ where
         let strides = shape.column_major_strides()?;
         let max_offset = Self::max_offset_of(&shape, &strides, offset)?;
 
-        Some(Self { shape, strides, offset, max_offset, len })
+        Some(Self {
+            shape,
+            strides,
+            offset,
+            max_offset,
+            len,
+        })
     }
 
     /// Returns the layout with its dimensions reordered according to `order`.
@@ -716,7 +731,7 @@ where
             // all other constructors guarantee) and does not change it
             offset: self.offset,
             max_offset: self.max_offset,
-            len: self.len
+            len: self.len,
         })
     }
 
@@ -809,6 +824,12 @@ where
             .map(|(index, _)| DimIndex(index))
     }
 
+    /// Returns the lexicographic dimension order for `D` with the same rank as
+    /// `self`.
+    pub fn lexicographic_order(&self) -> DimOrder<D> {
+        DimOrder::lexicographic(self.rank()).expect("D can always represent its own rank")
+    }
+
     /// Returns the dimension indices ordered from largest to smallest stride.
     ///
     /// Walking dimensions in this order visits the buffer as sequentially as
@@ -846,9 +867,7 @@ where
     ///
     /// Returns `None` if `dim` is out of range.
     pub fn lanes_lexicographic(&self, dim: DimIndex) -> Option<Lanes<D>> {
-        let order = DimOrder::lexicographic(self.rank()).expect("D can always represent its own rank");
-
-        Lanes::new(self.clone(), dim, order)
+        Lanes::new(self.clone(), dim, self.lexicographic_order())
     }
 
     /// Returns an iterator over the lanes in the provided order.
@@ -874,9 +893,7 @@ where
     /// Returns `None` if `dim` is out of range.
     #[cfg(feature = "rayon")]
     pub fn par_lanes_lexicographic(&self, dim: DimIndex) -> Option<ParLanes<D>> {
-        let order = DimOrder::lexicographic(self.rank()).expect("D can always represent its own rank");
-
-        ParLanes::new(self.clone(), dim, order)
+        ParLanes::new(self.clone(), dim, self.lexicographic_order())
     }
 
     /// Returns a parallel iterator over the lanes in the provided order.
@@ -911,12 +928,7 @@ where
     /// `dim` must be in range, `order` must have the same rank as the layout,
     /// and `lane` must be less than [`Layout::lane_count`]. Otherwise, the
     /// result is meaningless.
-    pub(crate) fn lane_unvalidated(
-        &self,
-        dim: DimIndex,
-        lane: usize,
-        order: &DimOrder<D>,
-    ) -> Lane {
+    pub(crate) fn lane_unvalidated(&self, dim: DimIndex, lane: usize, order: &DimOrder<D>) -> Lane {
         Lane {
             offset: self.lane_offset_unvalidated(dim, lane, order),
             stride: self.strides.as_slice()[dim.0],
@@ -943,7 +955,10 @@ where
     ) -> usize {
         debug_assert!(dim.0 < self.rank());
         debug_assert_eq!(order.rank(), self.rank());
-        debug_assert!(self.lane_count(dim).is_some_and(|count| lane < count));
+        debug_assert!(
+            self.lane_count(dim)
+                .is_some_and(|count| lane < count)
+        );
 
         let extents = self.shape.as_slice();
         let strides = self.strides.as_slice();
@@ -988,11 +1003,7 @@ where
     where
         D2: Dimension,
     {
-        if let (Some(self_rank), Some(index_rank)) = (D1::RANK, D2::RANK) {
-            if self_rank != index_rank {
-                return None;
-            }
-        } else if index.rank() != self.shape.rank() {
+        if index.rank() != self.shape.rank() {
             return None;
         }
 
@@ -1042,11 +1053,7 @@ where
     where
         D2: Dimension,
     {
-        if let (Some(self_rank), Some(index_rank)) = (D1::RANK, D2::RANK) {
-            if self_rank != index_rank || dim.0 >= self_rank {
-                return None;
-            }
-        } else if index.rank() != self.rank() || dim.0 >= self.rank() {
+        if index.rank() != self.rank() || dim.0 >= self.rank() {
             return None;
         }
 

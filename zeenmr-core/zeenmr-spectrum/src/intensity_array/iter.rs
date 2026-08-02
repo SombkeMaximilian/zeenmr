@@ -228,7 +228,9 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.front < self.back {
-            let curr = self.layout.lane_unvalidated(self.dim, self.front, &self.order);
+            let curr = self
+                .layout
+                .lane_unvalidated(self.dim, self.front, &self.order);
             self.front += 1;
 
             Some(curr)
@@ -252,7 +254,10 @@ where
         if self.front < self.back {
             self.back -= 1;
 
-            Some(self.layout.lane_unvalidated(self.dim, self.back, &self.order))
+            Some(
+                self.layout
+                    .lane_unvalidated(self.dim, self.back, &self.order),
+            )
         } else {
             None
         }
@@ -282,7 +287,13 @@ where
 
         let back = layout.lane_count(dim)?;
 
-        Some(Self { layout, dim, order, front: 0, back })
+        Some(Self {
+            layout,
+            dim,
+            order,
+            front: 0,
+            back,
+        })
     }
 }
 
