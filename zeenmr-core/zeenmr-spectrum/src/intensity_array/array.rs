@@ -2,6 +2,7 @@ use crate::intensity_array::{
     ArrayIndex, Dimension, DynDim, Layout, Shape, StaticDim, Storage, StorageMut, StorageOwned,
 };
 use std::borrow::Cow;
+use std::ops::{Index, IndexMut};
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -36,7 +37,7 @@ pub type Array3D<S> = Array<S, StaticDim<3>>;
 pub type ArrayDyn<S> = Array<S, DynDim>;
 
 /// Array type with arbitrary dimensions.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Array<S, D> {
     /// Raw storage of the array.
     ///
@@ -50,10 +51,123 @@ pub struct Array<S, D> {
     layout: Layout<D>,
 }
 
+impl<S1, D1, S2, D2> PartialEq<Array<S2, D2>> for Array<S1, D1>
+where
+    S1: Storage,
+    S2: Storage,
+    S1::Elem: PartialEq<S2::Elem>,
+    D1: Dimension,
+    D2: Dimension,
+{
+    // TODO: replace this with fastest lane iteration
+    fn eq(&self, other: &Array<S2, D2>) -> bool {
+        if self.shape().as_slice() != other.shape().as_slice() {
+            return false;
+        }
+
+        self.shape()
+            .indices_lexicographic()
+            .expect("should be validated at construction")
+            .all(|index| {
+                matches!(
+                    (self.get(&index), other.get(&index)),
+                    (Some(a), Some(b)) if a == b
+                )
+            })
+    }
+}
+
+impl<S, D> Eq for Array<S, D>
+where
+    S: Storage,
+    S::Elem: Eq,
+    D: Dimension,
+{
+}
+
+impl<S, D1, D2> Index<&ArrayIndex<D2>> for Array<S, D1>
+where
+    S: Storage,
+    D1: Dimension,
+    D2: Dimension,
+{
+    type Output = S::Elem;
+
+    #[track_caller]
+    fn index(&self, index: &ArrayIndex<D2>) -> &Self::Output {
+        if index.rank() != self.rank() {
+            index_rank_mismatch(index.rank(), self.rank());
+        }
+        let Some(linear) = self.layout.linear(index) else {
+            index_out_of_bounds(index.as_slice(), self.shape().as_slice());
+        };
+
+        // SAFETY: `Layout::linear` returned `Some`, so every component of
+        // `index` is less than its extent and the offset is at most
+        // `max_offset`.
+        unsafe { self.elem_unchecked(linear) }
+    }
+}
+
+impl<S, D, const N: usize> Index<[usize; N]> for Array<S, D>
+where
+    S: Storage,
+    D: Dimension,
+{
+    type Output = S::Elem;
+
+    #[track_caller]
+    fn index(&self, index: [usize; N]) -> &Self::Output {
+        let index = ArrayIndex::<StaticDim<N>>::from(index);
+
+        &self[&index]
+    }
+}
+
+impl<S, D1, D2> IndexMut<&ArrayIndex<D2>> for Array<S, D1>
+where
+    S: StorageMut,
+    D1: Dimension,
+    D2: Dimension,
+{
+    #[track_caller]
+    fn index_mut(&mut self, index: &ArrayIndex<D2>) -> &mut Self::Output {
+        if index.rank() != self.rank() {
+            index_rank_mismatch(index.rank(), self.rank());
+        }
+        let Some(linear) = self.layout.linear(index) else {
+            index_out_of_bounds(index.as_slice(), self.shape().as_slice());
+        };
+
+        // SAFETY: `Layout::linear` returned `Some`, so every component of
+        // `index` is less than its extent and the offset is at most
+        // `max_offset`.
+        unsafe { self.elem_unchecked_mut(linear) }
+    }
+}
+
+impl<S, D, const N: usize> IndexMut<[usize; N]> for Array<S, D>
+where
+    S: StorageMut,
+    D: Dimension,
+{
+    #[track_caller]
+    fn index_mut(&mut self, index: [usize; N]) -> &mut Self::Output {
+        let index = ArrayIndex::<StaticDim<N>>::from(index);
+
+        &mut self[&index]
+    }
+}
+
 impl<S, D> Array<S, D>
 where
     D: Dimension,
 {
+    /// Returns the rank of `self`.
+    pub fn rank(&self) -> usize {
+        self.layout.rank()
+    }
+
     /// Returns a reference to the shape of the array.
     pub fn shape(&self) -> &Shape<D> {
         self.layout.shape()
@@ -312,4 +426,20 @@ where
                 .get_unchecked_mut(linear)
         }
     }
+}
+
+/// Panics with a uniform message for an out-of-bounds array index.
+#[cold]
+#[inline(never)]
+#[track_caller]
+fn index_out_of_bounds(index: &[usize], shape: &[usize]) -> ! {
+    panic!("index {index:?} is out of bounds for array of shape {shape:?}");
+}
+
+/// Panics with a uniform message for a rank mismatch.
+#[cold]
+#[inline(never)]
+#[track_caller]
+fn index_rank_mismatch(index_rank: usize, array_rank: usize) -> ! {
+    panic!("index of rank {index_rank} cannot address array of rank {array_rank}");
 }
