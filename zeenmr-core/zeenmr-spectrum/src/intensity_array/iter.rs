@@ -1,6 +1,8 @@
 //! Array iterators.
 
-use crate::intensity_array::{ArrayIndex, DimIndex, DimOrder, Dimension, Lane, Layout, Shape};
+use crate::intensity_array::{
+    ArrayIndex, DimIndex, DimOrder, Dimension, LaneGeometry, Layout, Shape,
+};
 use std::iter::FusedIterator;
 
 #[cfg(feature = "rayon")]
@@ -207,7 +209,7 @@ where
 
 /// Iterator over the lanes of a layout along one dimension.
 #[derive(Clone, Debug)]
-pub struct Lanes<D> {
+pub struct LaneGeometries<D> {
     /// Underlying layout.
     layout: Layout<D>,
     /// Order of the dimensions.
@@ -220,11 +222,11 @@ pub struct Lanes<D> {
     back: usize,
 }
 
-impl<D> Iterator for Lanes<D>
+impl<D> Iterator for LaneGeometries<D>
 where
     D: Dimension,
 {
-    type Item = Lane;
+    type Item = LaneGeometry;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.front < self.back {
@@ -246,7 +248,7 @@ where
     }
 }
 
-impl<D> DoubleEndedIterator for Lanes<D>
+impl<D> DoubleEndedIterator for LaneGeometries<D>
 where
     D: Dimension,
 {
@@ -264,11 +266,11 @@ where
     }
 }
 
-impl<D> ExactSizeIterator for Lanes<D> where D: Dimension {}
+impl<D> ExactSizeIterator for LaneGeometries<D> where D: Dimension {}
 
-impl<D> FusedIterator for Lanes<D> where D: Dimension {}
+impl<D> FusedIterator for LaneGeometries<D> where D: Dimension {}
 
-impl<D> Lanes<D>
+impl<D> LaneGeometries<D>
 where
     D: Dimension,
 {
@@ -300,14 +302,14 @@ where
 /// Parallel iterator over the lanes of a layout along one dimension.
 #[cfg(feature = "rayon")]
 #[derive(Clone, Debug)]
-pub struct ParLanes<D>(Lanes<D>);
+pub struct ParLaneGeometries<D>(LaneGeometries<D>);
 
 #[cfg(feature = "rayon")]
-impl<D> ParallelIterator for ParLanes<D>
+impl<D> ParallelIterator for ParLaneGeometries<D>
 where
     D: Dimension,
 {
-    type Item = Lane;
+    type Item = LaneGeometry;
 
     fn drive_unindexed<C>(self, consumer: C) -> C::Result
     where
@@ -322,7 +324,7 @@ where
 }
 
 #[cfg(feature = "rayon")]
-impl<D> IndexedParallelIterator for ParLanes<D>
+impl<D> IndexedParallelIterator for ParLaneGeometries<D>
 where
     D: Dimension,
 {
@@ -341,12 +343,12 @@ where
     where
         CB: ProducerCallback<Self::Item>,
     {
-        callback.callback(LanesProducer(self.0))
+        callback.callback(LaneGeometriesProducer(self.0))
     }
 }
 
 #[cfg(feature = "rayon")]
-impl<D> ParLanes<D>
+impl<D> ParLaneGeometries<D>
 where
     D: Dimension,
 {
@@ -359,21 +361,21 @@ where
     ///
     /// Prefer the `par_lanes_*` methods on [`Layout`].
     pub fn new(layout: Layout<D>, dim: DimIndex, order: DimOrder<D>) -> Option<Self> {
-        Some(Self(Lanes::new(layout, dim, order)?))
+        Some(Self(LaneGeometries::new(layout, dim, order)?))
     }
 }
 
-/// Producer for [`ParLanes`].
+/// Producer for [`ParLaneGeometries`].
 #[cfg(feature = "rayon")]
-struct LanesProducer<D>(Lanes<D>);
+struct LaneGeometriesProducer<D>(LaneGeometries<D>);
 
 #[cfg(feature = "rayon")]
-impl<D> Producer for LanesProducer<D>
+impl<D> Producer for LaneGeometriesProducer<D>
 where
     D: Dimension,
 {
-    type Item = Lane;
-    type IntoIter = Lanes<D>;
+    type Item = LaneGeometry;
+    type IntoIter = LaneGeometries<D>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0
@@ -381,11 +383,11 @@ where
 
     fn split_at(self, index: usize) -> (Self, Self) {
         let mid = self.0.front + index;
-        let left = Lanes {
+        let left = LaneGeometries {
             back: mid,
             ..self.0.clone()
         };
-        let right = Lanes {
+        let right = LaneGeometries {
             front: mid,
             ..self.0
         };

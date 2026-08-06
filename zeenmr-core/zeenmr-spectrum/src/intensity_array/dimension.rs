@@ -1,8 +1,8 @@
-use crate::intensity_array::iter::{Indices, Lanes};
+use crate::intensity_array::iter::{Indices, LaneGeometries};
 use std::ops::{Deref, DerefMut};
 
 #[cfg(feature = "rayon")]
-use crate::intensity_array::iter::{ParIndices, ParLanes};
+use crate::intensity_array::iter::{ParIndices, ParLaneGeometries};
 
 /// Maximum number of non-heap dimensions in the dynamic case.
 ///
@@ -926,15 +926,15 @@ where
     /// Returns an iterator over the lanes in memory order.
     ///
     /// Returns `None` if `dim` is out of range.
-    pub fn lanes_memory_order(&self, dim: DimIndex) -> Option<Lanes<D>> {
-        Lanes::new(self.clone(), dim, self.memory_order())
+    pub fn lanes_memory_order(&self, dim: DimIndex) -> Option<LaneGeometries<D>> {
+        LaneGeometries::new(self.clone(), dim, self.memory_order())
     }
 
     /// Returns an iterator over the lanes in lexicographic order.
     ///
     /// Returns `None` if `dim` is out of range.
-    pub fn lanes_lexicographic(&self, dim: DimIndex) -> Option<Lanes<D>> {
-        Lanes::new(self.clone(), dim, self.lexicographic_order())
+    pub fn lanes_lexicographic(&self, dim: DimIndex) -> Option<LaneGeometries<D>> {
+        LaneGeometries::new(self.clone(), dim, self.lexicographic_order())
     }
 
     /// Returns an iterator over the lanes in the provided order.
@@ -943,24 +943,24 @@ where
     ///
     /// Returns `None` if `dim` is out of range, or if `order` has a different
     /// rank than `self`.
-    pub fn lanes_with_order(&self, dim: DimIndex, order: DimOrder<D>) -> Option<Lanes<D>> {
-        Lanes::new(self.clone(), dim, order)
+    pub fn lanes_with_order(&self, dim: DimIndex, order: DimOrder<D>) -> Option<LaneGeometries<D>> {
+        LaneGeometries::new(self.clone(), dim, order)
     }
 
     /// Returns a parallel iterator over the lanes in memory order.
     ///
     /// Returns `None` if `dim` is out of range.
     #[cfg(feature = "rayon")]
-    pub fn par_lanes_memory_order(&self, dim: DimIndex) -> Option<ParLanes<D>> {
-        ParLanes::new(self.clone(), dim, self.memory_order())
+    pub fn par_lanes_memory_order(&self, dim: DimIndex) -> Option<ParLaneGeometries<D>> {
+        ParLaneGeometries::new(self.clone(), dim, self.memory_order())
     }
 
     /// Returns a parallel iterator over the lanes in lexicographic order.
     ///
     /// Returns `None` if `dim` is out of range.
     #[cfg(feature = "rayon")]
-    pub fn par_lanes_lexicographic(&self, dim: DimIndex) -> Option<ParLanes<D>> {
-        ParLanes::new(self.clone(), dim, self.lexicographic_order())
+    pub fn par_lanes_lexicographic(&self, dim: DimIndex) -> Option<ParLaneGeometries<D>> {
+        ParLaneGeometries::new(self.clone(), dim, self.lexicographic_order())
     }
 
     /// Returns a parallel iterator over the lanes in the provided order.
@@ -970,8 +970,12 @@ where
     /// Returns `None` if `dim` is out of range, or if `order` has a different
     /// rank than `self`.
     #[cfg(feature = "rayon")]
-    pub fn par_lanes_with_order(&self, dim: DimIndex, order: DimOrder<D>) -> Option<ParLanes<D>> {
-        ParLanes::new(self.clone(), dim, order)
+    pub fn par_lanes_with_order(
+        &self,
+        dim: DimIndex,
+        order: DimOrder<D>,
+    ) -> Option<ParLaneGeometries<D>> {
+        ParLaneGeometries::new(self.clone(), dim, order)
     }
 
     /// Returns the number of lanes along `dim`.
@@ -995,8 +999,13 @@ where
     /// `dim` must be in range, `order` must have the same rank as the layout,
     /// and `lane` must be less than [`Layout::lane_count`]. Otherwise, the
     /// result is meaningless.
-    pub(crate) fn lane_unvalidated(&self, dim: DimIndex, lane: usize, order: &DimOrder<D>) -> Lane {
-        Lane {
+    pub(crate) fn lane_unvalidated(
+        &self,
+        dim: DimIndex,
+        lane: usize,
+        order: &DimOrder<D>,
+    ) -> LaneGeometry {
+        LaneGeometry {
             offset: self.lane_offset_unvalidated(dim, lane, order),
             stride: self.strides.as_slice()[dim.0],
             count: self.shape.as_slice()[dim.0],
@@ -1132,7 +1141,7 @@ where
     ///
     /// Returns `None` if `dim` is out of range, if `index` has a different
     /// rank than the layout, or if any other component is out of bounds.
-    pub fn lane_at<D2>(&self, dim: DimIndex, index: &ArrayIndex<D2>) -> Option<Lane>
+    pub fn lane_at<D2>(&self, dim: DimIndex, index: &ArrayIndex<D2>) -> Option<LaneGeometry>
     where
         D2: Dimension,
     {
@@ -1152,7 +1161,7 @@ where
                 (index < extent).then(|| acc + index * stride)
             })?;
 
-        Some(Lane {
+        Some(LaneGeometry {
             offset,
             stride: strides[dim.0],
             count: extents[dim.0],
@@ -1166,7 +1175,7 @@ where
 /// `offset + (count - 1) * stride`. Carries no dimension information: a lane
 /// is a flat walk, and the layout it came from determines what it traverses.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
-pub struct Lane {
+pub struct LaneGeometry {
     /// Offset of the first element.
     pub offset: usize,
     /// Number of elements between consecutive elements of the lane.
@@ -1175,7 +1184,7 @@ pub struct Lane {
     pub count: usize,
 }
 
-impl Lane {
+impl LaneGeometry {
     /// Returns the buffer offset of the `index`-th element.
     #[inline]
     pub fn offset_of(&self, index: usize) -> usize {
