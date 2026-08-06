@@ -71,7 +71,8 @@ pub trait SpectralRange<T> {
     /// Returns the width of the range, signed by its direction.
     ///
     /// Negative for a descending range, zero for a degenerate one, positive for
-    /// an ascending one. May overflow to an infinity, as for [`width`].
+    /// an ascending one. May overflow to an infinity, as for
+    /// [`SpectralRange::width`].
     fn signed_width(&self) -> T;
 
     /// Returns the midpoint of the range.
