@@ -18,10 +18,10 @@ pub type ArrayOwned<T, D> = Array<Box<[T]>, D>;
 /// Array using clone-on-write storage.
 pub type ArrayCow<'s, T, D> = Array<Cow<'s, [T]>, D>;
 
-/// Array using referencing counting.
+/// Array using referencing counted storage.
 pub type ArrayRc<T, D> = Array<Rc<[T]>, D>;
 
-/// Array using atomic reference counting.
+/// Array using atomic reference counted storage.
 pub type ArrayArc<T, D> = Array<Arc<[T]>, D>;
 
 /// Array of rank 1.
