@@ -3,7 +3,7 @@
 mod array;
 pub use array::{
     Array, Array1D, Array2D, Array3D, ArrayArc, ArrayCow, ArrayDyn, ArrayOwned, ArrayRc, ArrayView,
-    ArrayViewMut,
+    ArrayViewMut, Lane, LaneMut,
 };
 
 mod storage;

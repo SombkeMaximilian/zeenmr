@@ -992,6 +992,24 @@ where
             .map(|extent| self.len / extent)
     }
 
+    /// Returns `true` if the lanes along `dim` in memory order are consecutive,
+    /// contiguous chunks of the underlying storage.
+    ///
+    /// When this holds, lanes can straightforwardly be handed out as disjoint,
+    /// potentially mutable slices without any offset arithmetic.
+    ///
+    /// Always returns `false` if `dim` is out of range.
+    pub fn lanes_are_chunks(&self, dim: DimIndex) -> bool {
+        let Some(extent) = self.shape.get(dim) else {
+            return false;
+        };
+        let Some(stride) = self.strides.get(dim) else {
+            return false;
+        };
+
+        (extent == 1 || stride == 1) && self.is_packed()
+    }
+
     /// Returns the geometry of the `lane`-th lane along `dim`.
     ///
     /// Lanes are numbered according to `order` over the other dimensions.
@@ -1177,26 +1195,99 @@ where
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct LaneGeometry {
     /// Offset of the first element.
-    pub offset: usize,
+    offset: usize,
     /// Number of elements between consecutive elements of the lane.
-    pub stride: usize,
+    stride: usize,
     /// Number of elements in the lane.
-    pub count: usize,
+    count: usize,
 }
 
 impl LaneGeometry {
-    /// Returns the buffer offset of the `index`-th element.
+    /// Returns the number of elements in the lane geometry.
     #[inline]
-    pub fn offset_of(&self, index: usize) -> usize {
-        debug_assert!(index < self.count);
+    pub fn len(&self) -> usize {
+        self.count
+    }
 
-        self.offset + index * self.stride
+    /// Returns `true` if no elements are in the lane geometry.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// Returns `true` if the lane's elements are adjacent in the buffer.
     #[inline]
     pub fn is_contiguous(&self) -> bool {
         self.stride == 1 || self.count <= 1
+    }
+
+    /// Returns the range of contiguous buffer offsets addressed by the lane
+    /// geometry.
+    #[inline]
+    pub fn contiguous_range(&self) -> Option<std::ops::Range<usize>> {
+        if self.is_contiguous() {
+            Some(self.offset..self.offset.checked_add(self.count)?)
+        } else {
+            None
+        }
+    }
+
+    /// Returns the largest buffer offset the lane addresses.
+    ///
+    /// Returns `None` if the lane is empty, and therefore addresses nothing, or
+    /// if the computation overflows.
+    #[inline]
+    pub fn max_offset(&self) -> Option<usize> {
+        let last = self.count.checked_sub(1)?;
+
+        self.offset
+            .checked_add(last.checked_mul(self.stride)?)
+    }
+
+    /// Returns `true` if every offset the lane addresses is less than `len`.
+    ///
+    /// An empty lane always fits. A lane whose offsets overflow never does.
+    #[inline]
+    pub fn fits_within(&self, len: usize) -> bool {
+        if self.count == 0 {
+            true
+        } else {
+            self.max_offset().is_some_and(|max| max < len)
+        }
+    }
+
+    /// Returns the buffer offset of the `index`-th element.
+    ///
+    /// Returns `None` if `index` is out of bounds or if the computation
+    /// overflows.
+    #[inline]
+    pub fn offset_of(&self, index: usize) -> Option<usize> {
+        if index < self.count {
+            self.offset
+                .checked_add(index.checked_mul(self.stride)?)
+        } else {
+            None
+        }
+    }
+
+    /// Returns the buffer offset of the `index`-th element.
+    ///
+    /// `index` must be addressable by the lane.
+    #[inline]
+    pub fn offset_of_unvalidated(&self, index: usize) -> usize {
+        debug_assert!(index < self.count);
+
+        self.offset + index * self.stride
+    }
+
+    /// Returns an iterator over the buffer offsets addressed by the lane
+    /// geometry.
+    ///
+    /// If the lane geometry addresses contiguous slices of the buffer, prefer
+    /// using [`LaneGeometry::contiguous_range`].
+    #[inline]
+    pub fn offsets(self) -> impl DoubleEndedIterator<Item = usize> + ExactSizeIterator {
+        (0..self.count).map(move |i| self.offset_of_unvalidated(i))
     }
 }
 

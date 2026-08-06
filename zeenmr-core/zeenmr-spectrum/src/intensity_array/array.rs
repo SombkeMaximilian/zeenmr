@@ -1,5 +1,6 @@
 use crate::intensity_array::{
-    ArrayIndex, Dimension, DynDim, Layout, Shape, StaticDim, Storage, StorageMut, StorageOwned,
+    ArrayIndex, Dimension, DynDim, LaneGeometry, Layout, Shape, StaticDim, Storage, StorageMut,
+    StorageOwned,
 };
 use std::borrow::Cow;
 use std::ops::{Index, IndexMut};
@@ -425,6 +426,304 @@ where
                 .as_mut_slice()
                 .get_unchecked_mut(linear)
         }
+    }
+}
+
+/// Lane representation.
+#[derive(Copy, Clone, Debug)]
+enum LaneInner<S> {
+    /// Fastest, memory order dimension gives us contiguous access patterns in
+    /// the buffer.
+    Contiguous(S),
+    /// Elements are `stride` apart in the storage.
+    ///
+    /// # Safety
+    ///
+    /// `geometry` must satisfy `geometry.fits_within(base.len())`, so every
+    /// offset it addresses is a valid index into `base`. Element access relies
+    /// on this to elide bounds checks.
+    Strided {
+        /// Slice containing the entire storage the lane walks.
+        base: S,
+        /// Geometry of the lane.
+        geometry: LaneGeometry,
+    },
+}
+
+impl<S> LaneInner<S>
+where
+    S: Storage,
+{
+    /// Returns the number of elements in the lane.
+    fn len(&self) -> usize {
+        match self {
+            LaneInner::Contiguous(elements) => elements.as_slice().len(),
+            LaneInner::Strided { geometry, .. } => geometry.len(),
+        }
+    }
+
+    /// Returns `true` if the lane contains no elements.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Returns `true` if the lane's elements are adjacent in the buffer.
+    fn is_contiguous(&self) -> bool {
+        matches!(self, LaneInner::Contiguous(_))
+    }
+}
+
+/// Immutable view of a single lane of an array.
+#[derive(Debug)]
+pub struct Lane<'s, T>(LaneInner<&'s [T]>);
+
+impl<T> Clone for Lane<'_, T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T> Copy for Lane<'_, T> {}
+
+impl<'s, T> From<LaneMut<'s, T>> for Lane<'s, T> {
+    fn from(value: LaneMut<'s, T>) -> Self {
+        value.into_lane()
+    }
+}
+
+impl<'s, T> Lane<'s, T> {
+    /// Creates a lane view over `base` with the given geometry.
+    ///
+    /// Returns `None` if any offset computed from `geometry` would be out of
+    /// bounds of the `base`.
+    pub fn new(base: &'s [T], geometry: LaneGeometry) -> Option<Self> {
+        match geometry.contiguous_range() {
+            Some(range) => Some(Self(LaneInner::Contiguous(base.get(range)?))),
+            None => geometry
+                .fits_within(base.len())
+                .then_some(Self(LaneInner::Strided { base, geometry })),
+        }
+    }
+
+    /// Creates a lane view over a contiguous slice.
+    pub fn from_slice(elements: &'s [T]) -> Self {
+        Self(LaneInner::Contiguous(elements))
+    }
+
+    /// Returns the number of elements in the lane.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns `true` if the lane contains no elements.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Returns `true` if the lane's elements are adjacent in the buffer.
+    #[inline]
+    pub fn is_contiguous(&self) -> bool {
+        self.0.is_contiguous()
+    }
+
+    /// Returns a reference to the `index`-th element of the lane.
+    ///
+    /// Returns `None` if `index` is not less than [`Lane::len`].
+    pub fn get(&self, index: usize) -> Option<&'s T> {
+        match self.0 {
+            LaneInner::Contiguous(elements) => elements.get(index),
+            LaneInner::Strided { base, geometry } => Some(&base[geometry.offset_of(index)?]),
+        }
+    }
+
+    /// Returns a reference to the `index`-th element of the lane.
+    ///
+    /// # Safety
+    ///
+    /// `index` must be less than [`Lane::len`].
+    pub unsafe fn get_unchecked(&self, index: usize) -> &'s T {
+        // SAFETY: the caller guarantees that `index` is less than `Lane::len`,
+        // which guarantees that it is in bounds.
+        unsafe {
+            match self.0 {
+                LaneInner::Contiguous(elements) => elements.get_unchecked(index),
+                LaneInner::Strided { base, geometry } => {
+                    base.get_unchecked(geometry.offset_of_unvalidated(index))
+                }
+            }
+        }
+    }
+
+    /// Returns a slice containing the entire lane, or `None` if it isn't
+    /// contiguous.
+    pub fn as_slice(&self) -> Option<&'s [T]> {
+        match self.0 {
+            LaneInner::Contiguous(elements) => Some(elements),
+            LaneInner::Strided { .. } => None,
+        }
+    }
+}
+
+impl<'s, T> Lane<'s, T>
+where
+    T: Clone,
+{
+    /// Copies the elements of the lane into a new `Vec`.
+    pub fn to_vec(&self) -> Vec<T> {
+        match self.0 {
+            LaneInner::Contiguous(elements) => elements.to_vec(),
+            LaneInner::Strided { base, geometry } => geometry
+                .offsets()
+                .map(|offset| base[offset].clone())
+                .collect(),
+        }
+    }
+}
+
+/// Mutable view of a single lane of an array.
+#[derive(Debug)]
+pub struct LaneMut<'s, T>(LaneInner<&'s mut [T]>);
+
+impl<'s, T> LaneMut<'s, T> {
+    /// Creates a mutable lane view over `base` with the given geometry.
+    ///
+    /// Returns `None` if any offset computed from `geometry` would be out of
+    /// bounds of the `base`.
+    pub fn new(base: &'s mut [T], geometry: LaneGeometry) -> Option<Self> {
+        match geometry.contiguous_range() {
+            Some(range) => Some(Self(LaneInner::Contiguous(base.get_mut(range)?))),
+            None => geometry
+                .fits_within(base.len())
+                .then_some(Self(LaneInner::Strided { base, geometry })),
+        }
+    }
+
+    /// Creates a mutable lane view over a contiguous slice.
+    pub fn from_slice(elements: &'s mut [T]) -> Self {
+        Self(LaneInner::Contiguous(elements))
+    }
+
+    /// Returns the number of elements in the lane.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns `true` if the lane contains no elements.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Returns `true` if the lane's elements are adjacent in the buffer.
+    #[inline]
+    pub fn is_contiguous(&self) -> bool {
+        self.0.is_contiguous()
+    }
+
+    /// Returns an immutable view of the same lane.
+    pub fn as_lane(&self) -> Lane<'_, T> {
+        Lane(match &self.0 {
+            LaneInner::Contiguous(base) => LaneInner::Contiguous(base),
+            LaneInner::Strided { base, geometry } => LaneInner::Strided {
+                base,
+                geometry: *geometry,
+            },
+        })
+    }
+
+    /// Converts `self` into an immutable view of the same lane.
+    pub fn into_lane(self) -> Lane<'s, T> {
+        Lane(match self.0 {
+            LaneInner::Contiguous(base) => LaneInner::Contiguous(base),
+            LaneInner::Strided { base, geometry } => LaneInner::Strided { base, geometry },
+        })
+    }
+
+    /// Returns a reference to the `index`-th element of the lane.
+    ///
+    /// Returns `None` if `index` is not less than [`LaneMut::len`].
+    pub fn get(&self, index: usize) -> Option<&T> {
+        self.as_lane().get(index)
+    }
+
+    /// Returns a reference to the `index`-th element of the lane.
+    ///
+    /// # Safety
+    ///
+    /// `index` must be less than [`LaneMut::len`].
+    pub unsafe fn get_unchecked(&self, index: usize) -> &T {
+        // SAFETY: the caller guarantees that `index` is less than
+        // `LaneMut::len`, which guarantees that it is in bounds.
+        unsafe { self.as_lane().get_unchecked(index) }
+    }
+
+    /// Returns a mutable reference to the `index`-th element of the lane.
+    ///
+    /// Returns `None` if `index` is not less than [`LaneMut::len`].
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
+        match &mut self.0 {
+            LaneInner::Contiguous(elements) => elements.get_mut(index),
+            LaneInner::Strided { base, geometry } => Some(&mut base[geometry.offset_of(index)?]),
+        }
+    }
+
+    /// Returns a mutable reference to the `index`-th element of the lane.
+    ///
+    /// # Safety
+    ///
+    /// `index` must be less than [`LaneMut::len`].
+    pub unsafe fn get_unchecked_mut(&mut self, index: usize) -> &mut T {
+        // SAFETY: the caller guarantees that `index` is less than
+        // `LaneMut::len`, which guarantees that it is in bounds.
+        unsafe {
+            match &mut self.0 {
+                LaneInner::Contiguous(elements) => elements.get_unchecked_mut(index),
+                LaneInner::Strided { base, geometry } => {
+                    base.get_unchecked_mut(geometry.offset_of_unvalidated(index))
+                }
+            }
+        }
+    }
+
+    /// Returns a slice containing the entire lane, or `None` if it isn't
+    /// contiguous.
+    pub fn as_slice(&self) -> Option<&[T]> {
+        self.as_lane().as_slice()
+    }
+
+    /// Returns a mutable slice containing the entire lane, or `None` if it
+    /// isn't contiguous.
+    pub fn as_mut_slice(&mut self) -> Option<&mut [T]> {
+        match &mut self.0 {
+            LaneInner::Contiguous(elements) => Some(elements),
+            LaneInner::Strided { .. } => None,
+        }
+    }
+
+    /// Consumes `self` and returns a mutable slice containing the entire lane.
+    ///
+    /// This method is useful for recovering the original borrow with lifetime
+    /// `'s`.
+    ///
+    /// Returns `None` if `self` isn't contiguous.
+    pub fn into_mut_slice(self) -> Option<&'s mut [T]> {
+        match self.0 {
+            LaneInner::Contiguous(elements) => Some(elements),
+            LaneInner::Strided { .. } => None,
+        }
+    }
+}
+
+impl<'s, T> LaneMut<'s, T>
+where
+    T: Clone,
+{
+    /// Copies the elements of the lane into a new `Vec`.
+    pub fn to_vec(&self) -> Vec<T> {
+        self.as_lane().to_vec()
     }
 }
 
