@@ -395,3 +395,62 @@ where
         (Self(left), Self(right))
     }
 }
+
+/// Iterator over the buffer offsets of a lane along one dimension.
+#[derive(Clone, Debug)]
+pub struct LaneOffsets {
+    /// Geometry of the lane.
+    geometry: LaneGeometry,
+    /// Next lane offset from the front.
+    front: usize,
+    /// Next lane offset from the back.
+    back: usize,
+}
+
+impl Iterator for LaneOffsets {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.front < self.back {
+            let curr = self.geometry.offset_of_unvalidated(self.front);
+            self.front += 1;
+
+            Some(curr)
+        } else {
+            None
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.back - self.front;
+
+        (remaining, Some(remaining))
+    }
+}
+
+impl DoubleEndedIterator for LaneOffsets {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.front < self.back {
+            self.back -= 1;
+
+            Some(self.geometry.offset_of_unvalidated(self.back))
+        } else {
+            None
+        }
+    }
+}
+
+impl ExactSizeIterator for LaneOffsets {}
+
+impl FusedIterator for LaneOffsets {}
+
+impl LaneOffsets {
+    /// Creates an iterator over the offsets of a lane.
+    pub fn new(geometry: LaneGeometry) -> Self {
+        Self {
+            geometry,
+            front: 0,
+            back: geometry.len(),
+        }
+    }
+}

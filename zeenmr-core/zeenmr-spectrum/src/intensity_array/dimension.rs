@@ -1,4 +1,4 @@
-use crate::intensity_array::iter::{Indices, LaneGeometries};
+use crate::intensity_array::iter::{Indices, LaneGeometries, LaneOffsets};
 use std::ops::{Deref, DerefMut};
 
 #[cfg(feature = "rayon")]
@@ -1284,10 +1284,10 @@ impl LaneGeometry {
     /// geometry.
     ///
     /// If the lane geometry addresses contiguous slices of the buffer, prefer
-    /// using [`LaneGeometry::contiguous_range`].
+    /// using [`LaneGeometry::contiguous_range`] as an iterator.
     #[inline]
-    pub fn offsets(self) -> impl DoubleEndedIterator<Item = usize> + ExactSizeIterator {
-        (0..self.count).map(move |i| self.offset_of_unvalidated(i))
+    pub fn offsets(self) -> LaneOffsets {
+        LaneOffsets::new(self)
     }
 }
 
