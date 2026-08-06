@@ -275,9 +275,8 @@ impl DynDim {
 
 /// Priority order of the dimensions of an array.
 ///
-/// The entries are the dimension indices ordered from slowest to fastest
-/// varying. An order is always a permutation of `0..rank`, so no dimension is
-/// visited twice or skipped, and indexing a slice of that rank by any entry is
+/// An order is always a permutation of `0..rank`, so no dimension is visited
+/// twice or skipped, and indexing a slice of that rank by any entry is
 /// infallible.
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct DimOrder<D>(D);
