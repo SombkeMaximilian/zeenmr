@@ -454,3 +454,83 @@ impl LaneOffsets {
         }
     }
 }
+
+/// Parallel iterator over the buffer offsets of a lane along one dimension.
+#[cfg(feature = "rayon")]
+#[derive(Clone, Debug)]
+pub struct ParLaneOffsets(LaneOffsets);
+
+#[cfg(feature = "rayon")]
+impl ParallelIterator for ParLaneOffsets {
+    type Item = usize;
+
+    fn drive_unindexed<C>(self, consumer: C) -> C::Result
+    where
+        C: UnindexedConsumer<Self::Item>,
+    {
+        bridge(self, consumer)
+    }
+
+    fn opt_len(&self) -> Option<usize> {
+        Some(self.0.len())
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl IndexedParallelIterator for ParLaneOffsets {
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    fn drive<C>(self, consumer: C) -> C::Result
+    where
+        C: Consumer<Self::Item>,
+    {
+        bridge(self, consumer)
+    }
+
+    fn with_producer<CB>(self, callback: CB) -> CB::Output
+    where
+        CB: ProducerCallback<Self::Item>,
+    {
+        callback.callback(LaneOffsetsProducer(self.0))
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl ParLaneOffsets {
+    /// Creates a parallel iterator over the offsets of a lane.
+    pub fn new(geometry: LaneGeometry) -> Self {
+        Self(LaneOffsets::new(geometry))
+    }
+}
+
+/// Producer for [`ParLaneOffsets`]
+#[cfg(feature = "rayon")]
+struct LaneOffsetsProducer(LaneOffsets);
+
+#[cfg(feature = "rayon")]
+impl Producer for LaneOffsetsProducer {
+    type Item = usize;
+    type IntoIter = LaneOffsets;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0
+    }
+
+    fn split_at(self, index: usize) -> (Self, Self) {
+        let mid = self.0.front + index;
+        let left = LaneOffsets {
+            geometry: self.0.geometry,
+            front: self.0.front,
+            back: mid,
+        };
+        let right = LaneOffsets {
+            geometry: self.0.geometry,
+            front: mid,
+            back: self.0.back,
+        };
+
+        (LaneOffsetsProducer(left), LaneOffsetsProducer(right))
+    }
+}
