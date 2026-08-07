@@ -1,4 +1,6 @@
-use crate::intensity_array::iter::{LaneElem, LaneElemStrided, Lanes, ParLaneElemStrided};
+use crate::intensity_array::iter::{
+    LaneElem, LaneElemMut, LaneElemStrided, LaneElemStridedMut, Lanes,
+};
 use crate::intensity_array::{
     ArrayIndex, DimIndex, DimOrder, Dimension, DynDim, LaneGeometry, Layout, Shape, StaticDim,
     Storage, StorageMut, StorageOwned,
@@ -9,7 +11,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 #[cfg(feature = "rayon")]
-use crate::intensity_array::iter::{ParLaneElem, ParLanes};
+use crate::intensity_array::iter::{
+    ParLaneElem, ParLaneElemMut, ParLaneElemStrided, ParLaneElemStridedMut, ParLanes,
+};
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
@@ -758,6 +762,39 @@ where
 #[derive(Debug)]
 pub struct LaneMut<'s, T>(LaneInner<&'s mut [T]>);
 
+impl<'s, T> IntoIterator for LaneMut<'s, T> {
+    type Item = &'s mut T;
+    type IntoIter = LaneElemMut<'s, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        match self.0 {
+            LaneInner::Contiguous(elements) => LaneElemMut::Contiguous(elements.iter_mut()),
+            LaneInner::Strided { base, geometry } => LaneElemMut::Strided(
+                LaneElemStridedMut::new(base, geometry).expect("a lane's geometry must be valid"),
+            ),
+        }
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl<'s, T> IntoParallelIterator for LaneMut<'s, T>
+where
+    T: Send + Sync,
+{
+    type Iter = ParLaneElemMut<'s, T>;
+    type Item = &'s mut T;
+
+    fn into_par_iter(self) -> Self::Iter {
+        match self.0 {
+            LaneInner::Contiguous(elements) => ParLaneElemMut::Contiguous(elements.par_iter_mut()),
+            LaneInner::Strided { base, geometry } => ParLaneElemMut::Strided(
+                ParLaneElemStridedMut::new(base, geometry)
+                    .expect("a lane's geometry must be valid"),
+            ),
+        }
+    }
+}
+
 impl<'s, T> LaneMut<'s, T> {
     /// Creates a mutable lane view over `base` with the given geometry.
     ///
@@ -889,6 +926,44 @@ impl<'s, T> LaneMut<'s, T> {
         match self.0 {
             LaneInner::Contiguous(elements) => Some(elements),
             LaneInner::Strided { .. } => None,
+        }
+    }
+
+    /// Returns an iterator over mutable references of the elements of the lane.
+    ///
+    /// Note that this is a special iterator type which has two variants that
+    /// should be matched on before a hot path. See [`StridedIterKind`].
+    ///
+    /// [`StridedIterKind`]: crate::intensity_array::iter::StridedIterKind
+    pub fn iter_mut(&mut self) -> LaneElemMut<'_, T> {
+        match &mut self.0 {
+            LaneInner::Contiguous(elements) => LaneElemMut::Contiguous(elements.iter_mut()),
+            LaneInner::Strided { base, geometry } => LaneElemMut::Strided(
+                LaneElemStridedMut::new(base, *geometry).expect("a lane's geometry must be valid"),
+            ),
+        }
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl<'s, T> LaneMut<'s, T>
+where
+    T: Send + Sync,
+{
+    /// Returns a parallel iterator over mutable references of the elements of
+    /// the lane.
+    ///
+    /// Note that this is a special iterator type which has two variants that
+    /// should be matched on before a hot path. See [`StridedIterKind`].
+    ///
+    /// [`StridedIterKind`]: crate::intensity_array::iter::StridedIterKind
+    pub fn par_iter_mut(&mut self) -> ParLaneElemMut<'_, T> {
+        match &mut self.0 {
+            LaneInner::Contiguous(elements) => ParLaneElemMut::Contiguous(elements.par_iter_mut()),
+            LaneInner::Strided { base, geometry } => ParLaneElemMut::Strided(
+                ParLaneElemStridedMut::new(base, *geometry)
+                    .expect("a lane's geometry must be valid"),
+            ),
         }
     }
 }

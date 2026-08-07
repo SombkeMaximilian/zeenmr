@@ -869,6 +869,26 @@ where
             .is_some_and(|row_major_strides| row_major_strides == self.strides)
     }
 
+    /// Returns `true` if no two indices address the same buffer offset.
+    pub fn is_non_overlapping(&self) -> bool {
+        let extents = self.shape.as_slice();
+        let strides = self.strides.as_slice();
+
+        let mut expected = 1_usize;
+        for dim in self.memory_order().iter().rev() {
+            let (extent, stride) = (extents[dim.0], strides[dim.0]);
+            if extent == 1 {
+                continue;
+            }
+            if stride < expected {
+                return false;
+            }
+            expected = stride.saturating_mul(extent);
+        }
+
+        true
+    }
+
     /// Returns the dimension with the smallest stride.
     ///
     /// Useful for choosing a processing dimension when none is specified, since
@@ -1254,7 +1274,7 @@ impl LaneGeometry {
         self.len() == 0
     }
 
-    /// Returns true if traversing the geometry only yields unique indices.
+    /// Returns true if traversing the geometry only yields unique offsets.
     #[inline]
     pub fn is_injective(&self) -> bool {
         self.stride > 0 || self.count <= 1
