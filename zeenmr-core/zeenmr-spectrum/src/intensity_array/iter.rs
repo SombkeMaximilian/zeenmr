@@ -721,11 +721,12 @@ pub type LaneElemContiguous<'s, T> = std::slice::Iter<'s, T>;
 pub type ParLaneElemContiguous<'s, T> = rayon::slice::Iter<'s, T>;
 
 /// Iterators over the elements of a lane view.
-pub type LaneElem<'s, T> = LaneIterKind<LaneElemContiguous<'s, T>, LaneElemStrided<'s, T>>;
+pub type LaneElem<'s, T> = StridedIterKind<LaneElemContiguous<'s, T>, LaneElemStrided<'s, T>>;
 
 /// Parallel iterators over the elements of a lane view.
 #[cfg(feature = "rayon")]
-pub type ParLaneElem<'s, T> = LaneIterKind<ParLaneElemContiguous<'s, T>, ParLaneElemStrided<'s, T>>;
+pub type ParLaneElem<'s, T> =
+    StridedIterKind<ParLaneElemContiguous<'s, T>, ParLaneElemStrided<'s, T>>;
 
 /// Sum type containing iterators over strided elements.
 ///
@@ -734,7 +735,7 @@ pub type ParLaneElem<'s, T> = LaneIterKind<ParLaneElemContiguous<'s, T>, ParLane
 /// also allowing for mitigation of the downsides in the cases with larger
 /// strides.
 #[derive(Clone, Debug)]
-pub enum LaneIterKind<S1, SN> {
+pub enum StridedIterKind<S1, SN> {
     /// Contiguous, fast path.
     Contiguous(S1),
     /// Strided, slow path.
@@ -754,7 +755,7 @@ macro_rules! delegate {
 
 // for the future: the `try` methods currently require the unstable trait `Try`
 // to be named. we can delegate those methods once it becomes stable.
-impl<S1, SN> Iterator for LaneIterKind<S1, SN>
+impl<S1, SN> Iterator for StridedIterKind<S1, SN>
 where
     S1: Iterator,
     SN: Iterator<Item = S1::Item>,
@@ -835,7 +836,7 @@ where
     }
 }
 
-impl<S1, SN> DoubleEndedIterator for LaneIterKind<S1, SN>
+impl<S1, SN> DoubleEndedIterator for StridedIterKind<S1, SN>
 where
     S1: DoubleEndedIterator,
     SN: DoubleEndedIterator<Item = S1::Item>,
@@ -863,14 +864,14 @@ where
     }
 }
 
-impl<S1, SN> ExactSizeIterator for LaneIterKind<S1, SN>
+impl<S1, SN> ExactSizeIterator for StridedIterKind<S1, SN>
 where
     S1: ExactSizeIterator,
     SN: ExactSizeIterator<Item = S1::Item>,
 {
 }
 
-impl<S1, SN> FusedIterator for LaneIterKind<S1, SN>
+impl<S1, SN> FusedIterator for StridedIterKind<S1, SN>
 where
     S1: FusedIterator,
     SN: FusedIterator<Item = S1::Item>,
@@ -878,7 +879,7 @@ where
 }
 
 #[cfg(feature = "rayon")]
-impl<S1, SN> ParallelIterator for LaneIterKind<S1, SN>
+impl<S1, SN> ParallelIterator for StridedIterKind<S1, SN>
 where
     S1: ParallelIterator,
     SN: ParallelIterator<Item = S1::Item>,
@@ -904,7 +905,7 @@ where
 }
 
 #[cfg(feature = "rayon")]
-impl<S1, SN> IndexedParallelIterator for LaneIterKind<S1, SN>
+impl<S1, SN> IndexedParallelIterator for StridedIterKind<S1, SN>
 where
     S1: IndexedParallelIterator,
     SN: IndexedParallelIterator<Item = S1::Item>,
@@ -937,13 +938,13 @@ where
     }
 }
 
-impl<S1, SN> LaneIterKind<S1, SN> {
+impl<S1, SN> StridedIterKind<S1, SN> {
     /// Returns the contained contiguous iterator, or `None` if `self` is
     /// `Strided`.
     pub fn try_into_contiguous(self) -> Option<S1> {
         match self {
-            LaneIterKind::Contiguous(iter) => Some(iter),
-            LaneIterKind::Strided(_) => None,
+            StridedIterKind::Contiguous(iter) => Some(iter),
+            StridedIterKind::Strided(_) => None,
         }
     }
 
@@ -951,8 +952,8 @@ impl<S1, SN> LaneIterKind<S1, SN> {
     /// `Contiguous`.
     pub fn try_into_strided(self) -> Option<SN> {
         match self {
-            LaneIterKind::Contiguous(_) => None,
-            LaneIterKind::Strided(iter) => Some(iter),
+            StridedIterKind::Contiguous(_) => None,
+            StridedIterKind::Strided(iter) => Some(iter),
         }
     }
 }

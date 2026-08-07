@@ -675,9 +675,9 @@ impl<'s, T> Lane<'s, T> {
     /// Returns an iterator over the elements of the lane.
     ///
     /// Note that this is a special iterator type which has two variants that
-    /// should be matched on before a hot path. See [`LaneIterKind`].
+    /// should be matched on before a hot path. See [`StridedIterKind`].
     ///
-    /// [`LaneIterKind`]: crate::intensity_array::iter::LaneIterKind
+    /// [`StridedIterKind`]: crate::intensity_array::iter::StridedIterKind
     pub fn iter(&self) -> LaneElem<'s, T> {
         match self.0 {
             LaneInner::Contiguous(elements) => LaneElem::Contiguous(elements.iter()),
@@ -696,9 +696,9 @@ where
     /// Returns a parallel iterator over the elements of the lane.
     ///
     /// Note that this is a special iterator type which has two variants that
-    /// should be matched on before a hot path. See [`LaneIterKind`].
+    /// should be matched on before a hot path. See [`StridedIterKind`].
     ///
-    /// [`LaneIterKind`]: crate::intensity_array::iter::LaneIterKind
+    /// [`StridedIterKind`]: crate::intensity_array::iter::StridedIterKind
     pub fn par_iter(&self) -> ParLaneElem<'s, T> {
         match self.0 {
             LaneInner::Contiguous(elements) => ParLaneElem::Contiguous(elements.par_iter()),
