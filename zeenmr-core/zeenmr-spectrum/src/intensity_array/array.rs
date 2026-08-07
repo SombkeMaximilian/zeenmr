@@ -1,5 +1,8 @@
 use crate::intensity_array::iter::{LaneElem, LaneElemStrided, Lanes, ParLaneElemStrided};
-use crate::intensity_array::{ArrayIndex, DimIndex, DimOrder, Dimension, DynDim, LaneGeometry, Layout, Shape, StaticDim, Storage, StorageMut, StorageOwned};
+use crate::intensity_array::{
+    ArrayIndex, DimIndex, DimOrder, Dimension, DynDim, LaneGeometry, Layout, Shape, StaticDim,
+    Storage, StorageMut, StorageOwned,
+};
 use std::borrow::Cow;
 use std::ops::{Index, IndexMut};
 use std::rc::Rc;
@@ -258,6 +261,19 @@ where
         }
     }
 
+    /// Returns the dimension along which lanes are contiguous, together with
+    /// an iterator over those lanes in memory order.
+    ///
+    /// Every lane the iterator yields is contiguous, so [`Lane::as_slice`]
+    /// returns `Some` for all of them.
+    ///
+    /// Returns `None` if no dimension has stride 1.
+    pub fn contiguous_lanes(&self) -> Option<(DimIndex, Lanes<'_, S::Elem, D>)> {
+        let dim = self.layout.contiguous_dimension()?;
+
+        Some((dim, self.lanes_memory_order(dim)?))
+    }
+
     /// Returns an iterator over the lanes along `dim` in memory order.
     ///
     /// Returns `None` if `dim` is out of range.
@@ -294,6 +310,19 @@ where
     S::Elem: Sync,
     D: Dimension,
 {
+    /// Returns the dimension along which lanes are contiguous, together with
+    /// an iterator over those lanes in memory order.
+    ///
+    /// Every lane the iterator yields is contiguous, so
+    /// [`Lane::as_slice`] returns `Some` for all of them.
+    ///
+    /// Returns `None` if no dimension has stride 1.
+    pub fn par_contiguous_lanes(&self) -> Option<(DimIndex, ParLanes<'_, S::Elem, D>)> {
+        let dim = self.layout.contiguous_dimension()?;
+
+        Some((dim, self.par_lanes_memory_order(dim)?))
+    }
+
     /// Returns a parallel iterator over the lanes along `dim` in memory order.
     ///
     /// Returns `None` if `dim` is out of range.

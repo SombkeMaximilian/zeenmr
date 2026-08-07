@@ -890,6 +890,22 @@ where
             .map(|(index, _)| DimIndex(index))
     }
 
+    /// Returns the dimension along which lanes are contiguous in the buffer.
+    ///
+    /// This is the dimension with stride 1, ignoring extents of 1, whose lanes
+    /// are therefore the cheapest possible to traverse.
+    ///
+    /// Returns `None` if no dimension has stride 1, which includes rank 0.
+    pub fn contiguous_dimension(&self) -> Option<DimIndex> {
+        self.shape
+            .as_slice()
+            .iter()
+            .zip(self.strides.as_slice())
+            .enumerate()
+            .find(|&(_, (&extent, &stride))| extent > 1 && stride == 1)
+            .map(|(index, _)| DimIndex(index))
+    }
+
     /// Returns the lexicographic dimension order for `D` with the same rank as
     /// `self`.
     pub fn lexicographic_order(&self) -> DimOrder<D> {
