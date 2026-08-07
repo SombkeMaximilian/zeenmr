@@ -1,3 +1,4 @@
+use crate::intensity_array::iter::{LaneElem, LaneElemStrided, ParLaneElemStrided};
 use crate::intensity_array::{
     ArrayIndex, Dimension, DynDim, LaneGeometry, Layout, Shape, StaticDim, Storage, StorageMut,
     StorageOwned,
@@ -6,6 +7,11 @@ use std::borrow::Cow;
 use std::ops::{Index, IndexMut};
 use std::rc::Rc;
 use std::sync::Arc;
+
+#[cfg(feature = "rayon")]
+use crate::intensity_array::iter::ParLaneElem;
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
 
 /// Array borrowing its storage immutably.
 pub type ArrayView<'s, T, D> = Array<&'s [T], D>;
@@ -491,6 +497,28 @@ impl<'s, T> From<LaneMut<'s, T>> for Lane<'s, T> {
     }
 }
 
+impl<'s, T> IntoIterator for Lane<'s, T> {
+    type Item = &'s T;
+    type IntoIter = LaneElem<'s, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl<'s, T> IntoParallelIterator for Lane<'s, T>
+where
+    T: Sync,
+{
+    type Iter = ParLaneElem<'s, T>;
+    type Item = &'s T;
+
+    fn into_par_iter(self) -> Self::Iter {
+        self.par_iter()
+    }
+}
+
 impl<'s, T> Lane<'s, T> {
     /// Creates a lane view over `base` with the given geometry.
     ///
@@ -562,6 +590,42 @@ impl<'s, T> Lane<'s, T> {
         match self.0 {
             LaneInner::Contiguous(elements) => Some(elements),
             LaneInner::Strided { .. } => None,
+        }
+    }
+
+    /// Returns an iterator over the elements of the lane.
+    ///
+    /// Note that this is a special iterator type which has two variants that
+    /// should be matched on before a hot path. See [`LaneIterKind`].
+    ///
+    /// [`LaneIterKind`]: crate::intensity_array::iter::LaneIterKind
+    pub fn iter(&self) -> LaneElem<'s, T> {
+        match self.0 {
+            LaneInner::Contiguous(elements) => LaneElem::Contiguous(elements.iter()),
+            LaneInner::Strided { base, geometry } => LaneElem::Strided(
+                LaneElemStrided::new(base, geometry).expect("a lane's geometry must be valid"),
+            ),
+        }
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl<'s, T> Lane<'s, T>
+where
+    T: Sync,
+{
+    /// Returns a parallel iterator over the elements of the lane.
+    ///
+    /// Note that this is a special iterator type which has two variants that
+    /// should be matched on before a hot path. See [`LaneIterKind`].
+    ///
+    /// [`LaneIterKind`]: crate::intensity_array::iter::LaneIterKind
+    pub fn par_iter(&self) -> ParLaneElem<'s, T> {
+        match self.0 {
+            LaneInner::Contiguous(elements) => ParLaneElem::Contiguous(elements.par_iter()),
+            LaneInner::Strided { base, geometry } => ParLaneElem::Strided(
+                ParLaneElemStrided::new(base, geometry).expect("a lane's geometry must be valid"),
+            ),
         }
     }
 }

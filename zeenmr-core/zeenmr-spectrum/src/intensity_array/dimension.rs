@@ -1,8 +1,7 @@
 use crate::intensity_array::iter::{Indices, LaneGeometries, LaneOffsets};
-use std::ops::{Deref, DerefMut};
-
 #[cfg(feature = "rayon")]
 use crate::intensity_array::iter::{ParIndices, ParLaneGeometries};
+use std::ops::{Deref, DerefMut};
 
 /// Maximum number of non-heap dimensions in the dynamic case.
 ///
@@ -1023,6 +1022,9 @@ where
         lane: usize,
         order: &DimOrder<D>,
     ) -> LaneGeometry {
+        // upholds the variant because every offset in a lane geometry is
+        // bounded from above by `Layout::max_offset`, which doesn't overflow
+        // by this type's invariants.
         LaneGeometry {
             offset: self.lane_offset_unvalidated(dim, lane, order),
             stride: self.strides.as_slice()[dim.0],
@@ -1179,6 +1181,9 @@ where
                 (index < extent).then(|| acc + index * stride)
             })?;
 
+        // upholds the variant because every offset in a lane geometry is
+        // bounded from above by `Layout::max_offset`, which doesn't overflow
+        // by this type's invariants.
         Some(LaneGeometry {
             offset,
             stride: strides[dim.0],
@@ -1192,6 +1197,12 @@ where
 /// Describes the `count` buffer offsets `offset`, `offset + stride`, ...,
 /// `offset + (count - 1) * stride`. Carries no dimension information: a lane
 /// is a flat walk, and the layout it came from determines what it traverses.
+///
+/// # Invariants
+///
+/// `offset + (count - 1) * stride` does not overflow. Since strides are
+/// unsigned, this makes every addressable offset non-overflowing, and the
+/// offsets monotonically increasing in the index.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct LaneGeometry {
     /// Offset of the first element.
@@ -1203,13 +1214,25 @@ pub struct LaneGeometry {
 }
 
 impl LaneGeometry {
-    /// Returns the number of elements in the lane geometry.
+    /// Returns the offset of the first element in the lane.
+    #[inline]
+    pub fn offset(&self) -> usize {
+        self.offset
+    }
+
+    /// Returns the stride between lane elements.
+    #[inline]
+    pub fn stride(&self) -> usize {
+        self.stride
+    }
+
+    /// Returns the number of lane elements.
     #[inline]
     pub fn len(&self) -> usize {
         self.count
     }
 
-    /// Returns `true` if no elements are in the lane geometry.
+    /// Returns `true` if the lane geometry addresses no elements.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
