@@ -1,15 +1,12 @@
-use crate::intensity_array::iter::{LaneElem, LaneElemStrided, ParLaneElemStrided};
-use crate::intensity_array::{
-    ArrayIndex, Dimension, DynDim, LaneGeometry, Layout, Shape, StaticDim, Storage, StorageMut,
-    StorageOwned,
-};
+use crate::intensity_array::iter::{LaneElem, LaneElemStrided, Lanes, ParLaneElemStrided};
+use crate::intensity_array::{ArrayIndex, DimIndex, DimOrder, Dimension, DynDim, LaneGeometry, Layout, Shape, StaticDim, Storage, StorageMut, StorageOwned};
 use std::borrow::Cow;
 use std::ops::{Index, IndexMut};
 use std::rc::Rc;
 use std::sync::Arc;
 
 #[cfg(feature = "rayon")]
-use crate::intensity_array::iter::ParLaneElem;
+use crate::intensity_array::iter::{ParLaneElem, ParLanes};
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
@@ -260,6 +257,72 @@ where
             None => Err(self),
         }
     }
+
+    /// Returns an iterator over the lanes along `dim` in memory order.
+    ///
+    /// Returns `None` if `dim` is out of range.
+    pub fn lanes_memory_order(&self, dim: DimIndex) -> Option<Lanes<'_, S::Elem, D>> {
+        self.lanes_with_order(dim, self.layout.memory_order())
+    }
+
+    /// Returns an iterator over the lanes along `dim` in lexicographic order.
+    ///
+    /// Returns `None` if `dim` is out of range.
+    pub fn lanes_lexicographic(&self, dim: DimIndex) -> Option<Lanes<'_, S::Elem, D>> {
+        self.lanes_with_order(dim, self.layout.lexicographic_order())
+    }
+
+    /// Returns an iterator over the lanes along `dim` in the provided order.
+    ///
+    /// Lanes are numbered according to `order` over the other dimensions.
+    ///
+    /// Returns `None` if `dim` is out of range, or if `order` has a different
+    /// rank than `self`.
+    pub fn lanes_with_order(
+        &self,
+        dim: DimIndex,
+        order: DimOrder<D>,
+    ) -> Option<Lanes<'_, S::Elem, D>> {
+        Lanes::new(self.storage.as_slice(), self.layout.clone(), dim, order)
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl<S, D> Array<S, D>
+where
+    S: Storage,
+    S::Elem: Sync,
+    D: Dimension,
+{
+    /// Returns a parallel iterator over the lanes along `dim` in memory order.
+    ///
+    /// Returns `None` if `dim` is out of range.
+    pub fn par_lanes_memory_order(&self, dim: DimIndex) -> Option<ParLanes<'_, S::Elem, D>> {
+        self.par_lanes_with_order(dim, self.layout.memory_order())
+    }
+
+    /// Returns a parallel iterator over the lanes along `dim` in lexicographic
+    /// order.
+    ///
+    /// Returns `None` if `dim` is out of range.
+    pub fn par_lanes_lexicographic(&self, dim: DimIndex) -> Option<ParLanes<'_, S::Elem, D>> {
+        self.par_lanes_with_order(dim, self.layout.lexicographic_order())
+    }
+
+    /// Returns a parallel iterator over the lanes along `dim` in the provided
+    /// order.
+    ///
+    /// Lanes are numbered according to `order` over the other dimensions.
+    ///
+    /// Returns `None` if `dim` is out of range, or if `order` has a different
+    /// rank than `self`.
+    pub fn par_lanes_with_order(
+        &self,
+        dim: DimIndex,
+        order: DimOrder<D>,
+    ) -> Option<ParLanes<'_, S::Elem, D>> {
+        ParLanes::new(self.storage.as_slice(), self.layout.clone(), dim, order)
+    }
 }
 
 impl<S, D> Array<S, D>
@@ -362,6 +425,22 @@ where
         // SAFETY: the caller guarantees that `index` is in bounds, so the
         // offset is at most `max_offset`.
         unsafe { self.elem_unchecked(self.layout.linear_unvalidated(index)) }
+    }
+
+    /// Returns the lane along `dim` that passes through `index`.
+    ///
+    /// The component of `index` at `dim` is ignored, so an index anywhere on
+    /// the lane selects it.
+    ///
+    /// This method is a convenience wrapper and returns `None` in the same
+    /// situations that [`Layout::lane_at`] does.
+    pub fn lane_at<D2>(&self, dim: DimIndex, index: &ArrayIndex<D2>) -> Option<Lane<'_, S::Elem>>
+    where
+        D2: Dimension,
+    {
+        let geometry = self.layout.lane_at(dim, index)?;
+
+        Lane::new(self.storage.as_slice(), geometry)
     }
 
     /// Returns a reference to the element at the given buffer offset.

@@ -1,7 +1,7 @@
 //! Array iterators.
 
 use crate::intensity_array::{
-    ArrayIndex, DimIndex, DimOrder, Dimension, LaneGeometry, Layout, Shape,
+    ArrayIndex, DimIndex, DimOrder, Dimension, Lane, LaneGeometry, Layout, Shape,
 };
 use std::iter::FusedIterator;
 
@@ -672,7 +672,9 @@ impl<'s, T> ParLaneElemStrided<'s, T> {
 /// Producer for [`ParLaneElemStrided`].
 #[cfg(feature = "rayon")]
 struct LaneElemStridedProducer<'s, T> {
+    /// Reference to the underlying buffer.
     base: &'s [T],
+    /// Producer for [`ParLaneOffsets`].
     producer: LaneOffsetsProducer,
 }
 
@@ -952,5 +954,206 @@ impl<S1, SN> LaneIterKind<S1, SN> {
             LaneIterKind::Contiguous(_) => None,
             LaneIterKind::Strided(iter) => Some(iter),
         }
+    }
+}
+
+/// Iterator over the lanes of an array along one dimension.
+#[derive(Clone, Debug)]
+pub struct Lanes<'s, T, D> {
+    /// Reference to the underlying buffer.
+    base: &'s [T],
+    /// Geometries of the lanes.
+    geometries: LaneGeometries<D>,
+}
+
+impl<'s, T, D> Iterator for Lanes<'s, T, D>
+where
+    D: Dimension,
+{
+    type Item = Lane<'s, T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let geometry = self.geometries.next()?;
+
+        Some(self.lane(geometry))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.geometries.size_hint()
+    }
+}
+
+impl<'s, T, D> DoubleEndedIterator for Lanes<'s, T, D>
+where
+    D: Dimension,
+{
+    fn next_back(&mut self) -> Option<Self::Item> {
+        let geometry = self.geometries.next_back()?;
+
+        Some(self.lane(geometry))
+    }
+}
+
+impl<'s, T, D> ExactSizeIterator for Lanes<'s, T, D> where D: Dimension {}
+
+impl<'s, T, D> FusedIterator for Lanes<'s, T, D> where D: Dimension {}
+
+impl<'s, T, D> Lanes<'s, T, D>
+where
+    D: Dimension,
+{
+    /// Creates an iterator over the lanes of `layout` along `dim` within
+    /// `base`.
+    ///
+    /// Lanes are numbered according to `order` over the other dimensions.
+    ///
+    /// Returns `None` if `dim` is out of range, if `order` has a different
+    /// rank than `layout`, or if `layout` can address an offset past the end
+    /// of `base`.
+    ///
+    /// Prefer the `lanes_*` methods on [`Array`].
+    pub fn new(
+        base: &'s [T],
+        layout: Layout<D>,
+        dim: DimIndex,
+        order: DimOrder<D>,
+    ) -> Option<Self> {
+        if layout.max_offset() >= base.len() {
+            return None;
+        }
+
+        Some(Self {
+            base,
+            geometries: LaneGeometries::new(layout, dim, order)?,
+        })
+    }
+
+    /// Returns the lane for `geometry`.
+    ///
+    /// # Panics
+    ///
+    /// Panics in the same scenarios as [`Lane::new`], which never happens if
+    /// `geometry` is from `self.geometries` due to the check in [`Lanes::new`].
+    fn lane(&self, geometry: LaneGeometry) -> Lane<'s, T> {
+        Lane::new(self.base, geometry).expect("layout bounds every lane offset by `max_offset`")
+    }
+}
+
+/// Parallel iterator over the lanes of an array along one dimension.
+#[cfg(feature = "rayon")]
+#[derive(Clone, Debug)]
+pub struct ParLanes<'s, T, D>(Lanes<'s, T, D>);
+
+#[cfg(feature = "rayon")]
+impl<'s, T, D> ParallelIterator for ParLanes<'s, T, D>
+where
+    T: Sync,
+    D: Dimension,
+{
+    type Item = Lane<'s, T>;
+
+    fn drive_unindexed<C>(self, consumer: C) -> C::Result
+    where
+        C: UnindexedConsumer<Self::Item>,
+    {
+        bridge(self, consumer)
+    }
+
+    fn opt_len(&self) -> Option<usize> {
+        Some(self.0.len())
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl<'s, T, D> IndexedParallelIterator for ParLanes<'s, T, D>
+where
+    T: Sync,
+    D: Dimension,
+{
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    fn drive<C>(self, consumer: C) -> C::Result
+    where
+        C: Consumer<Self::Item>,
+    {
+        bridge(self, consumer)
+    }
+
+    fn with_producer<CB>(self, callback: CB) -> CB::Output
+    where
+        CB: ProducerCallback<Self::Item>,
+    {
+        callback.callback(LanesProducer {
+            base: self.0.base,
+            producer: LaneGeometriesProducer(self.0.geometries),
+        })
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl<'s, T, D> ParLanes<'s, T, D>
+where
+    D: Dimension,
+{
+    /// Creates a parallel iterator over the lanes of `layout` along `dim`
+    /// within `base`.
+    ///
+    /// Lanes are numbered according to `order` over the other dimensions.
+    ///
+    /// Returns `None` if `dim` is out of range, if `order` has a different
+    /// rank than `layout`, or if `layout` can address an offset past the end
+    /// of `base`.
+    ///
+    /// Prefer the `lanes_*` methods on [`Array`].
+    pub fn new(
+        base: &'s [T],
+        layout: Layout<D>,
+        dim: DimIndex,
+        order: DimOrder<D>,
+    ) -> Option<Self> {
+        Some(Self(Lanes::new(base, layout, dim, order)?))
+    }
+}
+
+/// Producer for [`ParLanes`].
+#[cfg(feature = "rayon")]
+struct LanesProducer<'s, T, D> {
+    /// Entire storage the lanes walk.
+    base: &'s [T],
+    /// Producer for the lane geometries.
+    producer: LaneGeometriesProducer<D>,
+}
+
+#[cfg(feature = "rayon")]
+impl<'s, T, D> Producer for LanesProducer<'s, T, D>
+where
+    T: Sync,
+    D: Dimension,
+{
+    type Item = Lane<'s, T>;
+    type IntoIter = Lanes<'s, T, D>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Lanes {
+            base: self.base,
+            geometries: self.producer.into_iter(),
+        }
+    }
+
+    fn split_at(self, index: usize) -> (Self, Self) {
+        let (left, right) = self.producer.split_at(index);
+
+        (
+            Self {
+                base: self.base,
+                producer: left,
+            },
+            Self {
+                base: self.base,
+                producer: right,
+            },
+        )
     }
 }
