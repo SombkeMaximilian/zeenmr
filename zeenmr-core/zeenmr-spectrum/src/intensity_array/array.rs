@@ -6,6 +6,7 @@ use crate::intensity_array::{
     Storage, StorageMut, StorageOwned,
 };
 use std::borrow::Cow;
+use std::marker::PhantomData;
 use std::ops::{Index, IndexMut};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -547,61 +548,44 @@ where
     }
 }
 
-/// Lane representation.
-#[derive(Copy, Clone, Debug)]
-enum LaneInner<S> {
+/// Immutable lane representation.
+#[derive(Debug)]
+enum LaneInner<'s, T> {
     /// Fastest, memory order dimension gives us contiguous access patterns in
     /// the buffer.
-    Contiguous(S),
+    Contiguous(&'s [T]),
     /// Elements are `stride` apart in the storage.
     ///
     /// # Safety
     ///
-    /// `geometry` must satisfy `geometry.fits_within(base.len())`, so every
-    /// offset it addresses is a valid index into `base`. Element access relies
-    /// on this to elide bounds checks.
+    /// All offsets addressable by `geometry` must be within bounds of `base`.
     Strided {
-        /// Slice containing the entire storage the lane walks.
-        base: S,
+        /// Base pointer of the storage.
+        base: *const T,
         /// Geometry of the lane.
         geometry: LaneGeometry,
+        /// Lifetime marker for the reference which is invariant in `T`.
+        lifetime: PhantomData<&'s T>,
     },
 }
 
-impl<S> LaneInner<S>
-where
-    S: Storage,
-{
-    /// Returns the number of elements in the lane.
-    fn len(&self) -> usize {
-        match self {
-            LaneInner::Contiguous(elements) => elements.as_slice().len(),
-            LaneInner::Strided { geometry, .. } => geometry.len(),
-        }
-    }
-
-    /// Returns `true` if the lane contains no elements.
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    /// Returns `true` if the lane's elements are adjacent in the buffer.
-    fn is_contiguous(&self) -> bool {
-        matches!(self, LaneInner::Contiguous(_))
-    }
-}
-
-/// Immutable view of a single lane of an array.
-#[derive(Debug)]
-pub struct Lane<'s, T>(LaneInner<&'s [T]>);
-
-impl<T> Clone for Lane<'_, T> {
+impl<T> Clone for LaneInner<'_, T> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<T> Copy for Lane<'_, T> {}
+impl<T> Copy for LaneInner<'_, T> {}
+
+// SAFETY: grants shared access to `T`, so it is Send when `T` is Sync.
+unsafe impl<T> Send for LaneInner<'_, T> where T: Sync {}
+
+// SAFETY: grants shared access to `T`, so it is Sync when `T` is Sync.
+unsafe impl<T> Sync for LaneInner<'_, T> where T: Sync {}
+
+/// Immutable view of a single lane of an array.
+#[derive(Copy, Clone, Debug)]
+pub struct Lane<'s, T>(LaneInner<'s, T>);
 
 impl<'s, T> From<LaneMut<'s, T>> for Lane<'s, T> {
     fn from(value: LaneMut<'s, T>) -> Self {
@@ -640,8 +624,12 @@ impl<'s, T> Lane<'s, T> {
         match geometry.contiguous_range() {
             Some(range) => Some(Self(LaneInner::Contiguous(base.get(range)?))),
             None => geometry
-                .fits_within(base.len())
-                .then_some(Self(LaneInner::Strided { base, geometry })),
+                .fits_within(geometry.len())
+                .then_some(Self(LaneInner::Strided {
+                    base: base.as_ptr(),
+                    geometry,
+                    lifetime: PhantomData,
+                })),
         }
     }
 
@@ -653,19 +641,22 @@ impl<'s, T> Lane<'s, T> {
     /// Returns the number of elements in the lane.
     #[inline]
     pub fn len(&self) -> usize {
-        self.0.len()
+        match self.0 {
+            LaneInner::Contiguous(elements) => elements.len(),
+            LaneInner::Strided { geometry, .. } => geometry.len(),
+        }
     }
 
     /// Returns `true` if the lane contains no elements.
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.len() == 0
     }
 
     /// Returns `true` if the lane's elements are adjacent in the buffer.
     #[inline]
     pub fn is_contiguous(&self) -> bool {
-        self.0.is_contiguous()
+        matches!(self.0, LaneInner::Contiguous(_))
     }
 
     /// Returns a reference to the `index`-th element of the lane.
@@ -674,7 +665,13 @@ impl<'s, T> Lane<'s, T> {
     pub fn get(&self, index: usize) -> Option<&'s T> {
         match self.0 {
             LaneInner::Contiguous(elements) => elements.get(index),
-            LaneInner::Strided { base, geometry } => Some(&base[geometry.offset_of(index)?]),
+            LaneInner::Strided { base, geometry, .. } => {
+                let offset = geometry.offset_of(index)?;
+
+                // SAFETY: `offset_of` returned `Some`, so the offset is one
+                // the geometry addresses and therefore in bounds.
+                Some(unsafe { &*base.add(offset) })
+            }
         }
     }
 
@@ -689,8 +686,8 @@ impl<'s, T> Lane<'s, T> {
         unsafe {
             match self.0 {
                 LaneInner::Contiguous(elements) => elements.get_unchecked(index),
-                LaneInner::Strided { base, geometry } => {
-                    base.get_unchecked(geometry.offset_of_unvalidated(index))
+                LaneInner::Strided { base, geometry, .. } => {
+                    &*base.add(geometry.offset_of_unvalidated(index))
                 }
             }
         }
@@ -714,8 +711,10 @@ impl<'s, T> Lane<'s, T> {
     pub fn iter(&self) -> LaneElem<'s, T> {
         match self.0 {
             LaneInner::Contiguous(elements) => LaneElem::Contiguous(elements.iter()),
-            LaneInner::Strided { base, geometry } => LaneElem::Strided(
-                LaneElemStrided::new(base, geometry).expect("a lane's geometry must be valid"),
+            LaneInner::Strided { base, geometry, .. } => LaneElem::Strided(
+                // SAFETY: this lane's invariants are exactly the ones
+                // `LaneElemStrided::from_raw` requires.
+                unsafe { LaneElemStrided::from_raw(base, geometry) },
             ),
         }
     }
@@ -735,8 +734,10 @@ where
     pub fn par_iter(&self) -> ParLaneElem<'s, T> {
         match self.0 {
             LaneInner::Contiguous(elements) => ParLaneElem::Contiguous(elements.par_iter()),
-            LaneInner::Strided { base, geometry } => ParLaneElem::Strided(
-                ParLaneElemStrided::new(base, geometry).expect("a lane's geometry must be valid"),
+            LaneInner::Strided { base, geometry, .. } => ParLaneElem::Strided(
+                // SAFETY: this lane's invariants are exactly the ones
+                // `ParLaneElemStrided::from_raw` requires.
+                unsafe { ParLaneElemStrided::from_raw(base, geometry) },
             ),
         }
     }
@@ -750,17 +751,42 @@ where
     pub fn to_vec(&self) -> Vec<T> {
         match self.0 {
             LaneInner::Contiguous(elements) => elements.to_vec(),
-            LaneInner::Strided { base, geometry } => geometry
-                .offsets()
-                .map(|offset| base[offset].clone())
-                .collect(),
+            LaneInner::Strided { .. } => self.iter().cloned().collect(),
         }
     }
 }
 
+/// Mutable lane representation.
+#[derive(Debug)]
+enum LaneInnerMut<'s, T> {
+    /// Fastest, memory order dimension gives us contiguous access patterns in
+    /// the buffer.
+    Contiguous(&'s mut [T]),
+    /// Elements are `stride` apart in the storage.
+    ///
+    /// # Safety
+    ///
+    /// All offsets addressable by `geometry` must be within bounds of `base`,
+    /// and `geometry` must be injective.
+    Strided {
+        /// Base pointer of the storage.
+        base: *mut T,
+        /// Geometry of the lane.
+        geometry: LaneGeometry,
+        /// Lifetime marker for the mutable reference which is invariant in `T`.
+        lifetime: PhantomData<&'s mut T>,
+    },
+}
+
+// SAFETY: grants unique access to `T`, so it is Send when `T` is Send.
+unsafe impl<T> Send for LaneInnerMut<'_, T> where T: Send {}
+
+// SAFETY: grants unique access to `T`, so it is Sync when `T` is Sync.
+unsafe impl<T> Sync for LaneInnerMut<'_, T> where T: Sync {}
+
 /// Mutable view of a single lane of an array.
 #[derive(Debug)]
-pub struct LaneMut<'s, T>(LaneInner<&'s mut [T]>);
+pub struct LaneMut<'s, T>(LaneInnerMut<'s, T>);
 
 impl<'s, T> IntoIterator for LaneMut<'s, T> {
     type Item = &'s mut T;
@@ -768,9 +794,12 @@ impl<'s, T> IntoIterator for LaneMut<'s, T> {
 
     fn into_iter(self) -> Self::IntoIter {
         match self.0 {
-            LaneInner::Contiguous(elements) => LaneElemMut::Contiguous(elements.iter_mut()),
-            LaneInner::Strided { base, geometry } => LaneElemMut::Strided(
-                LaneElemStridedMut::new(base, geometry).expect("a lane's geometry must be valid"),
+            LaneInnerMut::Contiguous(elements) => LaneElemMut::Contiguous(elements.iter_mut()),
+            LaneInnerMut::Strided { base, geometry, .. } => LaneElemMut::Strided(
+                // SAFETY: this lane's invariants are exactly the ones
+                // `LaneElemStridedMut::from_raw` requires, and consuming `self`
+                // transfers the exclusive borrow to the iterator.
+                unsafe { LaneElemStridedMut::from_raw(base, geometry) },
             ),
         }
     }
@@ -786,10 +815,14 @@ where
 
     fn into_par_iter(self) -> Self::Iter {
         match self.0 {
-            LaneInner::Contiguous(elements) => ParLaneElemMut::Contiguous(elements.par_iter_mut()),
-            LaneInner::Strided { base, geometry } => ParLaneElemMut::Strided(
-                ParLaneElemStridedMut::new(base, geometry)
-                    .expect("a lane's geometry must be valid"),
+            LaneInnerMut::Contiguous(elements) => {
+                ParLaneElemMut::Contiguous(elements.par_iter_mut())
+            }
+            LaneInnerMut::Strided { base, geometry, .. } => ParLaneElemMut::Strided(
+                // SAFETY: this lane's invariants are exactly the ones
+                // `ParLaneElemStridedMut::from_raw` requires, and consuming
+                // `self` transfers the exclusive borrow to the iterator.
+                unsafe { ParLaneElemStridedMut::from_raw(base, geometry) },
             ),
         }
     }
@@ -806,43 +839,54 @@ impl<'s, T> LaneMut<'s, T> {
         }
 
         match geometry.contiguous_range() {
-            Some(range) => Some(Self(LaneInner::Contiguous(base.get_mut(range)?))),
+            Some(range) => Some(Self(LaneInnerMut::Contiguous(base.get_mut(range)?))),
             None => geometry
                 .fits_within(base.len())
-                .then_some(Self(LaneInner::Strided { base, geometry })),
+                .then_some(Self(LaneInnerMut::Strided {
+                    base: base.as_mut_ptr(),
+                    geometry,
+                    lifetime: PhantomData,
+                })),
         }
     }
 
     /// Creates a mutable lane view over a contiguous slice.
     pub fn from_slice(elements: &'s mut [T]) -> Self {
-        Self(LaneInner::Contiguous(elements))
+        Self(LaneInnerMut::Contiguous(elements))
     }
 
     /// Returns the number of elements in the lane.
     #[inline]
     pub fn len(&self) -> usize {
-        self.0.len()
+        match &self.0 {
+            LaneInnerMut::Contiguous(elements) => elements.as_slice().len(),
+            LaneInnerMut::Strided { geometry, .. } => geometry.len(),
+        }
     }
 
     /// Returns `true` if the lane contains no elements.
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.len() == 0
     }
 
     /// Returns `true` if the lane's elements are adjacent in the buffer.
     #[inline]
     pub fn is_contiguous(&self) -> bool {
-        self.0.is_contiguous()
+        matches!(self.0, LaneInnerMut::Contiguous(_))
     }
 
     /// Returns an immutable view of the same lane.
     pub fn as_lane(&self) -> Lane<'_, T> {
         Lane(match &self.0 {
-            LaneInner::Contiguous(base) => LaneInner::Contiguous(base),
-            LaneInner::Strided { base, geometry } => LaneInner::Strided {
-                base,
+            LaneInnerMut::Contiguous(elements) => LaneInner::Contiguous(elements),
+            // SAFETY: the resulting `Lane` claims nothing outside the offsets
+            // `geometry` addresses, which this lane holds exclusively, so it
+            // does not overlap a sibling lane.
+            LaneInnerMut::Strided { base, geometry, .. } => LaneInner::Strided {
+                base: base.cast_const(),
                 geometry: *geometry,
+                lifetime: PhantomData,
             },
         })
     }
@@ -850,8 +894,27 @@ impl<'s, T> LaneMut<'s, T> {
     /// Converts `self` into an immutable view of the same lane.
     pub fn into_lane(self) -> Lane<'s, T> {
         Lane(match self.0 {
-            LaneInner::Contiguous(base) => LaneInner::Contiguous(base),
-            LaneInner::Strided { base, geometry } => LaneInner::Strided { base, geometry },
+            LaneInnerMut::Contiguous(elements) => LaneInner::Contiguous(elements),
+            LaneInnerMut::Strided { base, geometry, .. } => LaneInner::Strided {
+                base: base.cast_const(),
+                geometry,
+                lifetime: PhantomData,
+            },
+        })
+    }
+
+    /// Returns a mutable view of the same lane borrowing `self`.
+    ///
+    /// Useful for handing a lane to a function that takes `LaneMut` by value
+    /// without giving up the `'s` lifetime borrow.
+    pub fn reborrow(&mut self) -> LaneMut<'_, T> {
+        LaneMut(match &mut self.0 {
+            LaneInnerMut::Contiguous(elements) => LaneInnerMut::Contiguous(elements),
+            LaneInnerMut::Strided { base, geometry, .. } => LaneInnerMut::Strided {
+                base: *base,
+                geometry: *geometry,
+                lifetime: PhantomData,
+            },
         })
     }
 
@@ -878,8 +941,15 @@ impl<'s, T> LaneMut<'s, T> {
     /// Returns `None` if `index` is not less than [`LaneMut::len`].
     pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
         match &mut self.0 {
-            LaneInner::Contiguous(elements) => elements.get_mut(index),
-            LaneInner::Strided { base, geometry } => Some(&mut base[geometry.offset_of(index)?]),
+            LaneInnerMut::Contiguous(elements) => elements.get_mut(index),
+            LaneInnerMut::Strided { base, geometry, .. } => {
+                let offset = geometry.offset_of(index)?;
+
+                // SAFETY: `offset_of` returned `Some`, so the offset is one
+                // the geometry addresses and therefore in bounds, and the
+                // `&mut self` borrow makes the reference trivially unique.
+                Some(unsafe { &mut *base.add(offset) })
+            }
         }
     }
 
@@ -890,12 +960,12 @@ impl<'s, T> LaneMut<'s, T> {
     /// `index` must be less than [`LaneMut::len`].
     pub unsafe fn get_unchecked_mut(&mut self, index: usize) -> &mut T {
         // SAFETY: the caller guarantees that `index` is less than
-        // `LaneMut::len`, which guarantees that it is in bounds.
+        // `LaneMut::len`, so the resulting offset is in bounds.
         unsafe {
             match &mut self.0 {
-                LaneInner::Contiguous(elements) => elements.get_unchecked_mut(index),
-                LaneInner::Strided { base, geometry } => {
-                    base.get_unchecked_mut(geometry.offset_of_unvalidated(index))
+                LaneInnerMut::Contiguous(elements) => elements.get_unchecked_mut(index),
+                LaneInnerMut::Strided { base, geometry, .. } => {
+                    &mut *base.add(geometry.offset_of_unvalidated(index))
                 }
             }
         }
@@ -911,8 +981,8 @@ impl<'s, T> LaneMut<'s, T> {
     /// isn't contiguous.
     pub fn as_mut_slice(&mut self) -> Option<&mut [T]> {
         match &mut self.0 {
-            LaneInner::Contiguous(elements) => Some(elements),
-            LaneInner::Strided { .. } => None,
+            LaneInnerMut::Contiguous(elements) => Some(elements),
+            LaneInnerMut::Strided { .. } => None,
         }
     }
 
@@ -924,9 +994,19 @@ impl<'s, T> LaneMut<'s, T> {
     /// Returns `None` if `self` isn't contiguous.
     pub fn into_mut_slice(self) -> Option<&'s mut [T]> {
         match self.0 {
-            LaneInner::Contiguous(elements) => Some(elements),
-            LaneInner::Strided { .. } => None,
+            LaneInnerMut::Contiguous(elements) => Some(elements),
+            LaneInnerMut::Strided { .. } => None,
         }
+    }
+
+    /// Returns an iterator over the elements of the lane.
+    ///
+    /// Note that this is a special iterator type which has two variants that
+    /// should be matched on before a hot path. See [`StridedIterKind`].
+    ///
+    /// [`StridedIterKind`]: crate::intensity_array::iter::StridedIterKind
+    pub fn iter(&self) -> LaneElem<'_, T> {
+        self.as_lane().iter()
     }
 
     /// Returns an iterator over mutable references of the elements of the lane.
@@ -937,11 +1017,30 @@ impl<'s, T> LaneMut<'s, T> {
     /// [`StridedIterKind`]: crate::intensity_array::iter::StridedIterKind
     pub fn iter_mut(&mut self) -> LaneElemMut<'_, T> {
         match &mut self.0 {
-            LaneInner::Contiguous(elements) => LaneElemMut::Contiguous(elements.iter_mut()),
-            LaneInner::Strided { base, geometry } => LaneElemMut::Strided(
-                LaneElemStridedMut::new(base, *geometry).expect("a lane's geometry must be valid"),
+            LaneInnerMut::Contiguous(elements) => LaneElemMut::Contiguous(elements.iter_mut()),
+            LaneInnerMut::Strided { base, geometry, .. } => LaneElemMut::Strided(
+                // SAFETY: this lane's invariants are exactly the ones
+                // `LaneElemStridedMut::from_raw` requires, and the `&mut self`
+                // borrow  keeps the returned references unique.
+                unsafe { LaneElemStridedMut::from_raw(*base, *geometry) },
             ),
         }
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl<'s, T> LaneMut<'s, T>
+where
+    T: Sync,
+{
+    /// Returns a parallel iterator over the elements of the lane.
+    ///
+    /// Note that this is a special iterator type which has two variants that
+    /// should be matched on before a hot path. See [`StridedIterKind`].
+    ///
+    /// [`StridedIterKind`]: crate::intensity_array::iter::StridedIterKind
+    pub fn par_iter(&self) -> ParLaneElem<'_, T> {
+        self.as_lane().par_iter()
     }
 }
 
@@ -959,10 +1058,14 @@ where
     /// [`StridedIterKind`]: crate::intensity_array::iter::StridedIterKind
     pub fn par_iter_mut(&mut self) -> ParLaneElemMut<'_, T> {
         match &mut self.0 {
-            LaneInner::Contiguous(elements) => ParLaneElemMut::Contiguous(elements.par_iter_mut()),
-            LaneInner::Strided { base, geometry } => ParLaneElemMut::Strided(
-                ParLaneElemStridedMut::new(base, *geometry)
-                    .expect("a lane's geometry must be valid"),
+            LaneInnerMut::Contiguous(elements) => {
+                ParLaneElemMut::Contiguous(elements.par_iter_mut())
+            }
+            LaneInnerMut::Strided { base, geometry, .. } => ParLaneElemMut::Strided(
+                // SAFETY: this lane's invariants are exactly the ones
+                // `ParLaneElemStridedMut::from_raw` requires, and the
+                // `&mut self` borrow  keeps the returned references unique.
+                unsafe { ParLaneElemStridedMut::from_raw(*base, *geometry) },
             ),
         }
     }
