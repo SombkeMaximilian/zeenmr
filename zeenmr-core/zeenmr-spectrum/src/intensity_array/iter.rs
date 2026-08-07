@@ -1013,6 +1013,8 @@ where
     /// of `base`.
     ///
     /// Prefer the `lanes_*` methods on [`Array`].
+    ///
+    /// [`Array`]: crate::intensity_array::Array
     pub fn new(
         base: &'s [T],
         layout: Layout<D>,
@@ -1108,6 +1110,8 @@ where
     /// of `base`.
     ///
     /// Prefer the `lanes_*` methods on [`Array`].
+    ///
+    /// [`Array`]: crate::intensity_array::Array
     pub fn new(
         base: &'s [T],
         layout: Layout<D>,
