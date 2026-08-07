@@ -762,8 +762,12 @@ impl<'s, T> LaneMut<'s, T> {
     /// Creates a mutable lane view over `base` with the given geometry.
     ///
     /// Returns `None` if any offset computed from `geometry` would be out of
-    /// bounds of the `base`.
+    /// bounds of the `base`, or if `geometry` is not injective.
     pub fn new(base: &'s mut [T], geometry: LaneGeometry) -> Option<Self> {
+        if !geometry.is_injective() {
+            return None;
+        }
+
         match geometry.contiguous_range() {
             Some(range) => Some(Self(LaneInner::Contiguous(base.get_mut(range)?))),
             None => geometry

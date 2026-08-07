@@ -1254,6 +1254,12 @@ impl LaneGeometry {
         self.len() == 0
     }
 
+    /// Returns true if traversing the geometry only yields unique indices.
+    #[inline]
+    pub fn is_injective(&self) -> bool {
+        self.stride > 0 || self.count <= 1
+    }
+
     /// Returns `true` if the lane's elements are adjacent in the buffer.
     #[inline]
     pub fn is_contiguous(&self) -> bool {
