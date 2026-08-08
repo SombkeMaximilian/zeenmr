@@ -1,5 +1,5 @@
 use crate::intensity_array::iter::{
-    LaneElem, LaneElemMut, LaneElemStrided, LaneElemStridedMut, Lanes,
+    LaneElem, LaneElemMut, LaneElemStrided, LaneElemStridedMut, Lanes, LanesMut, ParLanesMut,
 };
 use crate::intensity_array::{
     ArrayIndex, DimIndex, DimOrder, Dimension, DynDim, LaneGeometry, Layout, Shape, StaticDim,
@@ -316,7 +316,7 @@ where
     D: Dimension,
 {
     /// Returns the dimension along which lanes are contiguous, together with
-    /// an iterator over those lanes in memory order.
+    /// a parallel iterator over those lanes in memory order.
     ///
     /// Every lane the iterator yields is contiguous, so
     /// [`Lane::as_slice`] returns `Some` for all of them.
@@ -372,6 +372,113 @@ where
             storage: self.storage.as_mut_slice(),
             layout,
         }
+    }
+
+    /// Returns the dimension along which lanes are contiguous, together with
+    /// an iterator over those mutable lanes in memory order.
+    ///
+    /// Every lane the iterator yields is contiguous, so
+    /// [`LaneMut::as_mut_slice`] returns `Some` for all of them.
+    ///
+    /// Returns `None` if no dimension has stride 1, or if the layout of `self`
+    /// is self-overlapping.
+    pub fn contiguous_lanes_mut(&mut self) -> Option<(DimIndex, LanesMut<'_, S::Elem, D>)> {
+        let dim = self.layout.contiguous_dimension()?;
+
+        Some((dim, self.lanes_memory_order_mut(dim)?))
+    }
+
+    /// Returns an iterator over the mutable lanes along `dim` in memory order.
+    ///
+    /// Returns `None` if `dim` is out of range, or if the layout of `self` is
+    /// self-overlapping.
+    pub fn lanes_memory_order_mut(&mut self, dim: DimIndex) -> Option<LanesMut<'_, S::Elem, D>> {
+        self.lanes_with_order_mut(dim, self.layout.memory_order())
+    }
+
+    /// Returns an iterator over the mutable lanes along `dim` in lexicographic
+    /// order.
+    ///
+    /// Returns `None` if `dim` is out of range, or if the layout of `self` is
+    /// self-overlapping.
+    pub fn lanes_lexicographic_mut(&mut self, dim: DimIndex) -> Option<LanesMut<'_, S::Elem, D>> {
+        self.lanes_with_order_mut(dim, self.layout.lexicographic_order())
+    }
+
+    /// Returns an iterator over the mutable lanes along `dim` in the provided
+    /// order.
+    ///
+    /// Lanes are numbered according to `order` over the other dimensions.
+    ///
+    /// Returns `None` if `dim` is out of range, or if `order` has a different
+    /// rank than `self`, or if the layout of `self` is self-overlapping.
+    pub fn lanes_with_order_mut(
+        &mut self,
+        dim: DimIndex,
+        order: DimOrder<D>,
+    ) -> Option<LanesMut<'_, S::Elem, D>> {
+        LanesMut::new(self.storage.as_mut_slice(), self.layout.clone(), dim, order)
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl<S, D> Array<S, D>
+where
+    S: StorageMut,
+    S::Elem: Send,
+    D: Dimension,
+{
+    /// Returns the dimension along which lanes are contiguous, together with
+    /// a parallel iterator over those mutable lanes in memory order.
+    ///
+    /// Every lane the iterator yields is contiguous, so
+    /// [`LaneMut::as_mut_slice`] returns `Some` for all of them.
+    ///
+    /// Returns `None` if no dimension has stride 1, or if the layout of `self`
+    /// is self-overlapping.
+    pub fn par_contiguous_lanes_mut(&mut self) -> Option<(DimIndex, ParLanesMut<'_, S::Elem, D>)> {
+        let dim = self.layout.contiguous_dimension()?;
+
+        Some((dim, self.par_lanes_memory_order_mut(dim)?))
+    }
+
+    /// Returns a parallel iterator over the mutable lanes along `dim` in memory
+    /// order.
+    ///
+    /// Returns `None` if `dim` is out of range, or if the layout of `self` is
+    /// self-overlapping.
+    pub fn par_lanes_memory_order_mut(
+        &mut self,
+        dim: DimIndex,
+    ) -> Option<ParLanesMut<'_, S::Elem, D>> {
+        self.par_lanes_with_order_mut(dim, self.layout.memory_order())
+    }
+
+    /// Returns a parallel iterator over the mutable lanes along `dim` in
+    /// lexicographic order.
+    ///
+    /// Returns `None` if `dim` is out of range, or if the layout of `self` is
+    /// self-overlapping.
+    pub fn par_lanes_lexicographic_mut(
+        &mut self,
+        dim: DimIndex,
+    ) -> Option<ParLanesMut<'_, S::Elem, D>> {
+        self.par_lanes_with_order_mut(dim, self.layout.lexicographic_order())
+    }
+
+    /// Returns a parallel iterator over the mutable lanes along `dim` in the
+    /// provided order.
+    ///
+    /// Lanes are numbered according to `order` over the other dimensions.
+    ///
+    /// Returns `None` if `dim` is out of range, or if `order` has a different
+    /// rank than `self`, or if the layout of `self` is self-overlapping.
+    pub fn par_lanes_with_order_mut(
+        &mut self,
+        dim: DimIndex,
+        order: DimOrder<D>,
+    ) -> Option<ParLanesMut<'_, S::Elem, D>> {
+        ParLanesMut::new(self.storage.as_mut_slice(), self.layout.clone(), dim, order)
     }
 }
 
@@ -530,6 +637,27 @@ where
         unsafe { self.elem_unchecked_mut(self.layout.linear_unvalidated(index)) }
     }
 
+    /// Returns the mutable lane along `dim` that passes through `index`.
+    ///
+    /// The component of `index` at `dim` is ignored, so an index anywhere on
+    /// the lane selects it.
+    ///
+    /// This method is a convenience wrapper and returns `None` in the same
+    /// situations that [`Layout::lane_at`] does, or if the geometry returned
+    /// by layout of `self` is non-injective for that lane.
+    pub fn lane_at_mut<D2>(
+        &mut self,
+        dim: DimIndex,
+        index: &ArrayIndex<D2>,
+    ) -> Option<LaneMut<'_, S::Elem>>
+    where
+        D2: Dimension,
+    {
+        let geometry = self.layout.lane_at(dim, index)?;
+
+        LaneMut::new(self.storage.as_mut_slice(), geometry)
+    }
+
     /// Returns a mutable reference to the element at the given buffer offset.
     ///
     /// # Safety
@@ -624,7 +752,7 @@ impl<'s, T> Lane<'s, T> {
         match geometry.contiguous_range() {
             Some(range) => Some(Self(LaneInner::Contiguous(base.get(range)?))),
             None => geometry
-                .fits_within(geometry.len())
+                .fits_within(base.len())
                 .then_some(Self(LaneInner::Strided {
                     base: base.as_ptr(),
                     geometry,
@@ -636,6 +764,30 @@ impl<'s, T> Lane<'s, T> {
     /// Creates a lane view over a contiguous slice.
     pub fn from_slice(elements: &'s [T]) -> Self {
         Self(LaneInner::Contiguous(elements))
+    }
+
+    /// Creates a lane view over the offsets `geometry` addresses relative to
+    /// `base`.
+    ///
+    /// # Safety
+    ///
+    /// Every offset `geometry` addresses must be a valid index into the
+    /// allocation `base` points into, and those elements must be borrowed
+    /// immutably for `'s`.
+    pub(crate) unsafe fn from_raw(base: *const T, geometry: LaneGeometry) -> Self {
+        match geometry.contiguous_range() {
+            Some(range) if range.is_empty() => Self(LaneInner::Contiguous(&[])),
+            Some(range) => Self(LaneInner::Contiguous(
+                // SAFETY: the caller guarantees the entire range lies within a
+                // single allocation borrowed for `'s`.
+                unsafe { std::slice::from_raw_parts(base.add(range.start), range.len()) },
+            )),
+            None => Self(LaneInner::Strided {
+                base,
+                geometry,
+                lifetime: PhantomData,
+            }),
+        }
     }
 
     /// Returns the number of elements in the lane.
@@ -855,11 +1007,36 @@ impl<'s, T> LaneMut<'s, T> {
         Self(LaneInnerMut::Contiguous(elements))
     }
 
+    /// Creates a mutable lane view over the offsets `geometry` addresses
+    /// relative to `base`.
+    ///
+    /// # Safety
+    ///
+    /// Every offset `geometry` addresses must be a valid index into the
+    /// allocation `base` points into, those elements must be borrowed mutably
+    /// for `'s` with no other live reference to them, and `geometry` must be
+    /// injective.
+    pub(crate) unsafe fn from_raw(base: *mut T, geometry: LaneGeometry) -> Self {
+        match geometry.contiguous_range() {
+            Some(range) if range.is_empty() => Self(LaneInnerMut::Contiguous(&mut [])),
+            Some(range) => Self(LaneInnerMut::Contiguous(
+                // SAFETY: the caller guarantees the entire range lies within a
+                // single allocation borrowed for `'s`.
+                unsafe { std::slice::from_raw_parts_mut(base.add(range.start), range.len()) },
+            )),
+            None => Self(LaneInnerMut::Strided {
+                base,
+                geometry,
+                lifetime: PhantomData,
+            }),
+        }
+    }
+
     /// Returns the number of elements in the lane.
     #[inline]
     pub fn len(&self) -> usize {
         match &self.0 {
-            LaneInnerMut::Contiguous(elements) => elements.as_slice().len(),
+            LaneInnerMut::Contiguous(elements) => elements.len(),
             LaneInnerMut::Strided { geometry, .. } => geometry.len(),
         }
     }
