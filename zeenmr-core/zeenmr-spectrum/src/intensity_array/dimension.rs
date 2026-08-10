@@ -354,10 +354,6 @@ where
     }
 
     /// Returns the order that maps each dimension to its position in `self`.
-    ///
-    /// The result answers how fast a given dimension varies, which is the
-    /// question [`DimOrder::get`] answers in reverse. Applying `self` and then
-    /// the inverse yields [`DimOrder::lexicographic`].
     pub fn inverse(&self) -> Self {
         let mut inverse = D::zero(self.rank()).expect("D can always represent its own rank");
         let slots = inverse.as_mut_slice();
@@ -601,10 +597,6 @@ where
     }
 
     /// Computes the column-major, contiguous strides from the array shape.
-    ///
-    /// This crate stores arrays row-major throughout, so this mainly serves
-    /// data that already arrives in column-major order. Every operation works
-    /// the same on either.
     pub fn column_major_strides(&self) -> Option<Strides<D>> {
         let mut strides = D::zero(self.0.rank()).expect("`D` can always represent its own rank");
         if let Some(first) = strides.as_mut_slice().first_mut() {
