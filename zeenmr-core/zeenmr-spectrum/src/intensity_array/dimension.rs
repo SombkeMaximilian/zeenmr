@@ -708,6 +708,30 @@ impl<D> Layout<D>
 where
     D: Dimension,
 {
+    /// Creates a new layout.
+    ///
+    /// Returns `None` if `shape` and `strides` have different rank, or if
+    /// [`Shape::product_checked`] returns `Some(0)` or `None`, or if computing
+    /// the maximum offset that can be addressed overflows.
+    pub fn new(shape: Shape<D>, strides: Strides<D>, offset: usize) -> Option<Self> {
+        if shape.rank() != strides.rank() {
+            return None;
+        }
+
+        let len = shape
+            .product_checked()
+            .filter(|&size| size != 0)?;
+        let max_offset = Self::max_offset_of(&shape, &strides, offset)?;
+
+        Some(Self {
+            shape,
+            strides,
+            offset,
+            max_offset,
+            len,
+        })
+    }
+
     /// Creates a row-major, contiguous layout with the given shape and offset.
     ///
     /// Returns `None` if [`Shape::product_checked`] returns `Some(0)` or
@@ -1250,6 +1274,25 @@ pub struct LaneGeometry {
 }
 
 impl LaneGeometry {
+    /// Creates a new lane geometry.
+    ///
+    /// Returns `None` if `offset + (count - 1) * stride` overflows.
+    #[inline]
+    pub fn new(offset: usize, stride: usize, count: usize) -> Option<Self> {
+        if offset
+            .checked_add(count.checked_sub(1)?.checked_mul(stride)?)
+            .is_some()
+        {
+            Some(LaneGeometry {
+                offset,
+                stride,
+                count,
+            })
+        } else {
+            None
+        }
+    }
+
     /// Returns the offset of the first element in the lane.
     #[inline]
     pub fn offset(&self) -> usize {
