@@ -479,8 +479,8 @@ where
         debug_assert!(
             extents
                 .iter()
-                .try_fold(1usize, |a, &e| a.checked_mul(e))
-                .is_none_or(|p| linear < p)
+                .try_fold(1usize, |acc, &e| acc.checked_mul(e))
+                .is_none_or(|p| linear == 0 || linear < p)
         );
 
         let components = self.0.as_mut_slice();
@@ -910,7 +910,7 @@ where
         true
     }
 
-    /// Returns the dimension with the smallest stride.
+    /// Returns the last dimension with the smallest stride.
     ///
     /// Useful for choosing a processing dimension when none is specified, since
     /// a lane along this dimension is the cheapest to traverse.
@@ -931,7 +931,8 @@ where
             .map(|(index, _)| DimIndex(index))
     }
 
-    /// Returns the dimension along which lanes are contiguous in the buffer.
+    /// Returns the first dimension along which lanes are contiguous in the
+    /// buffer.
     ///
     /// This is the dimension with stride 1, ignoring extents of 1, whose lanes
     /// are therefore the cheapest possible to traverse.
@@ -1432,35 +1433,216 @@ mod tests {
     }
 
     #[test]
-    fn shape() {
+    fn zero_respects_rank() {
+        assert!(StaticDim::<3>::zero(0).is_none());
+        assert!(StaticDim::<3>::zero(1).is_none());
+        assert!(StaticDim::<3>::zero(2).is_none());
+        assert!(StaticDim::<3>::zero(3).is_some());
+        assert!(StaticDim::<3>::zero(4).is_none());
+        assert!(StaticDim::<3>::zero(5).is_none());
+        assert_eq!(StaticDim::<3>::zero(3).unwrap().as_slice(), &[0; 3]);
+        assert_eq!(DynDim::zero(9).unwrap().as_slice(), &[0; 9]);
+    }
+
+    #[test]
+    fn dyn_dim_stack_heap() {
+        for rank in 0..=MAX_INLINE_RANK {
+            assert!(matches!(
+                DynDim::zero(rank).unwrap().0,
+                DynDimInner::Stack(..)
+            ));
+        }
+        for rank in (MAX_INLINE_RANK + 1)..20 {
+            assert!(matches!(
+                DynDim::zero(rank).unwrap().0,
+                DynDimInner::Heap(..)
+            ));
+        }
+    }
+
+    #[test]
+    fn conversion() {
+        let stat = StaticDim::from([1, 2, 3]);
+        let converted = DynDim::from_dimension(&stat).expect("must never fail");
+        let recovered = StaticDim::from_dimension(&converted).expect("round trip must never fail");
+
+        assert_eq!(stat.as_slice(), converted.as_slice());
+        assert_eq!(stat, recovered);
+
+        let dynamic = DynDim::from_array([1, 2, 3, 4, 5]);
+        let converted = StaticDim::<5>::from_dimension(&dynamic).expect("must never fail");
+        let recovered = DynDim::from_dimension(&converted).expect("must never fail");
+
+        assert_eq!(dynamic.as_slice(), converted.as_slice());
+        assert_eq!(dynamic, recovered);
+    }
+
+    #[test]
+    fn dyn_dim_dirty() {
+        let clean = DynDim(DynDimInner::Stack(StaticLen::One, [5, 0, 0]));
+        let dirty = DynDim(DynDimInner::Stack(StaticLen::One, [5, 5, 5]));
+
+        assert_eq!(clean, dirty);
+
+        let hash = |d: &DynDim| {
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            d.hash(&mut h);
+
+            h.finish()
+        };
+
+        assert_eq!(hash(&clean), hash(&dirty));
+    }
+
+    #[test]
+    fn dim_order_validation() {
+        for entries in [
+            &[0, 0][..],
+            &[1, 1][..],
+            &[0, 2][..],
+            &[1, 2][..],
+            &[3, 1, 2][..],
+            &[0, 1, 3][..],
+        ] {
+            assert!(DimOrder::new(DynDim::from_slice(entries)).is_none());
+        }
+        for entries in [
+            &[][..],
+            &[0][..],
+            &[0, 1][..],
+            &[1, 0][..],
+            &[0, 1, 2][..],
+            &[0, 2, 1][..],
+            &[1, 0, 2][..],
+            &[1, 2, 0][..],
+            &[2, 0, 1][..],
+            &[2, 1, 0][..],
+        ] {
+            assert!(DimOrder::new(DynDim::from_slice(entries)).is_some());
+        }
+
+        assert_eq!(
+            DimOrder::<DynDim>::lexicographic(3)
+                .unwrap()
+                .as_slice(),
+            &[0, 1, 2]
+        );
+        assert_eq!(
+            DimOrder::<DynDim>::colexicographic(3)
+                .unwrap()
+                .as_slice(),
+            &[2, 1, 0]
+        );
+        assert_eq!(
+            DimOrder::<DynDim>::lexicographic(0)
+                .unwrap()
+                .as_slice(),
+            &[]
+        );
+        assert_eq!(
+            DimOrder::<DynDim>::colexicographic(0)
+                .unwrap()
+                .as_slice(),
+            &[]
+        );
+
+        assert!(DimOrder::<StaticDim<3>>::lexicographic(2).is_none());
+        assert!(DimOrder::<StaticDim<3>>::lexicographic(3).is_some());
+        assert!(DimOrder::<StaticDim<3>>::lexicographic(4).is_none());
+    }
+
+    #[test]
+    fn dim_order_inverse() {
+        let order = DimOrder::new(DynDim::from_array([1, 2, 0])).unwrap();
+        let inverse = order.inverse();
+
+        assert_eq!(order.inverse().as_slice(), &[2, 0, 1]);
+        assert_eq!(order.inverse().inverse().as_slice(), order.as_slice());
+        for canonical in [
+            DimOrder::<DynDim>::lexicographic(4).unwrap(),
+            DimOrder::<DynDim>::colexicographic(4).unwrap(),
+        ] {
+            assert_eq!(canonical.inverse().as_slice(), canonical.as_slice());
+        }
+        for (position, dim) in order.iter().enumerate() {
+            assert_eq!(inverse.get(dim.0).unwrap().0, position);
+        }
+        assert_eq!(order.get(0), Some(DimIndex(1)));
+        assert_eq!(order.get(3), None);
+        assert_eq!(
+            order
+                .iter()
+                .rev()
+                .map(|d| d.0)
+                .collect::<Vec<_>>(),
+            vec![0, 2, 1]
+        );
+        assert_eq!(inverse.inverse().as_slice(), order.as_slice());
+    }
+
+    #[test]
+    fn index_lexicographic_round_trip() {
+        let extents = &[2, 3][..];
+        let expected = [[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2]];
+
+        let mut index = ArrayIndex::new(DynDim::from_array([0, 0]));
+
+        for step in expected {
+            assert_eq!(index.as_slice(), &step);
+            index.increment_lexicographic(extents);
+        }
+        assert_eq!(index.as_slice(), &[0, 0]);
+        for step in expected.iter().rev() {
+            index.decrement_lexicographic(extents);
+            assert_eq!(index.as_slice(), step);
+        }
+        assert_eq!(index.as_slice(), &[0, 0]);
+    }
+
+    #[test]
+    fn index_set_linear() {
+        let shape = Shape::new(DynDim::from_array([2, 3]));
+        let expected = [[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2]];
+
+        for (linear, step) in expected.iter().enumerate() {
+            let index = ArrayIndex::linear_in_shape(linear, &shape);
+            let mut curr = ArrayIndex::new(DynDim::from_array([0, 0]));
+            for _ in 0..linear {
+                curr.increment_lexicographic(shape.as_slice());
+            }
+
+            assert_eq!(index.as_slice(), step);
+            assert_eq!(curr.as_slice(), step);
+        }
+    }
+
+    #[test]
+    fn index_degenerate_dimensions() {
+        let extents = &[3, 1, 2][..];
+        let expected = [
+            [0, 0, 0],
+            [0, 0, 1],
+            [1, 0, 0],
+            [1, 0, 1],
+            [2, 0, 0],
+            [2, 0, 1],
+        ];
+
+        let mut index = ArrayIndex::new(DynDim::from_array([0, 0, 0]));
+
+        for step in expected {
+            assert_eq!(index.as_slice(), &step);
+            index.increment_lexicographic(extents);
+        }
+        assert_eq!(index.as_slice(), &[0, 0, 0]);
+    }
+
+    #[test]
+    fn shape_size() {
         for (extents, _, len) in CONTIGUOUS {
             let shape = Shape::new(DynDim::from_slice(extents));
 
             assert_eq!(shape.product_checked(), Some(len));
-        }
-    }
-
-    #[test]
-    fn contiguous_strides() {
-        for (extents, expected, _) in CONTIGUOUS {
-            let shape = Shape::new(DynDim::from_slice(extents));
-            let strides = shape.row_major_strides().unwrap();
-
-            assert_eq!(strides.as_slice(), expected);
-        }
-    }
-
-    #[test]
-    fn contiguous_layout() {
-        for (extents, _, len) in CONTIGUOUS {
-            let shape = Shape::new(DynDim::from_slice(extents));
-
-            for offset in [0, 1, 1000] {
-                let layout = Layout::row_major(shape.clone(), offset).expect("hand verified");
-
-                assert_eq!(layout.len(), len);
-                assert_eq!(layout.max_offset(), offset + len - 1);
-            }
         }
     }
 
@@ -1510,62 +1692,528 @@ mod tests {
     }
 
     #[test]
-    fn dyn_dim_dirty() {
-        let clean = DynDim(DynDimInner::Stack(StaticLen::One, [5, 0, 0]));
-        let dirty = DynDim(DynDimInner::Stack(StaticLen::One, [5, 5, 5]));
+    fn index_zero_extent() {
+        let shape = Shape::new(DynDim::from_array([2, 0, 3]));
 
-        assert_eq!(clean, dirty);
+        assert_eq!(
+            ArrayIndex::linear_in_shape(0, &shape).as_slice(),
+            &[0, 0, 0]
+        );
+        assert_eq!(shape.indices_lexicographic().unwrap().count(), 0);
+    }
 
-        let hash = |d: &DynDim| {
-            let mut h = std::collections::hash_map::DefaultHasher::new();
-            d.hash(&mut h);
+    #[test]
+    fn indices_rank_zero() {
+        let indices = Shape::new(DynDim::from_array([]))
+            .indices_lexicographic()
+            .unwrap()
+            .collect::<Vec<ArrayIndex<DynDim>>>();
 
-            h.finish()
+        assert_eq!(indices.len(), 1);
+        assert_eq!(indices[0].as_slice(), &[] as &[usize]);
+    }
+
+    #[test]
+    fn indices_interleaved() {
+        let mut iter = Shape::new(DynDim::from_array([2, 3]))
+            .indices_lexicographic()
+            .unwrap();
+        let mut seen = Vec::new();
+
+        for take_front in [true, false, true, false, true, false] {
+            let index = if take_front {
+                iter.next()
+            } else {
+                iter.next_back()
+            };
+            seen.push(index.unwrap().as_slice().to_vec());
+        }
+
+        assert_eq!(
+            seen,
+            vec![
+                vec![0, 0],
+                vec![1, 2],
+                vec![0, 1],
+                vec![1, 1],
+                vec![0, 2],
+                vec![1, 0],
+            ]
+        );
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.next_back(), None);
+        assert_eq!(iter.len(), 0);
+    }
+
+    #[test]
+    fn contiguous_strides() {
+        for (extents, expected, _) in CONTIGUOUS {
+            let shape = Shape::new(DynDim::from_slice(extents));
+            let strides = shape.row_major_strides().unwrap();
+
+            assert_eq!(strides.as_slice(), expected);
+        }
+    }
+
+    #[test]
+    fn strides_duality() {
+        for (extents, _, _) in CONTIGUOUS {
+            let reversed = extents
+                .iter()
+                .rev()
+                .copied()
+                .collect::<Vec<usize>>();
+
+            let row = Shape::new(DynDim::from_slice(extents))
+                .row_major_strides()
+                .unwrap();
+            let column = Shape::new(DynDim::from_slice(reversed))
+                .column_major_strides()
+                .unwrap();
+            let column = column
+                .as_slice()
+                .iter()
+                .rev()
+                .copied()
+                .collect::<Vec<usize>>();
+
+            assert_eq!(row.as_slice(), &column);
+        }
+    }
+
+    #[test]
+    fn column_major_strides_overflow() {
+        let half_max = usize::MAX / 2 + 1;
+
+        let shape = Shape::new(DynDim::from_array([2, 2, half_max]));
+
+        assert!(shape.product_checked().is_none());
+        assert!(shape.column_major_strides().is_some());
+        assert!(Layout::column_major(shape, 0).is_none());
+
+        let shape = Shape::new(DynDim::from_array([2, half_max, 2]));
+
+        assert!(shape.column_major_strides().is_none());
+    }
+
+    #[test]
+    fn contiguous_layout() {
+        for (extents, _, len) in CONTIGUOUS {
+            let shape = Shape::new(DynDim::from_slice(extents));
+
+            for offset in [0, 7, 1000] {
+                let layout = Layout::row_major(shape.clone(), offset).expect("hand verified");
+                let last = ArrayIndex::new(DynDim::from_slice(
+                    extents
+                        .iter()
+                        .map(|e| e - 1)
+                        .collect::<Vec<usize>>(),
+                ));
+
+                assert_eq!(layout.max_offset(), offset + len - 1);
+                assert_eq!(layout.linear(&last), Some(layout.max_offset()));
+                assert_eq!(layout.linear_unvalidated(&last), layout.max_offset());
+            }
+        }
+    }
+
+    #[test]
+    fn layout_linear() {
+        let shape = Shape::new(DynDim::from_array([2, 3, 4]));
+        let layout = Layout::row_major(shape, 0).expect("hand verified");
+
+        assert_eq!(layout.strides().as_slice(), &[12, 4, 1]);
+        assert_eq!(
+            layout.linear(&ArrayIndex::new(DynDim::from_array([0, 0, 0]))),
+            Some(0)
+        );
+        assert_eq!(
+            layout.linear(&ArrayIndex::new(DynDim::from_array([0, 0, 1]))),
+            Some(1)
+        );
+        assert_eq!(
+            layout.linear(&ArrayIndex::new(DynDim::from_array([0, 1, 0]))),
+            Some(4)
+        );
+        assert_eq!(
+            layout.linear(&ArrayIndex::new(DynDim::from_array([1, 0, 0]))),
+            Some(12)
+        );
+        assert_eq!(
+            layout.linear(&ArrayIndex::new(DynDim::from_array([1, 2, 3]))),
+            Some(23)
+        );
+        assert_eq!(
+            layout.linear(&ArrayIndex::new(DynDim::from_array([2, 0, 0]))),
+            None
+        );
+        assert_eq!(
+            layout.linear(&ArrayIndex::new(DynDim::from_array([0, 3, 0]))),
+            None
+        );
+        assert_eq!(
+            layout.linear(&ArrayIndex::new(DynDim::from_array([0, 0, 4]))),
+            None
+        );
+        assert_eq!(
+            layout.linear(&ArrayIndex::new(DynDim::from_array([0, 0]))),
+            None
+        );
+        assert_eq!(
+            layout.linear(&ArrayIndex::new(DynDim::from_array([0, 0, 0, 0]))),
+            None
+        );
+    }
+
+    #[test]
+    fn offset_overflow_multidimensional() {
+        let shape = Shape::new(DynDim::from_array([2, 2]));
+
+        assert!(Layout::row_major(shape.clone(), usize::MAX - 3).is_some());
+        assert!(Layout::row_major(shape, usize::MAX - 2).is_none());
+    }
+
+    #[test]
+    fn layout_validation() {
+        let shapes = [
+            Shape::new(DynDim::from_array([2, 3])),
+            Shape::new(DynDim::from_array([2, 0])),
+            Shape::new(DynDim::from_array([2, 2])),
+        ];
+        let strides = [
+            Strides::new(DynDim::from_array([1])),
+            Strides::new(DynDim::from_array([1, 1])),
+            Strides::new(DynDim::from_array([usize::MAX, 1])),
+        ];
+        let offsets = [0, 0, 1];
+
+        for ((shape, strides), offset) in shapes.into_iter().zip(strides).zip(offsets) {
+            assert!(Layout::new(shape, strides, offset).is_none());
+        }
+    }
+
+    #[test]
+    fn permuted_round_trip() {
+        let shape = Shape::new(DynDim::from_array([2, 3, 4]));
+        let layout = Layout::row_major(shape, 5).expect("hand verified");
+        let order = DimOrder::new(DynDim::from_array([1, 2, 0])).expect("hand verified");
+        let permuted = layout.permuted(&order).unwrap();
+        let restored = permuted
+            .permuted(&order.inverse())
+            .expect("same rank");
+
+        assert_eq!(permuted.shape().as_slice(), &[3, 4, 2]);
+        assert_eq!(permuted.strides().as_slice(), &[4, 1, 12]);
+        assert_eq!(permuted.offset(), layout.offset());
+        assert_eq!(permuted.max_offset(), layout.max_offset());
+        assert_eq!(permuted.len(), layout.len());
+        assert_eq!(restored.shape().as_slice(), layout.shape().as_slice());
+        assert_eq!(restored.strides().as_slice(), layout.strides().as_slice());
+    }
+
+    #[test]
+    fn memory_order_layouts() {
+        let shape = Shape::new(DynDim::from_array([2, 3, 4]));
+        let row = Layout::row_major(shape.clone(), 0).expect("hand verified");
+        let column = Layout::column_major(shape, 0).expect("hand verified");
+
+        assert_eq!(row.memory_order().as_slice(), &[0, 1, 2]);
+        assert_eq!(column.memory_order().as_slice(), &[2, 1, 0]);
+
+        let shape = Shape::new(DynDim::from_array([1, 1, 1]));
+        let flat = Layout::row_major(shape, 0).expect("hand verified");
+
+        assert_eq!(flat.strides().as_slice(), &[1, 1, 1]);
+        assert_eq!(flat.memory_order().as_slice(), &[0, 1, 2]);
+
+        for layout in [row, column, flat] {
+            assert!(DimOrder::new(DynDim::from_slice(layout.memory_order().as_slice())).is_some());
+        }
+    }
+
+    #[test]
+    fn packed_and_row_major() {
+        let shape = Shape::new(DynDim::from_array([2, 3]));
+        let row = Layout::row_major(shape, 0).expect("hand verified");
+        let column_order = DimOrder::new(DynDim::from_array([1, 0])).unwrap();
+        let column = row.permuted(&column_order).expect("same rank");
+
+        assert!(row.is_packed() && row.is_row_major());
+        assert_eq!(column.strides().as_slice(), &[1, 3]);
+        assert!(column.is_packed());
+        assert!(!column.is_row_major());
+
+        let shape = Shape::new(DynDim::from_array([1, 7, 1]));
+        let padded = Layout::row_major(shape, 0).expect("hand verified");
+
+        assert_eq!(padded.strides().as_slice(), &[7, 1, 1]);
+        assert!(padded.is_packed() && padded.is_row_major());
+    }
+
+    #[test]
+    fn fastest_and_contiguous_dimension() {
+        let shape = Shape::new(DynDim::from_array([2, 3, 4]));
+        let layout = Layout::row_major(shape, 0).expect("hand verified");
+
+        assert_eq!(layout.fastest_dimension(), Some(DimIndex(2)));
+        assert_eq!(layout.contiguous_dimension(), Some(DimIndex(2)));
+
+        let shape = Shape::new(DynDim::from_array([1, 7, 1]));
+        let padded = Layout::row_major(shape, 0).expect("hand verified");
+
+        assert_eq!(padded.fastest_dimension(), Some(DimIndex(1)));
+        assert_eq!(padded.contiguous_dimension(), Some(DimIndex(1)));
+
+        for extents in [&[1, 1][..], &[][..]] {
+            let shape = Shape::new(DynDim::from_slice(extents));
+            let layout = Layout::row_major(shape, 0).expect("hand verified");
+
+            assert_eq!(layout.fastest_dimension(), None);
+            assert_eq!(layout.contiguous_dimension(), None);
+        }
+    }
+
+    #[test]
+    fn lane_count_and_chunks() {
+        let shape = Shape::new(DynDim::from_array([2, 3, 4]));
+        let layout = Layout::row_major(shape, 0).expect("hand verified");
+
+        assert_eq!(layout.lane_count(DimIndex(0)), Some(12));
+        assert_eq!(layout.lane_count(DimIndex(1)), Some(8));
+        assert_eq!(layout.lane_count(DimIndex(2)), Some(6));
+        assert_eq!(layout.lane_count(DimIndex(3)), None);
+        assert!(layout.lanes_are_chunks(DimIndex(2)));
+        assert!(!layout.lanes_are_chunks(DimIndex(0)));
+        assert!(!layout.lanes_are_chunks(DimIndex(3)));
+
+        let shape = Shape::new(DynDim::from_array([3, 1, 2]));
+        let padded = Layout::row_major(shape, 0).expect("hand verified");
+
+        assert_eq!(padded.lane_count(DimIndex(1)), Some(6));
+        assert!(padded.lanes_are_chunks(DimIndex(1)));
+    }
+
+    #[test]
+    fn lanes_are_partitions() {
+        let shape = Shape::new(DynDim::from_array([3, 4]));
+        let layout = Layout::row_major(shape, 0).expect("hand verified");
+        let order = layout.lexicographic_order();
+        let rows = (0..layout.lane_count(DimIndex(1)).unwrap())
+            .map(|lane| layout.lane_unvalidated(DimIndex(1), lane, &order))
+            .collect::<Vec<LaneGeometry>>();
+        let columns = (0..layout.lane_count(DimIndex(0)).unwrap())
+            .map(|lane| layout.lane_unvalidated(DimIndex(0), lane, &order))
+            .collect::<Vec<LaneGeometry>>();
+
+        assert_eq!(
+            rows.iter()
+                .map(|g| g.offset())
+                .collect::<Vec<usize>>(),
+            vec![0, 4, 8]
+        );
+        assert!(
+            rows.iter()
+                .all(|g| g.stride() == 1 && g.len() == 4)
+        );
+        assert_eq!(
+            columns
+                .iter()
+                .map(|g| g.offset())
+                .collect::<Vec<usize>>(),
+            vec![0, 1, 2, 3]
+        );
+        assert!(
+            columns
+                .iter()
+                .all(|g| g.stride() == 4 && g.len() == 3)
+        );
+
+        for lanes in [rows, columns] {
+            let mut offsets = lanes
+                .iter()
+                .flat_map(|g| g.offsets())
+                .collect::<Vec<usize>>();
+            offsets.sort_unstable();
+
+            assert!(
+                lanes
+                    .iter()
+                    .all(|g| g.max_offset().unwrap() <= layout.max_offset())
+            );
+            assert_eq!(offsets, (0..12).collect::<Vec<usize>>());
+        }
+    }
+
+    #[test]
+    fn lane_numbering_order() {
+        let shape = Shape::new(DynDim::from_array([2, 3, 4]));
+        let layout = Layout::row_major(shape, 0).expect("hand verified");
+        let count = layout.lane_count(DimIndex(1)).unwrap();
+        let offsets = |order: DimOrder<DynDim>| -> Vec<usize> {
+            (0..count)
+                .map(|lane| layout.lane_offset_unvalidated(DimIndex(1), lane, &order))
+                .collect()
         };
+        let mut lexicographic = offsets(layout.lexicographic_order());
+        let mut colexicographic = offsets(DimOrder::colexicographic(3).unwrap());
 
-        assert_eq!(hash(&clean), hash(&dirty));
+        assert_eq!(count, 8);
+        assert_eq!(lexicographic, vec![0, 1, 2, 3, 12, 13, 14, 15]);
+        assert_eq!(colexicographic, vec![0, 12, 1, 13, 2, 14, 3, 15]);
+
+        lexicographic.sort_unstable();
+        colexicographic.sort_unstable();
+
+        assert_eq!(lexicographic, colexicographic);
     }
 
     #[test]
-    fn dyn_dim_stack_heap() {
-        for rank in 0..=MAX_INLINE_RANK {
-            assert!(matches!(
-                DynDim::zero(rank).unwrap().0,
-                DynDimInner::Stack(..)
-            ));
+    fn lane_selection() {
+        let shape = Shape::new(DynDim::from_array([2, 3, 4]));
+        let layout = Layout::row_major(shape, 0).expect("hand verified");
+        let index = ArrayIndex::new(DynDim::from_array([1, 2, 3]));
+        let lane = layout.lane_at(DimIndex(1), &index).unwrap();
+
+        assert_eq!((lane.offset(), lane.stride(), lane.len()), (15, 4, 3));
+        assert_eq!(lane.offsets().collect::<Vec<_>>(), vec![15, 19, 23]);
+
+        for at_dim in [0, 1, 2, 99] {
+            let index = ArrayIndex::new(DynDim::from_array([1, at_dim, 3]));
+            let other = layout.lane_at(DimIndex(1), &index).unwrap();
+
+            assert_eq!(other, lane);
         }
-        for rank in (MAX_INLINE_RANK + 1)..20 {
-            assert!(matches!(
-                DynDim::zero(rank).unwrap().0,
-                DynDimInner::Heap(..)
-            ));
+
+        assert!(
+            layout
+                .lane_at(DimIndex(1), &ArrayIndex::new(DynDim::from_array([2, 0, 3])))
+                .is_none()
+        );
+        assert!(
+            layout
+                .lane_at(DimIndex(1), &ArrayIndex::new(DynDim::from_array([1, 0, 4])))
+                .is_none()
+        );
+        assert!(
+            layout
+                .lane_at(DimIndex(1), &ArrayIndex::new(DynDim::from_array([1, 0])))
+                .is_none()
+        );
+        assert!(
+            layout
+                .lane_at(DimIndex(3), &ArrayIndex::new(DynDim::from_array([1, 0, 3])))
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn lane_geometry_predicates() {
+        let shape = Shape::new(DynDim::from_array([2, 3, 4]));
+        let layout = Layout::row_major(shape, 0).expect("hand verified");
+        let index = ArrayIndex::new(DynDim::from_array([1, 2, 0]));
+        let contiguous = layout.lane_at(DimIndex(2), &index).unwrap();
+
+        assert!(contiguous.is_contiguous() && contiguous.is_injective());
+        assert_eq!(contiguous.contiguous_range(), Some(20..24));
+        assert_eq!(contiguous.max_offset(), Some(23));
+        assert!(contiguous.fits_within(24));
+        assert!(!contiguous.fits_within(23));
+        assert_eq!(contiguous.offset_of(2), Some(22));
+        assert_eq!(contiguous.offset_of(3), Some(23));
+        assert_eq!(contiguous.offset_of(4), None);
+
+        let index = ArrayIndex::new(DynDim::from_array([0, 2, 3]));
+        let strided = layout.lane_at(DimIndex(0), &index).unwrap();
+
+        assert!(!strided.is_contiguous());
+        assert_eq!(strided.contiguous_range(), None);
+        assert_eq!(strided.offsets().collect::<Vec<_>>(), vec![11, 23]);
+
+        let shape = Shape::new(DynDim::from_array([3, 1, 2]));
+        let padded = Layout::row_major(shape, 0).expect("hand verified");
+        let index = ArrayIndex::new(DynDim::from_array([2, 0, 1]));
+        let single = padded.lane_at(DimIndex(1), &index).unwrap();
+
+        assert_eq!((single.offset(), single.stride(), single.len()), (5, 2, 1));
+        assert!(single.is_contiguous());
+        assert_eq!(single.contiguous_range(), Some(5..6));
+    }
+
+    #[test]
+    fn non_overlapping_is_conservative() {
+        let shape = Shape::new(DynDim::from_array([2, 2]));
+        let strides = Strides::new(DynDim::from_array([2, 3]));
+        let gapped = Layout::new(shape, strides, 0).expect("hand verified");
+        let offsets = [[0, 0], [0, 1], [1, 0], [1, 1]]
+            .into_iter()
+            .map(|i| ArrayIndex::new(DynDim::from_array(i)))
+            .map(|i| gapped.linear(&i).unwrap())
+            .collect::<Vec<usize>>();
+
+        assert_eq!(offsets, vec![0, 3, 2, 5]);
+        assert!(!gapped.is_non_overlapping());
+
+        let shapes = [
+            Shape::new(DynDim::from_array([2, 2])),
+            Shape::new(DynDim::from_array([3])),
+            Shape::new(DynDim::from_array([1, 3])),
+        ];
+        let strides = [
+            Strides::new(DynDim::from_array([1, 1])),
+            Strides::new(DynDim::from_array([0])),
+            Strides::new(DynDim::from_array([0, 1])),
+        ];
+        let expected = [false, false, true];
+
+        for ((shape, strides), expected) in shapes.into_iter().zip(strides).zip(expected) {
+            let layout = Layout::new(shape, strides, 0).expect("hand verified");
+
+            assert_eq!(layout.is_non_overlapping(), expected);
         }
     }
 
     #[test]
-    fn conversion() {
-        let stat = StaticDim::from([1, 2, 3]);
-        let converted = DynDim::from_dimension(&stat).expect("must never fail");
-        let recovered = StaticDim::from_dimension(&converted).expect("round trip must never fail");
+    fn packed_with_degenerate_strides() {
+        let shape = Shape::new(DynDim::from_array([2, 1, 3]));
+        let strides = Strides::new(DynDim::from_array([3, 999, 1]));
+        let layout = Layout::new(shape, strides, 0).expect("hand verified");
 
-        assert_eq!(stat.as_slice(), converted.as_slice());
-        assert_eq!(stat, recovered);
-
-        let dynamic = DynDim::from_array([1, 2, 3, 4, 5]);
-        let converted = StaticDim::<5>::from_dimension(&dynamic).expect("must never fail");
-        let recovered = DynDim::from_dimension(&converted).expect("must never fail");
-
-        assert_eq!(dynamic.as_slice(), converted.as_slice());
-        assert_eq!(dynamic, recovered);
+        assert_eq!(layout.max_offset(), 5);
+        assert_eq!(layout.len(), 6);
+        assert!(!layout.is_row_major());
+        assert!(layout.is_packed());
+        assert!(layout.is_non_overlapping());
     }
 
     #[test]
-    fn zero_respects_rank() {
-        assert!(StaticDim::<3>::zero(3).is_some());
-        assert!(StaticDim::<3>::zero(2).is_none());
-        assert!(StaticDim::<3>::zero(1).is_none());
-        assert!(StaticDim::<3>::zero(0).is_none());
-        assert_eq!(StaticDim::<3>::zero(3).unwrap().as_slice(), &[0; 3]);
-        assert_eq!(DynDim::zero(9).unwrap().as_slice(), &[0; 9]);
+    fn tie_breaking_diverges() {
+        let shape = Shape::new(DynDim::from_array([2, 2]));
+        let strides = Strides::new(DynDim::from_array([1, 1]));
+        let layout = Layout::new(shape, strides, 0).expect("hand verified");
+
+        assert_eq!(layout.fastest_dimension(), Some(DimIndex(1)));
+        assert_eq!(layout.contiguous_dimension(), Some(DimIndex(0)));
+    }
+
+    #[test]
+    fn stride_zero_lane_is_not_injective() {
+        let shape = Shape::new(DynDim::from_array([1, 3]));
+        let strides = Strides::new(DynDim::from_array([0, 1]));
+        let layout = Layout::new(shape, strides, 0).expect("hand verified");
+        let index = ArrayIndex::new(DynDim::from_array([0, 1]));
+        let lane = layout.lane_at(DimIndex(0), &index).unwrap();
+
+        assert_eq!((lane.offset(), lane.stride(), lane.len()), (1, 0, 1));
+        assert!(lane.is_injective());
+
+        let shape = Shape::new(DynDim::from_array([3, 2]));
+        let strides = Strides::new(DynDim::from_array([0, 1]));
+        let broadcast = Layout::new(shape, strides, 0).expect("hand verified");
+        let index = ArrayIndex::new(DynDim::from_array([0, 1]));
+        let lane = broadcast.lane_at(DimIndex(0), &index).unwrap();
+
+        assert_eq!((lane.offset(), lane.stride(), lane.len()), (1, 0, 3));
+        assert!(!lane.is_injective());
+        assert!(lane.fits_within(2));
     }
 }
