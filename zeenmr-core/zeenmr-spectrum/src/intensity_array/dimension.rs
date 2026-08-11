@@ -662,6 +662,11 @@ impl<D> Strides<D>
 where
     D: Dimension,
 {
+    /// Creates a new collection of array strides.
+    pub fn new(strides: D) -> Self {
+        Self(strides)
+    }
+
     /// Returns the rank of `self`.
     pub fn rank(&self) -> usize {
         self.0.rank()
