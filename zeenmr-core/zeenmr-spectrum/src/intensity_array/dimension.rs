@@ -1395,6 +1395,17 @@ impl LaneGeometry {
     pub fn offsets(self) -> LaneOffsets {
         LaneOffsets::new(self)
     }
+
+    /// Returns a parallel iterator over the buffer offsets addressed by the
+    /// lane geometry.
+    ///
+    /// If the lane geometry addresses contiguous slices of the buffer, prefer
+    /// using [`LaneGeometry::contiguous_range`] as an iterator.
+    #[cfg(feature = "rayon")]
+    #[inline]
+    pub fn par_offsets(self) -> LaneOffsets {
+        LaneOffsets::new(self)
+    }
 }
 
 #[cfg(test)]
