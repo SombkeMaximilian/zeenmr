@@ -286,7 +286,7 @@ where
 {
     /// Creates a new dimension order.
     ///
-    /// Returns `None` if `dim` is not a permutation of `0..rank`.
+    /// Returns `None` if `order` is not a permutation of `0..rank`.
     pub fn new(order: D) -> Option<Self> {
         if (0..order.rank()).all(|dim| order.as_slice().contains(&dim)) {
             Some(Self(order))
