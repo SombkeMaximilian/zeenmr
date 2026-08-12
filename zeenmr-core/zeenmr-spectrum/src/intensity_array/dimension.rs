@@ -98,13 +98,11 @@ impl<const N: usize> Dimension for StaticDim<N> {
     }
 }
 
-/// Multidimensional quantity representation with a size determined at runtime.
-#[derive(Clone, Debug)]
-enum DynDimInner {
-    /// On the stack for up to [`MAX_INLINE_RANK`].
-    Stack(StaticLen, [usize; MAX_INLINE_RANK]),
-    /// On the heap for higher dimensions.
-    Heap(Vec<usize>),
+impl<const N: usize> StaticDim<N> {
+    /// Creates a new static dimension from an array.
+    pub fn from_array(value: [usize; N]) -> Self {
+        Self(value)
+    }
 }
 
 /// `u8` bounded to `[0, MAX_INLINE_RANK]`.
@@ -131,6 +129,15 @@ impl StaticLen {
             _ => None,
         }
     }
+}
+
+/// Multidimensional quantity representation with a size determined at runtime.
+#[derive(Clone, Debug)]
+enum DynDimInner {
+    /// On the stack for up to [`MAX_INLINE_RANK`].
+    Stack(StaticLen, [usize; MAX_INLINE_RANK]),
+    /// On the heap for higher dimensions.
+    Heap(Vec<usize>),
 }
 
 impl Deref for DynDimInner {
