@@ -1284,10 +1284,11 @@ impl LaneGeometry {
     /// Returns `None` if `offset + (count - 1) * stride` overflows.
     #[inline]
     pub fn new(offset: usize, stride: usize, count: usize) -> Option<Self> {
-        if offset
-            .checked_add(count.checked_sub(1)?.checked_mul(stride)?)
-            .is_some()
-        {
+        if count.checked_sub(1).is_none_or(|last| {
+            last.checked_mul(stride)
+                .and_then(|max_step| offset.checked_add(max_step))
+                .is_some()
+        }) {
             Some(LaneGeometry {
                 offset,
                 stride,
