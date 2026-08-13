@@ -1896,18 +1896,68 @@ mod tests {
     fn layout_validation() {
         let shapes = [
             Shape::new(DynDim::from_array([2, 3])),
+            Shape::new(DynDim::from_array([2, 3])),
             Shape::new(DynDim::from_array([2, 0])),
-            Shape::new(DynDim::from_array([2, 2])),
+            Shape::new(DynDim::from_array([0, 2])),
+            Shape::new(DynDim::from_array([0, 0])),
         ];
         let strides = [
             Strides::new(DynDim::from_array([1])),
+            Strides::new(DynDim::from_array([1, 1, 1])),
             Strides::new(DynDim::from_array([1, 1])),
-            Strides::new(DynDim::from_array([usize::MAX, 1])),
+            Strides::new(DynDim::from_array([1, 1])),
+            Strides::new(DynDim::from_array([1, 1])),
         ];
-        let offsets = [0, 0, 1];
 
-        for ((shape, strides), offset) in shapes.into_iter().zip(strides).zip(offsets) {
-            assert!(Layout::new(shape, strides, offset).is_none());
+        for (shape, strides) in shapes.into_iter().zip(strides) {
+            for offset in [0, 7, 1000] {
+                assert!(Layout::new(shape.clone(), strides.clone(), offset).is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn layout_overflow() {
+        let shape = |s: &[usize]| Shape::new(DynDim::from_slice(s));
+        let strides = |s: &[usize]| Strides::new(DynDim::from_slice(s));
+
+        assert!(Layout::new(shape(&[3]), strides(&[usize::MAX]), 0).is_none());
+        assert!(Layout::new(shape(&[2]), strides(&[usize::MAX]), 1).is_none());
+        assert!(Layout::new(shape(&[2, 2]), strides(&[2, 1]), usize::MAX - 3).is_some());
+        assert!(Layout::new(shape(&[2, 2]), strides(&[2, 1]), usize::MAX - 2).is_none());
+
+        let exact = Layout::new(shape(&[2]), strides(&[usize::MAX]), 0).expect("exactly max");
+        assert_eq!(exact.max_offset(), usize::MAX);
+
+        let gapped = Layout::new(shape(&[2, 2]), strides(&[10, 1]), 0).expect("hand verified");
+        assert_eq!((gapped.len(), gapped.max_offset()), (4, 11));
+    }
+
+    #[test]
+    fn layout_manual_major() {
+        for (extents, _, _) in CONTIGUOUS {
+            for offset in [0, 7, 1000] {
+                let shape = Shape::new(DynDim::from_slice(extents));
+                let row_major = Layout::new(
+                    shape.clone(),
+                    shape.row_major_strides().expect("hand verified"),
+                    offset,
+                );
+
+                assert!(row_major.is_some());
+                assert_eq!(row_major, Layout::row_major(shape.clone(), offset));
+
+                let column_major = Layout::new(
+                    shape.clone(),
+                    shape
+                        .column_major_strides()
+                        .expect("hand verified"),
+                    offset,
+                );
+
+                assert!(column_major.is_some());
+                assert_eq!(column_major, Layout::column_major(shape.clone(), offset));
+            }
         }
     }
 
@@ -2010,6 +2060,62 @@ mod tests {
 
         assert_eq!(padded.lane_count(DimIndex(1)), Some(6));
         assert!(padded.lanes_are_chunks(DimIndex(1)));
+    }
+
+    #[test]
+    fn lane_geometry_lane_at() {
+        let shape = Shape::new(DynDim::from_array([2, 3, 4]));
+        let layout = Layout::row_major(shape, 5).expect("hand verified");
+
+        for dim in (0..layout.shape.rank()).map(DimIndex) {
+            for index in layout
+                .shape
+                .indices_lexicographic()
+                .expect("validated")
+            {
+                let from_layout = layout.lane_at(dim, &index).expect("in bounds");
+                let reconstructed = LaneGeometry::new(
+                    from_layout.offset(),
+                    from_layout.stride(),
+                    from_layout.len(),
+                )
+                .expect("every geometry produced by a valid layout is non-overflowing");
+
+                assert_eq!(reconstructed, from_layout);
+                assert_eq!(
+                    reconstructed.max_offset(),
+                    Some(from_layout.offset() + (from_layout.len() - 1) * from_layout.stride())
+                );
+                assert!(from_layout.max_offset().expect("non-empty") <= layout.max_offset());
+            }
+        }
+    }
+
+    #[test]
+    fn lane_geometry_construction() {
+        let single = LaneGeometry::new(usize::MAX, usize::MAX, 1).expect("nothing is added");
+        let exact = LaneGeometry::new(0, usize::MAX, 2).expect("exactly MAX");
+        let broadcast = LaneGeometry::new(5, 0, 100).expect("nothing overflows");
+
+        assert!(LaneGeometry::new(1, usize::MAX, 2).is_none());
+        assert!(LaneGeometry::new(0, usize::MAX, 3).is_none());
+        assert!(single.is_contiguous());
+        assert!(single.is_injective());
+        assert_eq!(single.max_offset(), Some(usize::MAX));
+        assert_eq!(exact.max_offset(), Some(usize::MAX));
+        assert!(!broadcast.is_injective());
+        assert!(broadcast.fits_within(6));
+        assert!(!broadcast.fits_within(5));
+        assert_eq!(broadcast.max_offset(), Some(5));
+    }
+
+    #[test]
+    fn lane_geometry_overflow() {
+        let edge = LaneGeometry::new(usize::MAX, 1, 1).expect("count 1");
+
+        assert!(edge.is_contiguous());
+        assert!(!edge.fits_within(usize::MAX));
+        assert_eq!(edge.contiguous_range(), None);
     }
 
     #[test]

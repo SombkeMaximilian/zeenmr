@@ -1277,6 +1277,7 @@ fn index_rank_mismatch(index_rank: usize, array_rank: usize) -> ! {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::intensity_array::Strides;
 
     #[test]
     fn from_parts_boundary() {
@@ -1905,6 +1906,93 @@ mod tests {
 
         assert_eq!(iter.stride(), 12);
         assert_eq!(iter.len(), iter.count());
+    }
+
+    #[test]
+    fn non_injective_geometry() {
+        let mut storage = vec![0_i32; 4];
+        let geometry = LaneGeometry::new(0, 0, 3).expect("hand verified");
+        let lane = Lane::new(&storage, geometry).expect("hand verified");
+
+        assert_eq!(lane.iter().count(), 3);
+        assert!(!lane.is_contiguous());
+        assert!(LaneMut::new(&mut storage, geometry).is_none());
+        assert!(LaneElemStridedMut::new(&mut storage, geometry).is_none());
+    }
+
+    #[test]
+    fn oversized_geometry() {
+        let geometry = LaneGeometry::new(0, 3, 3).expect("hand verified");
+        let mut short = vec![0_i32; 6];
+        let mut exact = vec![0_i32; 7];
+        let mut long = vec![0_i32; 100];
+
+        assert_eq!(geometry.max_offset(), Some(6));
+        assert!(Lane::new(&short, geometry).is_none());
+        assert!(Lane::new(&exact, geometry).is_some());
+        assert!(Lane::new(&long, geometry).is_some());
+        assert!(LaneMut::new(&mut short, geometry).is_none());
+        assert!(LaneMut::new(&mut exact, geometry).is_some());
+        assert!(LaneMut::new(&mut long, geometry).is_some());
+        assert!(LaneElemStrided::new(&short, geometry).is_none());
+        assert!(LaneElemStrided::new(&exact, geometry).is_some());
+        assert!(LaneElemStrided::new(&long, geometry).is_some());
+        assert!(LaneElemStridedMut::new(&mut short, geometry).is_none());
+        assert!(LaneElemStridedMut::new(&mut exact, geometry).is_some());
+        assert!(LaneElemStridedMut::new(&mut long, geometry).is_some());
+    }
+
+    #[test]
+    fn numpy_like_broadcasts() {
+        let shape = Shape::new(DynDim::from_array([3, 2]));
+        let broadcast = Strides::new(DynDim::from_array([0, 1]));
+        let layout = Layout::new(shape, broadcast, 0).expect("hand verified");
+
+        assert_eq!(layout.max_offset(), 1);
+        assert_eq!(layout.len(), 6);
+        assert!(!layout.is_non_overlapping());
+
+        let storage = vec![10_i32, 20_i32].into_boxed_slice();
+        let mut array = Array::from_parts(storage, layout).expect("hand verified");
+
+        for pseudo_row in 0..array.shape().get(DimIndex(0)).unwrap() {
+            assert_eq!(array[[pseudo_row, 0]], 10);
+            assert_eq!(array[[pseudo_row, 1]], 20);
+        }
+        for (number, lane) in array
+            .lanes_memory_order(DimIndex(0))
+            .expect("in bounds")
+            .enumerate()
+        {
+            assert_eq!(lane.to_vec(), vec![10 * (number as i32 + 1); 3]);
+        }
+        for dim in (0..array.rank()).map(DimIndex) {
+            assert!(array.lanes_memory_order_mut(dim).is_none());
+            assert!(array.lanes_memory_order_mut(dim).is_none());
+        }
+
+        let index = ArrayIndex::new(DynDim::from_array([0, 0]));
+        let mut lane = array
+            .lane_at_mut(DimIndex(1), &index)
+            .expect("in bounds");
+        *lane.get_mut(0).expect("in bounds") = 15;
+        *lane.get_mut(1).expect("in bounds") = 25;
+
+        for pseudo_row in 0..array.shape().get(DimIndex(0)).unwrap() {
+            assert_eq!(array[[pseudo_row, 0]], 15);
+            assert_eq!(array[[pseudo_row, 1]], 25);
+        }
+        for (number, lane) in array
+            .lanes_memory_order(DimIndex(0))
+            .expect("in bounds")
+            .enumerate()
+        {
+            assert_eq!(lane.to_vec(), vec![10 * (number as i32 + 1) + 5; 3]);
+        }
+        for dim in (0..array.rank()).map(DimIndex) {
+            assert!(array.lanes_memory_order_mut(dim).is_none());
+            assert!(array.lanes_memory_order_mut(dim).is_none());
+        }
     }
 
     #[test]
