@@ -548,7 +548,7 @@ pub struct LaneElemStrided<'s, T> {
     /// All offsets returned by this iterator must be within bounds of the
     /// allocation `base` points into.
     offsets: LaneOffsets,
-    /// Lifetime marker for the reference which is invariant in `T`.
+    /// Lifetime marker for the reference.
     ///
     /// # Safety
     ///
@@ -736,7 +736,7 @@ struct LaneElemStridedProducer<'s, T> {
     base: *const T,
     /// Producer for [`ParLaneOffsets`].
     producer: LaneOffsetsProducer,
-    /// Lifetime marker for the reference which is covariant in `T`.
+    /// Lifetime marker for the reference.
     lifetime: PhantomData<&'s T>,
 }
 
@@ -1301,7 +1301,7 @@ pub struct Lanes<'s, T, D> {
     /// All lanes returned by this iterator must only address offsets within
     /// bounds of `base`.
     geometries: LaneGeometries<D>,
-    /// Lifetime marker for the reference which is covariant in `T`.
+    /// Lifetime marker for the reference.
     lifetime: PhantomData<&'s T>,
 }
 
@@ -1504,7 +1504,7 @@ struct LanesProducer<'s, T, D> {
     base: *const T,
     /// Producer for the [`ParLaneGeometries`].
     producer: LaneGeometriesProducer<D>,
-    /// Lifetime marker for the reference which is covariant in `T`.
+    /// Lifetime marker for the reference.
     lifetime: PhantomData<&'s T>,
 }
 

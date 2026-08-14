@@ -692,7 +692,7 @@ enum LaneInner<'s, T> {
         base: *const T,
         /// Geometry of the lane.
         geometry: LaneGeometry,
-        /// Lifetime marker for the reference which is invariant in `T`.
+        /// Lifetime marker for the reference.
         lifetime: PhantomData<&'s T>,
     },
 }
