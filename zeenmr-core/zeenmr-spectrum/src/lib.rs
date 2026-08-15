@@ -7,6 +7,8 @@ pub mod error;
 
 pub mod axis;
 
+pub mod dimension;
+
 pub mod intensity_array;
 
 pub mod range;
