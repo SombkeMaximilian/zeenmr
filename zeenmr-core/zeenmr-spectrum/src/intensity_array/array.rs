@@ -1,5 +1,5 @@
 use crate::intensity_array::iter::{
-    LaneElem, LaneElemMut, LaneElemStrided, LaneElemStridedMut, Lanes, LanesMut, ParLanesMut,
+    LaneElem, LaneElemMut, LaneElemStrided, LaneElemStridedMut, Lanes, LanesMut,
 };
 use crate::intensity_array::{
     ArrayIndex, DimIndex, DimOrder, Dimension, DynDim, LaneGeometry, Layout, Shape, StaticDim,
@@ -12,9 +12,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 #[cfg(feature = "rayon")]
-use crate::intensity_array::iter::{
-    ParLaneElem, ParLaneElemMut, ParLaneElemStrided, ParLaneElemStridedMut, ParLanes,
-};
+use crate::intensity_array::iter::{Par, ParLaneElem, ParLaneElemMut, ParLanes, ParLanesMut};
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
@@ -355,7 +353,7 @@ where
         dim: DimIndex,
         order: DimOrder<D>,
     ) -> Option<ParLanes<'_, S::Elem, D>> {
-        ParLanes::new(self.storage.as_slice(), self.layout.clone(), dim, order)
+        Lanes::new(self.storage.as_slice(), self.layout.clone(), dim, order).map(Par::new)
     }
 }
 
@@ -478,7 +476,7 @@ where
         dim: DimIndex,
         order: DimOrder<D>,
     ) -> Option<ParLanesMut<'_, S::Elem, D>> {
-        ParLanesMut::new(self.storage.as_mut_slice(), self.layout.clone(), dim, order)
+        LanesMut::new(self.storage.as_mut_slice(), self.layout.clone(), dim, order).map(Par::new)
     }
 }
 
@@ -889,7 +887,7 @@ where
             LaneInner::Strided { base, geometry, .. } => ParLaneElem::Strided(
                 // SAFETY: this lane's invariants are exactly the ones
                 // `ParLaneElemStrided::from_raw` requires.
-                unsafe { ParLaneElemStrided::from_raw(base, geometry) },
+                unsafe { Par::new(LaneElemStrided::from_raw(base, geometry)) },
             ),
         }
     }
@@ -974,7 +972,7 @@ where
                 // SAFETY: this lane's invariants are exactly the ones
                 // `ParLaneElemStridedMut::from_raw` requires, and consuming
                 // `self` transfers the exclusive borrow to the iterator.
-                unsafe { ParLaneElemStridedMut::from_raw(base, geometry) },
+                unsafe { Par::new(LaneElemStridedMut::from_raw(base, geometry)) },
             ),
         }
     }
@@ -1242,7 +1240,7 @@ where
                 // SAFETY: this lane's invariants are exactly the ones
                 // `ParLaneElemStridedMut::from_raw` requires, and the
                 // `&mut self` borrow  keeps the returned references unique.
-                unsafe { ParLaneElemStridedMut::from_raw(*base, *geometry) },
+                unsafe { Par::new(LaneElemStridedMut::from_raw(*base, *geometry)) },
             ),
         }
     }

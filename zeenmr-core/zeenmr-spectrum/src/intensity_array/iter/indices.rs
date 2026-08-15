@@ -1,10 +1,6 @@
+use crate::intensity_array::iter::SplitAt;
 use crate::intensity_array::{ArrayIndex, Dimension, Shape};
 use std::iter::FusedIterator;
-
-#[cfg(feature = "rayon")]
-use rayon::iter::plumbing::{Consumer, Producer, ProducerCallback, UnindexedConsumer, bridge};
-#[cfg(feature = "rayon")]
-use rayon::prelude::*;
 
 /// Iterator over the multidimensional indices of a shape.
 ///
@@ -77,6 +73,33 @@ impl<D> ExactSizeIterator for Indices<D> where D: Dimension {}
 
 impl<D> FusedIterator for Indices<D> where D: Dimension {}
 
+// SAFETY: setting left.back and right.front to `self.front + index` achieves
+// the disjoint split required by `SplitAt`.
+unsafe impl<D> SplitAt for Indices<D>
+where
+    D: Dimension,
+{
+    fn split_at(self, index: usize) -> (Self, Self) {
+        let mid = self.front + index;
+        let left = Self {
+            shape: self.shape.clone(),
+            front: self.front,
+            back: mid,
+            front_cached: self.front_cached,
+            back_cached: None,
+        };
+        let right = Self {
+            shape: self.shape,
+            front: mid,
+            back: self.back,
+            front_cached: None,
+            back_cached: self.back_cached,
+        };
+
+        (left, right)
+    }
+}
+
 impl<D> Indices<D>
 where
     D: Dimension,
@@ -97,108 +120,5 @@ where
             front_cached: None,
             back_cached: None,
         })
-    }
-}
-
-/// Parallel iterator over the multidimensional indices of a shape.
-///
-/// Yields indices in lexicographic order: the last dimension varies fastest.
-#[cfg(feature = "rayon")]
-#[derive(Clone, Debug)]
-pub struct ParIndices<D>(Indices<D>);
-
-#[cfg(feature = "rayon")]
-impl<D> ParallelIterator for ParIndices<D>
-where
-    D: Dimension,
-{
-    type Item = ArrayIndex<D>;
-
-    fn drive_unindexed<C>(self, consumer: C) -> C::Result
-    where
-        C: UnindexedConsumer<Self::Item>,
-    {
-        bridge(self, consumer)
-    }
-
-    fn opt_len(&self) -> Option<usize> {
-        Some(self.0.len())
-    }
-}
-
-#[cfg(feature = "rayon")]
-impl<D> IndexedParallelIterator for ParIndices<D>
-where
-    D: Dimension,
-{
-    fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    fn drive<C>(self, consumer: C) -> C::Result
-    where
-        C: Consumer<Self::Item>,
-    {
-        bridge(self, consumer)
-    }
-
-    fn with_producer<CB>(self, callback: CB) -> CB::Output
-    where
-        CB: ProducerCallback<Self::Item>,
-    {
-        callback.callback(IndicesProducer(self.0))
-    }
-}
-
-#[cfg(feature = "rayon")]
-impl<D> ParIndices<D>
-where
-    D: Dimension,
-{
-    /// Creates a parallel lexicographic index iterator.
-    ///
-    /// Returns `None` in the same situations that [`Shape::product_checked`]
-    /// returns `None`.
-    ///
-    /// Prefer [`Shape::par_indices_lexicographic`].
-    pub fn new(shape: Shape<D>) -> Option<Self> {
-        Some(Self(Indices::new(shape)?))
-    }
-}
-
-/// Producer for [`ParIndices`].
-#[cfg(feature = "rayon")]
-struct IndicesProducer<D>(Indices<D>);
-
-#[cfg(feature = "rayon")]
-impl<D> Producer for IndicesProducer<D>
-where
-    D: Dimension,
-{
-    type Item = ArrayIndex<D>;
-    type IntoIter = Indices<D>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0
-    }
-
-    fn split_at(self, index: usize) -> (Self, Self) {
-        let mid = self.0.front + index;
-        let left = Indices {
-            shape: self.0.shape.clone(),
-            front: self.0.front,
-            back: mid,
-            front_cached: self.0.front_cached,
-            back_cached: None,
-        };
-        let right = Indices {
-            shape: self.0.shape,
-            front: mid,
-            back: self.0.back,
-            front_cached: None,
-            back_cached: self.0.back_cached,
-        };
-
-        (Self(left), Self(right))
     }
 }

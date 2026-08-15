@@ -1,11 +1,7 @@
+use crate::intensity_array::iter::SplitAt;
 use crate::intensity_array::{DimIndex, DimOrder, Dimension, Lane, LaneGeometry, LaneMut, Layout};
 use std::iter::FusedIterator;
 use std::marker::PhantomData;
-
-#[cfg(feature = "rayon")]
-use rayon::iter::plumbing::{Consumer, Producer, ProducerCallback, UnindexedConsumer, bridge};
-#[cfg(feature = "rayon")]
-use rayon::prelude::*;
 
 /// Iterator over the lanes of a layout along one dimension.
 #[derive(Clone, Debug)]
@@ -99,100 +95,21 @@ where
     }
 }
 
-/// Parallel iterator over the lanes of a layout along one dimension.
-#[cfg(feature = "rayon")]
-#[derive(Clone, Debug)]
-pub struct ParLaneGeometries<D>(LaneGeometries<D>);
-
-#[cfg(feature = "rayon")]
-impl<D> ParallelIterator for ParLaneGeometries<D>
+// SAFETY: setting left.back and right.front to `self.front + index` achieves
+// the disjoint split required by `SplitAt`.
+unsafe impl<D> SplitAt for LaneGeometries<D>
 where
     D: Dimension,
 {
-    type Item = LaneGeometry;
-
-    fn drive_unindexed<C>(self, consumer: C) -> C::Result
-    where
-        C: UnindexedConsumer<Self::Item>,
-    {
-        bridge(self, consumer)
-    }
-
-    fn opt_len(&self) -> Option<usize> {
-        Some(self.0.len())
-    }
-}
-
-#[cfg(feature = "rayon")]
-impl<D> IndexedParallelIterator for ParLaneGeometries<D>
-where
-    D: Dimension,
-{
-    fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    fn drive<C>(self, consumer: C) -> C::Result
-    where
-        C: Consumer<Self::Item>,
-    {
-        bridge(self, consumer)
-    }
-
-    fn with_producer<CB>(self, callback: CB) -> CB::Output
-    where
-        CB: ProducerCallback<Self::Item>,
-    {
-        callback.callback(LaneGeometriesProducer(self.0))
-    }
-}
-
-#[cfg(feature = "rayon")]
-impl<D> ParLaneGeometries<D>
-where
-    D: Dimension,
-{
-    /// Creates a parallel iterator over the lanes of `layout` along `dim`.
-    ///
-    /// Lanes are numbered according to `order` over the other dimensions.
-    ///
-    /// Returns `None` if `dim` is out of range, or if `order` has a different
-    /// rank than `layout`.
-    ///
-    /// Prefer the `par_lanes_*` methods on [`Layout`].
-    pub fn new(layout: Layout<D>, dim: DimIndex, order: DimOrder<D>) -> Option<Self> {
-        Some(Self(LaneGeometries::new(layout, dim, order)?))
-    }
-}
-
-/// Producer for [`ParLaneGeometries`].
-#[cfg(feature = "rayon")]
-struct LaneGeometriesProducer<D>(LaneGeometries<D>);
-
-#[cfg(feature = "rayon")]
-impl<D> Producer for LaneGeometriesProducer<D>
-where
-    D: Dimension,
-{
-    type Item = LaneGeometry;
-    type IntoIter = LaneGeometries<D>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0
-    }
-
     fn split_at(self, index: usize) -> (Self, Self) {
-        let mid = self.0.front + index;
-        let left = LaneGeometries {
+        let mid = self.front + index;
+        let left = Self {
             back: mid,
-            ..self.0.clone()
+            ..self.clone()
         };
-        let right = LaneGeometries {
-            front: mid,
-            ..self.0
-        };
+        let right = Self { front: mid, ..self };
 
-        (Self(left), Self(right))
+        (left, right)
     }
 }
 
@@ -279,6 +196,29 @@ impl<'s, T, D> ExactSizeIterator for Lanes<'s, T, D> where D: Dimension {}
 
 impl<'s, T, D> FusedIterator for Lanes<'s, T, D> where D: Dimension {}
 
+// SAFETY: see `LaneGeometries`.
+unsafe impl<T, D> SplitAt for Lanes<'_, T, D>
+where
+    D: Dimension,
+{
+    fn split_at(self, index: usize) -> (Self, Self) {
+        let (left, right) = self.geometries.split_at(index);
+
+        (
+            Self {
+                base: self.base,
+                geometries: left,
+                lifetime: PhantomData,
+            },
+            Self {
+                base: self.base,
+                geometries: right,
+                lifetime: PhantomData,
+            },
+        )
+    }
+}
+
 impl<'s, T, D> Lanes<'s, T, D>
 where
     D: Dimension,
@@ -310,153 +250,6 @@ where
             geometries: LaneGeometries::new(layout, dim, order)?,
             lifetime: PhantomData,
         })
-    }
-}
-
-/// Parallel iterator over the lane views of an array along one dimension.
-#[cfg(feature = "rayon")]
-#[derive(Debug)]
-pub struct ParLanes<'s, T, D>(Lanes<'s, T, D>);
-
-#[cfg(feature = "rayon")]
-impl<'s, T, D> Clone for ParLanes<'s, T, D>
-where
-    D: Dimension,
-{
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-
-#[cfg(feature = "rayon")]
-impl<'s, T, D> ParallelIterator for ParLanes<'s, T, D>
-where
-    T: Sync,
-    D: Dimension,
-{
-    type Item = Lane<'s, T>;
-
-    fn drive_unindexed<C>(self, consumer: C) -> C::Result
-    where
-        C: UnindexedConsumer<Self::Item>,
-    {
-        bridge(self, consumer)
-    }
-
-    fn opt_len(&self) -> Option<usize> {
-        Some(self.0.len())
-    }
-}
-
-#[cfg(feature = "rayon")]
-impl<'s, T, D> IndexedParallelIterator for ParLanes<'s, T, D>
-where
-    T: Sync,
-    D: Dimension,
-{
-    fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    fn drive<C>(self, consumer: C) -> C::Result
-    where
-        C: Consumer<Self::Item>,
-    {
-        bridge(self, consumer)
-    }
-
-    fn with_producer<CB>(self, callback: CB) -> CB::Output
-    where
-        CB: ProducerCallback<Self::Item>,
-    {
-        callback.callback(LanesProducer {
-            base: self.0.base,
-            producer: LaneGeometriesProducer(self.0.geometries),
-            lifetime: PhantomData,
-        })
-    }
-}
-
-#[cfg(feature = "rayon")]
-impl<'s, T, D> ParLanes<'s, T, D>
-where
-    D: Dimension,
-{
-    /// Creates a parallel iterator over the lane views of `layout` along `dim`
-    /// within `base`.
-    ///
-    /// Lane views are numbered according to `order` over the other dimensions.
-    ///
-    /// Returns `None` if `dim` is out of range, if `order` has a different
-    /// rank than `layout`, or if `layout` can address an offset past the end
-    /// of `base`.
-    ///
-    /// Prefer the `lanes_*` methods on [`Array`].
-    ///
-    /// [`Array`]: crate::intensity_array::Array
-    pub fn new(
-        base: &'s [T],
-        layout: Layout<D>,
-        dim: DimIndex,
-        order: DimOrder<D>,
-    ) -> Option<Self> {
-        Some(Self(Lanes::new(base, layout, dim, order)?))
-    }
-}
-
-/// Producer for [`ParLanes`].
-#[cfg(feature = "rayon")]
-struct LanesProducer<'s, T, D> {
-    /// Base pointer of the storage.
-    base: *const T,
-    /// Producer for the [`ParLaneGeometries`].
-    producer: LaneGeometriesProducer<D>,
-    /// Lifetime marker for the reference.
-    lifetime: PhantomData<&'s T>,
-}
-
-// SAFETY: grants shared access to `T`, so it is Send when `T` is Sync and `D`
-// is Sync.
-#[cfg(feature = "rayon")]
-unsafe impl<T, D> Send for LanesProducer<'_, T, D>
-where
-    T: Sync,
-    D: Sync,
-{
-}
-
-#[cfg(feature = "rayon")]
-impl<'s, T, D> Producer for LanesProducer<'s, T, D>
-where
-    T: Sync,
-    D: Dimension,
-{
-    type Item = Lane<'s, T>;
-    type IntoIter = Lanes<'s, T, D>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        Lanes {
-            base: self.base,
-            geometries: self.producer.into_iter(),
-            lifetime: PhantomData,
-        }
-    }
-
-    fn split_at(self, index: usize) -> (Self, Self) {
-        let (left, right) = self.producer.split_at(index);
-
-        (
-            Self {
-                base: self.base,
-                producer: left,
-                lifetime: PhantomData,
-            },
-            Self {
-                base: self.base,
-                producer: right,
-                lifetime: PhantomData,
-            },
-        )
     }
 }
 
@@ -555,135 +348,23 @@ where
     }
 }
 
-/// Parallel iterator over the mutable lane views of an array along one
-/// dimension.
-#[cfg(feature = "rayon")]
-#[derive(Debug)]
-pub struct ParLanesMut<'s, T, D>(LanesMut<'s, T, D>);
-
-#[cfg(feature = "rayon")]
-impl<'s, T, D> ParallelIterator for ParLanesMut<'s, T, D>
-where
-    T: Send,
-    D: Dimension,
-{
-    type Item = LaneMut<'s, T>;
-
-    fn drive_unindexed<C>(self, consumer: C) -> C::Result
-    where
-        C: UnindexedConsumer<Self::Item>,
-    {
-        bridge(self, consumer)
-    }
-
-    fn opt_len(&self) -> Option<usize> {
-        Some(self.0.len())
-    }
-}
-
-#[cfg(feature = "rayon")]
-impl<'s, T, D> IndexedParallelIterator for ParLanesMut<'s, T, D>
-where
-    T: Send,
-    D: Dimension,
-{
-    fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    fn drive<C>(self, consumer: C) -> C::Result
-    where
-        C: Consumer<Self::Item>,
-    {
-        bridge(self, consumer)
-    }
-
-    fn with_producer<CB>(self, callback: CB) -> CB::Output
-    where
-        CB: ProducerCallback<Self::Item>,
-    {
-        callback.callback(LanesMutProducer {
-            base: self.0.base,
-            producer: LaneGeometriesProducer(self.0.geometries),
-            lifetime: PhantomData,
-        })
-    }
-}
-
-#[cfg(feature = "rayon")]
-impl<'s, T, D> ParLanesMut<'s, T, D>
+// SAFETY: see `LaneGeometries`.
+unsafe impl<T, D> SplitAt for LanesMut<'_, T, D>
 where
     D: Dimension,
 {
-    /// Creates a parallel iterator over the mutable lane views of `layout`
-    /// along `dim` within `base`.
-    ///
-    /// Lane views are numbered according to `order` over the other dimensions.
-    ///
-    /// Returns `None` if `dim` is out of range, if `order` has a different
-    /// rank than `layout`, or if `layout` can address an offset past the end
-    /// of `base`, or if `layout` is self-overlapping.
-    ///
-    /// Prefer the `lanes_*` methods on [`Array`].
-    ///
-    /// [`Array`]: crate::intensity_array::Array
-    pub fn new(
-        base: &'s mut [T],
-        layout: Layout<D>,
-        dim: DimIndex,
-        order: DimOrder<D>,
-    ) -> Option<Self> {
-        Some(Self(LanesMut::new(base, layout, dim, order)?))
-    }
-}
-
-/// Producer for [`ParLanesMut`].
-#[cfg(feature = "rayon")]
-struct LanesMutProducer<'s, T, D> {
-    /// Base pointer of the storage.
-    base: *mut T,
-    /// Producer for the [`ParLaneGeometries`].
-    producer: LaneGeometriesProducer<D>,
-    /// Lifetime marker for the mutable reference which is invariant in `T`.
-    lifetime: PhantomData<&'s mut T>,
-}
-
-// SAFETY: grants unique access to `T`, so it is Send when `T` is Send.
-#[cfg(feature = "rayon")]
-unsafe impl<T, D> Send for LanesMutProducer<'_, T, D> where T: Send {}
-
-#[cfg(feature = "rayon")]
-impl<'s, T, D> Producer for LanesMutProducer<'s, T, D>
-where
-    T: Send,
-    D: Dimension,
-{
-    type Item = LaneMut<'s, T>;
-    type IntoIter = LanesMut<'s, T, D>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        LanesMut {
-            base: self.base,
-            geometries: self.producer.into_iter(),
-            lifetime: PhantomData,
-        }
-    }
-
     fn split_at(self, index: usize) -> (Self, Self) {
-        let (left, right) = self.producer.split_at(index);
+        let (left, right) = self.geometries.split_at(index);
 
-        // SAFETY: `LanesMut` guarantees that any lanes views returned from it
-        // are non-overlapping, so splitting it in two without overlap can also
-        // only produce non-overlapping lane views.
         (
             Self {
                 base: self.base,
-                producer: left,
+                geometries: left,
                 lifetime: PhantomData,
             },
             Self {
                 base: self.base,
-                producer: right,
+                geometries: right,
                 lifetime: PhantomData,
             },
         )

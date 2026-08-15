@@ -1,7 +1,8 @@
 use crate::intensity_array::iter::{Indices, LaneGeometries, LaneOffsets};
-#[cfg(feature = "rayon")]
-use crate::intensity_array::iter::{ParIndices, ParLaneGeometries};
 use std::ops::{Deref, DerefMut};
+
+#[cfg(feature = "rayon")]
+use crate::intensity_array::iter::{Par, ParIndices, ParLaneGeometries};
 
 /// Maximum number of non-heap dimensions in the dynamic case.
 ///
@@ -639,7 +640,7 @@ where
     /// returns `None`.
     #[cfg(feature = "rayon")]
     pub fn par_indices_lexicographic(&self) -> Option<ParIndices<D>> {
-        ParIndices::new(self.clone())
+        Indices::new(self.clone()).map(Par::new)
     }
 }
 
@@ -1016,7 +1017,7 @@ where
     /// Returns `None` if `dim` is out of range.
     #[cfg(feature = "rayon")]
     pub fn par_lanes_memory_order(&self, dim: DimIndex) -> Option<ParLaneGeometries<D>> {
-        ParLaneGeometries::new(self.clone(), dim, self.memory_order())
+        LaneGeometries::new(self.clone(), dim, self.memory_order()).map(Par::new)
     }
 
     /// Returns a parallel iterator over the lanes in lexicographic order.
@@ -1024,7 +1025,7 @@ where
     /// Returns `None` if `dim` is out of range.
     #[cfg(feature = "rayon")]
     pub fn par_lanes_lexicographic(&self, dim: DimIndex) -> Option<ParLaneGeometries<D>> {
-        ParLaneGeometries::new(self.clone(), dim, self.lexicographic_order())
+        LaneGeometries::new(self.clone(), dim, self.lexicographic_order()).map(Par::new)
     }
 
     /// Returns a parallel iterator over the lanes in the provided order.
@@ -1039,7 +1040,7 @@ where
         dim: DimIndex,
         order: DimOrder<D>,
     ) -> Option<ParLaneGeometries<D>> {
-        ParLaneGeometries::new(self.clone(), dim, order)
+        LaneGeometries::new(self.clone(), dim, order).map(Par::new)
     }
 
     /// Returns the number of lanes along `dim`.
