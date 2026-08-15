@@ -22,8 +22,8 @@ pub use array::{
 mod storage;
 pub use storage::{Storage, StorageMut, StorageOwned};
 
-mod dimension;
-pub use dimension::{ArrayIndex, DimOrder, LaneGeometry, Layout, Shape, Strides};
+mod layout;
+pub use layout::{ArrayIndex, DimOrder, LaneGeometry, Layout, Shape, Strides};
 
 mod lane;
 pub use lane::{Lane, LaneMut};
