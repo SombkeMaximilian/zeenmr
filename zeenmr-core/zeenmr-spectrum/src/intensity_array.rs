@@ -23,10 +23,7 @@ mod storage;
 pub use storage::{Storage, StorageMut, StorageOwned};
 
 mod dimension;
-pub use dimension::{
-    ArrayIndex, DimIndex, DimOrder, Dimension, DynDim, LaneGeometry, Layout, Shape, StaticDim,
-    Strides,
-};
+pub use dimension::{ArrayIndex, DimOrder, LaneGeometry, Layout, Shape, Strides};
 
 mod lane;
 pub use lane::{Lane, LaneMut};

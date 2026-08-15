@@ -139,6 +139,8 @@ where
     where
         D: Dimension<Elem = Self::Elem>,
     {
+        const { assert_rank_compatible::<Self, D>() };
+
         if other.rank() == N {
             let slice = other.as_slice();
 

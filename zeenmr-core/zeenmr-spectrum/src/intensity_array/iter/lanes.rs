@@ -1,5 +1,6 @@
+use crate::dimension::{DimIndex, Dimension};
 use crate::intensity_array::iter::SplitAt;
-use crate::intensity_array::{DimIndex, DimOrder, Dimension, Lane, LaneGeometry, LaneMut, Layout};
+use crate::intensity_array::{DimOrder, Lane, LaneGeometry, LaneMut, Layout};
 use std::iter::FusedIterator;
 use std::marker::PhantomData;
 
@@ -20,7 +21,7 @@ pub struct LaneGeometries<D> {
 
 impl<D> Iterator for LaneGeometries<D>
 where
-    D: Dimension,
+    D: Dimension<Elem = usize>,
 {
     type Item = LaneGeometry;
 
@@ -46,7 +47,7 @@ where
 
 impl<D> DoubleEndedIterator for LaneGeometries<D>
 where
-    D: Dimension,
+    D: Dimension<Elem = usize>,
 {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.front < self.back {
@@ -62,13 +63,13 @@ where
     }
 }
 
-impl<D> ExactSizeIterator for LaneGeometries<D> where D: Dimension {}
+impl<D> ExactSizeIterator for LaneGeometries<D> where D: Dimension<Elem = usize> {}
 
-impl<D> FusedIterator for LaneGeometries<D> where D: Dimension {}
+impl<D> FusedIterator for LaneGeometries<D> where D: Dimension<Elem = usize> {}
 
 impl<D> LaneGeometries<D>
 where
-    D: Dimension,
+    D: Dimension<Elem = usize>,
 {
     /// Creates an iterator over the lanes of `layout` along `dim`.
     ///
@@ -99,7 +100,7 @@ where
 // the disjoint split required by `SplitAt`.
 unsafe impl<D> SplitAt for LaneGeometries<D>
 where
-    D: Dimension,
+    D: Dimension<Elem = usize>,
 {
     fn split_at(self, index: usize) -> (Self, Self) {
         let mid = self.front + index;
@@ -131,7 +132,7 @@ pub struct Lanes<'s, T, D> {
 
 impl<T, D> Clone for Lanes<'_, T, D>
 where
-    D: Dimension,
+    D: Dimension<Elem = usize>,
 {
     fn clone(&self) -> Self {
         Self {
@@ -162,7 +163,7 @@ where
 
 impl<'s, T, D> Iterator for Lanes<'s, T, D>
 where
-    D: Dimension,
+    D: Dimension<Elem = usize>,
 {
     type Item = Lane<'s, T>;
 
@@ -181,7 +182,7 @@ where
 
 impl<'s, T, D> DoubleEndedIterator for Lanes<'s, T, D>
 where
-    D: Dimension,
+    D: Dimension<Elem = usize>,
 {
     fn next_back(&mut self) -> Option<Self::Item> {
         let geometry = self.geometries.next_back()?;
@@ -192,14 +193,14 @@ where
     }
 }
 
-impl<'s, T, D> ExactSizeIterator for Lanes<'s, T, D> where D: Dimension {}
+impl<'s, T, D> ExactSizeIterator for Lanes<'s, T, D> where D: Dimension<Elem = usize> {}
 
-impl<'s, T, D> FusedIterator for Lanes<'s, T, D> where D: Dimension {}
+impl<'s, T, D> FusedIterator for Lanes<'s, T, D> where D: Dimension<Elem = usize> {}
 
 // SAFETY: see `LaneGeometries`.
 unsafe impl<T, D> SplitAt for Lanes<'_, T, D>
 where
-    D: Dimension,
+    D: Dimension<Elem = usize>,
 {
     fn split_at(self, index: usize) -> (Self, Self) {
         let (left, right) = self.geometries.split_at(index);
@@ -221,7 +222,7 @@ where
 
 impl<'s, T, D> Lanes<'s, T, D>
 where
-    D: Dimension,
+    D: Dimension<Elem = usize>,
 {
     /// Creates an iterator over the lane views of `layout` along `dim` within
     /// `base`.
@@ -280,7 +281,7 @@ unsafe impl<T, D> Sync for LanesMut<'_, T, D> where T: Sync {}
 
 impl<'s, T, D> Iterator for LanesMut<'s, T, D>
 where
-    D: Dimension,
+    D: Dimension<Elem = usize>,
 {
     type Item = LaneMut<'s, T>;
 
@@ -299,7 +300,7 @@ where
 
 impl<'s, T, D> DoubleEndedIterator for LanesMut<'s, T, D>
 where
-    D: Dimension,
+    D: Dimension<Elem = usize>,
 {
     fn next_back(&mut self) -> Option<Self::Item> {
         let geometry = self.geometries.next_back()?;
@@ -310,13 +311,13 @@ where
     }
 }
 
-impl<'s, T, D> ExactSizeIterator for LanesMut<'s, T, D> where D: Dimension {}
+impl<'s, T, D> ExactSizeIterator for LanesMut<'s, T, D> where D: Dimension<Elem = usize> {}
 
-impl<'s, T, D> FusedIterator for LanesMut<'s, T, D> where D: Dimension {}
+impl<'s, T, D> FusedIterator for LanesMut<'s, T, D> where D: Dimension<Elem = usize> {}
 
 impl<'s, T, D> LanesMut<'s, T, D>
 where
-    D: Dimension,
+    D: Dimension<Elem = usize>,
 {
     /// Creates an iterator over the mutable lane views of `layout` along `dim`
     /// within `base`.
@@ -351,7 +352,7 @@ where
 // SAFETY: see `LaneGeometries`.
 unsafe impl<T, D> SplitAt for LanesMut<'_, T, D>
 where
-    D: Dimension,
+    D: Dimension<Elem = usize>,
 {
     fn split_at(self, index: usize) -> (Self, Self) {
         let (left, right) = self.geometries.split_at(index);

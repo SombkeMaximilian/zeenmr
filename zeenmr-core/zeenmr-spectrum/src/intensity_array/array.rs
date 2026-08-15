@@ -1,7 +1,7 @@
+use crate::dimension::{DimIndex, Dimension, DynDim, StaticDim};
 use crate::intensity_array::iter::{Lanes, LanesMut};
 use crate::intensity_array::{
-    ArrayIndex, DimIndex, DimOrder, Dimension, DynDim, Lane, LaneMut, Layout, Shape, StaticDim,
-    Storage, StorageMut, StorageOwned,
+    ArrayIndex, DimOrder, Lane, LaneMut, Layout, Shape, Storage, StorageMut, StorageOwned,
 };
 use std::borrow::Cow;
 use std::ops::{Index, IndexMut};
@@ -30,16 +30,16 @@ pub type ArrayRc<T, D> = Array<Rc<[T]>, D>;
 pub type ArrayArc<T, D> = Array<Arc<[T]>, D>;
 
 /// Array of rank 1.
-pub type Array1D<S> = Array<S, StaticDim<1>>;
+pub type Array1D<S> = Array<S, StaticDim<usize, 1>>;
 
 /// Array of rank 2.
-pub type Array2D<S> = Array<S, StaticDim<2>>;
+pub type Array2D<S> = Array<S, StaticDim<usize, 2>>;
 
 /// Array of rank 3.
-pub type Array3D<S> = Array<S, StaticDim<3>>;
+pub type Array3D<S> = Array<S, StaticDim<usize, 3>>;
 
 /// Array of a rank determined at runtime.
-pub type ArrayDyn<S> = Array<S, DynDim>;
+pub type ArrayDyn<S> = Array<S, DynDim<usize>>;
 
 /// Array type with arbitrary dimensions.
 #[derive(Clone, Debug)]
@@ -61,8 +61,8 @@ where
     S1: Storage,
     S2: Storage,
     S1::Elem: PartialEq<S2::Elem>,
-    D1: Dimension,
-    D2: Dimension,
+    D1: Dimension<Elem = usize>,
+    D2: Dimension<Elem = usize>,
 {
     // TODO: replace this with fastest lane iteration
     fn eq(&self, other: &Array<S2, D2>) -> bool {
@@ -86,15 +86,15 @@ impl<S, D> Eq for Array<S, D>
 where
     S: Storage,
     S::Elem: Eq,
-    D: Dimension,
+    D: Dimension<Elem = usize>,
 {
 }
 
 impl<S, D1, D2> Index<&ArrayIndex<D2>> for Array<S, D1>
 where
     S: Storage,
-    D1: Dimension,
-    D2: Dimension,
+    D1: Dimension<Elem = usize>,
+    D2: Dimension<Elem = usize>,
 {
     type Output = S::Elem;
 
@@ -117,13 +117,13 @@ where
 impl<S, D, const N: usize> Index<[usize; N]> for Array<S, D>
 where
     S: Storage,
-    D: Dimension,
+    D: Dimension<Elem = usize>,
 {
     type Output = S::Elem;
 
     #[track_caller]
     fn index(&self, index: [usize; N]) -> &Self::Output {
-        let index = ArrayIndex::<StaticDim<N>>::from(index);
+        let index = ArrayIndex::<StaticDim<usize, N>>::from(index);
 
         &self[&index]
     }
@@ -132,8 +132,8 @@ where
 impl<S, D1, D2> IndexMut<&ArrayIndex<D2>> for Array<S, D1>
 where
     S: StorageMut,
-    D1: Dimension,
-    D2: Dimension,
+    D1: Dimension<Elem = usize>,
+    D2: Dimension<Elem = usize>,
 {
     #[track_caller]
     fn index_mut(&mut self, index: &ArrayIndex<D2>) -> &mut Self::Output {
@@ -154,11 +154,11 @@ where
 impl<S, D, const N: usize> IndexMut<[usize; N]> for Array<S, D>
 where
     S: StorageMut,
-    D: Dimension,
+    D: Dimension<Elem = usize>,
 {
     #[track_caller]
     fn index_mut(&mut self, index: [usize; N]) -> &mut Self::Output {
-        let index = ArrayIndex::<StaticDim<N>>::from(index);
+        let index = ArrayIndex::<StaticDim<usize, N>>::from(index);
 
         &mut self[&index]
     }
@@ -166,7 +166,7 @@ where
 
 impl<S, D> Array<S, D>
 where
-    D: Dimension,
+    D: Dimension<Elem = usize>,
 {
     /// Returns the rank of `self`.
     pub fn rank(&self) -> usize {
@@ -200,7 +200,7 @@ where
 impl<S, D> Array<S, D>
 where
     S: Storage,
-    D: Dimension,
+    D: Dimension<Elem = usize>,
 {
     /// Creates a row-major, contiguous array with the given shape.
     ///
@@ -239,7 +239,7 @@ where
     }
 
     /// Returns the equivalent array with a rank determined at runtime.
-    pub fn into_dyn(self) -> Array<S, DynDim> {
+    pub fn into_dyn(self) -> Array<S, DynDim<usize>> {
         Array {
             storage: self.storage,
             layout: self.layout.into_dyn(),
@@ -249,7 +249,7 @@ where
     /// Returns the equivalent array of rank `N`.
     ///
     /// Returns `Err(self)` if `self` does not have rank `N`.
-    pub fn try_into_static<const N: usize>(self) -> Result<Array<S, StaticDim<N>>, Self> {
+    pub fn try_into_static<const N: usize>(self) -> Result<Array<S, StaticDim<usize, N>>, Self> {
         match self.layout.to_dimension() {
             Some(layout) => Ok(Array {
                 storage: self.storage,
@@ -306,7 +306,7 @@ impl<S, D> Array<S, D>
 where
     S: Storage,
     S::Elem: Sync,
-    D: Dimension,
+    D: Dimension<Elem = usize>,
 {
     /// Returns the dimension along which lanes are contiguous, together with
     /// a parallel iterator over those lanes in memory order.
@@ -355,7 +355,7 @@ where
 impl<S, D> Array<S, D>
 where
     S: StorageMut,
-    D: Dimension,
+    D: Dimension<Elem = usize>,
 {
     /// Returns a mutable view of the entire array.
     pub fn view_mut(&mut self) -> ArrayViewMut<'_, S::Elem, D> {
@@ -419,7 +419,7 @@ impl<S, D> Array<S, D>
 where
     S: StorageMut,
     S::Elem: Send,
-    D: Dimension,
+    D: Dimension<Elem = usize>,
 {
     /// Returns the dimension along which lanes are contiguous, together with
     /// a parallel iterator over those mutable lanes in memory order.
@@ -478,7 +478,7 @@ where
 impl<S, D> Array<S, D>
 where
     S: StorageOwned,
-    D: Dimension,
+    D: Dimension<Elem = usize>,
 {
     /// Creates a row-major, contiguous array from the linear buffer offsets.
     ///
@@ -513,7 +513,7 @@ where
         let rank = layout.rank();
 
         let mut index =
-            ArrayIndex::new(D::zero(rank).expect("D can always represent its own rank"));
+            ArrayIndex::new(D::from_fn(rank, |_| 0).expect("D can always represent its own rank"));
         let mut data = Vec::with_capacity(layout.len());
 
         for _ in 0..layout.len() {
@@ -528,7 +528,7 @@ where
 impl<S, D1> Array<S, D1>
 where
     S: Storage,
-    D1: Dimension,
+    D1: Dimension<Elem = usize>,
 {
     /// Returns a reference to the element at `index`.
     ///
@@ -536,7 +536,7 @@ where
     /// any component is out of bounds.
     pub fn get<D2>(&self, index: &ArrayIndex<D2>) -> Option<&S::Elem>
     where
-        D2: Dimension,
+        D2: Dimension<Elem = usize>,
     {
         let linear = self.layout.linear(index)?;
 
@@ -554,7 +554,7 @@ where
     /// be less than the corresponding extent.
     pub unsafe fn get_unchecked<D2>(&self, index: &ArrayIndex<D2>) -> &S::Elem
     where
-        D2: Dimension,
+        D2: Dimension<Elem = usize>,
     {
         // SAFETY: the caller guarantees that `index` is in bounds, so the
         // offset is at most `max_offset`.
@@ -570,7 +570,7 @@ where
     /// situations that [`Layout::lane_at`] does.
     pub fn lane_at<D2>(&self, dim: DimIndex, index: &ArrayIndex<D2>) -> Option<Lane<'_, S::Elem>>
     where
-        D2: Dimension,
+        D2: Dimension<Elem = usize>,
     {
         let geometry = self.layout.lane_at(dim, index)?;
 
@@ -596,7 +596,7 @@ where
 impl<S, D1> Array<S, D1>
 where
     S: StorageMut,
-    D1: Dimension,
+    D1: Dimension<Elem = usize>,
 {
     /// Returns a mutable reference to the element at `index`.
     ///
@@ -604,7 +604,7 @@ where
     /// any component is out of bounds.
     pub fn get_mut<D2>(&mut self, index: &ArrayIndex<D2>) -> Option<&mut S::Elem>
     where
-        D2: Dimension,
+        D2: Dimension<Elem = usize>,
     {
         let linear = self.layout.linear(index)?;
 
@@ -623,7 +623,7 @@ where
     /// be less than the corresponding extent.
     pub unsafe fn get_unchecked_mut<D2>(&mut self, index: &ArrayIndex<D2>) -> &mut S::Elem
     where
-        D2: Dimension,
+        D2: Dimension<Elem = usize>,
     {
         // SAFETY: the caller guarantees that `index` is in bounds, so the
         // offset is at most `max_offset`.
@@ -644,7 +644,7 @@ where
         index: &ArrayIndex<D2>,
     ) -> Option<LaneMut<'_, S::Elem>>
     where
-        D2: Dimension,
+        D2: Dimension<Elem = usize>,
     {
         let geometry = self.layout.lane_at(dim, index)?;
 
@@ -807,7 +807,7 @@ mod tests {
             .shape()
             .indices_lexicographic()
             .expect("hand verified")
-            .collect::<Vec<ArrayIndex<DynDim>>>();
+            .collect::<Vec<ArrayIndex<DynDim<usize>>>>();
 
         for index in &indices {
             array[index] += 1;
