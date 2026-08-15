@@ -223,7 +223,7 @@ pub struct LaneElemStridedMut<'s, T> {
     /// allocation `base` points into, and the geometry must be injective, so
     /// no offset is yielded twice.
     offsets: LaneOffsets,
-    /// Lifetime marker for the mutable reference which is invariant in `T`.
+    /// Lifetime marker for the mutable reference.
     ///
     /// # Safety
     ///

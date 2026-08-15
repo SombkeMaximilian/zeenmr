@@ -256,7 +256,7 @@ enum LaneInnerMut<'s, T> {
         base: *mut T,
         /// Geometry of the lane.
         geometry: LaneGeometry,
-        /// Lifetime marker for the mutable reference which is invariant in `T`.
+        /// Lifetime marker for the mutable reference.
         lifetime: PhantomData<&'s mut T>,
     },
 }

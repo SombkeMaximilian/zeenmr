@@ -266,7 +266,7 @@ pub struct LanesMut<'s, T, D> {
     /// bounds of `base`, and they must collectively be injective, s.t. no two
     /// lanes ever address the same offset.
     geometries: LaneGeometries<D>,
-    /// Lifetime marker for the mutable reference which is invariant in `T`.
+    /// Lifetime marker for the mutable reference.
     lifetime: PhantomData<&'s mut T>,
 }
 
