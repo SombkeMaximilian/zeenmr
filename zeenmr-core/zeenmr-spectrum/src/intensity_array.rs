@@ -16,7 +16,7 @@
 mod array;
 pub use array::{
     Array, Array1D, Array2D, Array3D, ArrayArc, ArrayCow, ArrayDyn, ArrayOwned, ArrayRc, ArrayView,
-    ArrayViewMut, Lane, LaneMut,
+    ArrayViewMut,
 };
 
 mod storage;
@@ -27,6 +27,9 @@ pub use dimension::{
     ArrayIndex, DimIndex, DimOrder, Dimension, DynDim, LaneGeometry, Layout, Shape, StaticDim,
     Strides,
 };
+
+mod lane;
+pub use lane::{Lane, LaneMut};
 
 pub mod diagnostic_1d;
 
