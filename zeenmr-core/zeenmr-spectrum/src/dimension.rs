@@ -13,6 +13,7 @@ const MAX_INLINE_RANK: usize = 3;
 /// Such a quantity generally has `N` dimensions. This type encapsulates the
 /// index `i` into such a quantity with `0 <= i < N`.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+#[repr(transparent)]
 pub struct DimIndex(pub usize);
 
 /// Abstraction for multidimensional quantities.
