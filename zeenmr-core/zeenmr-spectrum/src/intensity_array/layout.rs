@@ -55,6 +55,19 @@ where
         Self(inverse)
     }
 
+    /// Returns the equivalent order with a rank determined at runtime.
+    pub fn into_dyn(self) -> DimOrder<DynDim<usize>> {
+        self.to_dimension()
+            .expect("DynDim can represent any rank")
+    }
+
+    /// Returns the equivalent order of rank `N`.
+    ///
+    /// Returns `None` if `self` does not have rank `N`.
+    pub fn try_into_static<const N: usize>(self) -> Option<DimOrder<StaticDim<usize, N>>> {
+        self.to_dimension()
+    }
+
     /// Returns the rank of `self`.
     pub fn rank(&self) -> usize {
         self.0.rank()
@@ -96,6 +109,23 @@ where
         K: Ord,
     {
         self.0.as_mut_slice().sort_by_key(f);
+    }
+}
+
+impl<D1> DimOrder<D1>
+where
+    D1: Dimension<Elem = usize>,
+{
+    /// Returns the equivalent order over `D2`.
+    ///
+    /// Returns `None` if `D2` cannot represent the rank of `self`.
+    pub fn to_dimension<D2>(&self) -> Option<DimOrder<D2>>
+    where
+        D2: Dimension<Elem = usize>,
+    {
+        const { assert_rank_compatible::<D1, D2>() };
+
+        Some(DimOrder(D2::from_dimension(&self.0)?))
     }
 }
 
@@ -405,6 +435,19 @@ where
     /// Creates a new collection of array strides.
     pub fn new(strides: D) -> Self {
         Self(strides)
+    }
+
+    /// Returns the equivalent strides with a rank determined at runtime.
+    pub fn into_dyn(self) -> Strides<DynDim<usize>> {
+        self.to_dimension()
+            .expect("DynDim can represent any rank")
+    }
+
+    /// Returns the equivalent strides of rank `N`.
+    ///
+    /// Returns `None` if `self` does not have rank `N`.
+    pub fn try_into_static<const N: usize>(self) -> Option<Strides<StaticDim<usize, N>>> {
+        self.to_dimension()
     }
 
     /// Returns the rank of `self`.
