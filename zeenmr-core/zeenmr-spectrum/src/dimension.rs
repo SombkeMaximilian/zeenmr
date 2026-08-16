@@ -12,6 +12,8 @@ const MAX_INLINE_RANK: usize = 3;
 ///
 /// Such a quantity generally has `N` dimensions. This type encapsulates the
 /// index `i` into such a quantity with `0 <= i < N`.
+///
+/// This type has the same size and alignment as `usize`.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 #[repr(transparent)]
 pub struct DimIndex(pub usize);
@@ -523,6 +525,14 @@ mod tests {
 
     /// Crosses the inline boundary.
     const RANKS: [usize; 6] = [0, 1, 2, 3, 4, 9];
+
+    #[test]
+    fn dim_index_size_alignment() {
+        const _: () = {
+            assert!(size_of::<DimIndex>() == size_of::<usize>());
+            assert!(align_of::<DimIndex>() == align_of::<usize>());
+        };
+    }
 
     #[test]
     fn rank_compatible() {

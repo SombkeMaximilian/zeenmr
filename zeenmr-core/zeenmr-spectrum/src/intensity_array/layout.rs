@@ -78,8 +78,13 @@ where
     }
 
     /// Returns a slice containing all dimension indices.
-    pub(crate) fn as_slice(&self) -> &[usize] {
-        self.0.as_slice()
+    pub fn as_slice(&self) -> &[DimIndex] {
+        let slots = self.0.as_slice();
+
+        // SAFETY: `DimIndex` is `repr(transparent)` over `usize`, so its size
+        // and alignment are identical to that of `usize`, and every `DimIndex`
+        // is a valid `usize` and vice versa.
+        unsafe { std::slice::from_raw_parts(slots.as_ptr().cast::<DimIndex>(), slots.len()) }
     }
 
     /// Reorders the dimension by `key`.
@@ -847,14 +852,12 @@ where
         let strides = self.strides.as_slice();
 
         order
-            .as_slice()
             .iter()
             .rev()
-            .copied()
-            .filter(|&d| d != dim.0)
+            .filter(|&d| d != dim)
             .fold(self.offset, |acc, d| {
-                let acc = acc + (lane % extents[d]) * strides[d];
-                lane /= extents[d];
+                let acc = acc + (lane % extents[d.0]) * strides[d.0];
+                lane /= extents[d.0];
 
                 acc
             })
@@ -1199,13 +1202,13 @@ mod tests {
             DimOrder::<DynDim<usize>>::lexicographic(3)
                 .unwrap()
                 .as_slice(),
-            &[0, 1, 2]
+            &[0, 1, 2].map(DimIndex)
         );
         assert_eq!(
             DimOrder::<DynDim<usize>>::colexicographic(3)
                 .unwrap()
                 .as_slice(),
-            &[2, 1, 0]
+            &[2, 1, 0].map(DimIndex)
         );
         assert_eq!(
             DimOrder::<DynDim<usize>>::lexicographic(0)
@@ -1230,7 +1233,7 @@ mod tests {
         let order = DimOrder::new(DynDim::from_array([1, 2, 0])).unwrap();
         let inverse = order.inverse();
 
-        assert_eq!(order.inverse().as_slice(), &[2, 0, 1]);
+        assert_eq!(order.inverse().as_slice(), &[2, 0, 1].map(DimIndex));
         assert_eq!(order.inverse().inverse().as_slice(), order.as_slice());
         for canonical in [
             DimOrder::<DynDim<usize>>::lexicographic(4).unwrap(),
@@ -1641,17 +1644,19 @@ mod tests {
         let row = Layout::row_major(shape.clone(), 0).expect("hand verified");
         let column = Layout::column_major(shape, 0).expect("hand verified");
 
-        assert_eq!(row.memory_order().as_slice(), &[0, 1, 2]);
-        assert_eq!(column.memory_order().as_slice(), &[2, 1, 0]);
+        assert_eq!(row.memory_order().as_slice(), &[0, 1, 2].map(DimIndex));
+        assert_eq!(column.memory_order().as_slice(), &[2, 1, 0].map(DimIndex));
 
         let shape = Shape::new(DynDim::from_array([1, 1, 1]));
         let flat = Layout::row_major(shape, 0).expect("hand verified");
 
         assert_eq!(flat.strides().as_slice(), &[1, 1, 1]);
-        assert_eq!(flat.memory_order().as_slice(), &[0, 1, 2]);
+        assert_eq!(flat.memory_order().as_slice(), &[0, 1, 2].map(DimIndex));
 
         for layout in [row, column, flat] {
-            assert!(DimOrder::new(DynDim::from_slice(layout.memory_order().as_slice())).is_some());
+            assert!(
+                DimOrder::new(DynDim::from_slice(layout.memory_order().0.as_slice())).is_some()
+            );
         }
     }
 
