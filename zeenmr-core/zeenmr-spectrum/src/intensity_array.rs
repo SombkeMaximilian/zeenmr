@@ -23,7 +23,11 @@ mod storage;
 pub use storage::{Storage, StorageMut, StorageOwned};
 
 mod layout;
-pub use layout::{ArrayIndex, DimOrder, LaneGeometry, Layout, Shape, Strides};
+pub use layout::{
+    ArrayIndex, DimOrder, DynArrayIndex, DynDimOrder, DynLayout, DynShape, DynStrides,
+    LaneGeometry, Layout, Shape, StaticArrayIndex, StaticDimOrder, StaticLayout, StaticShape,
+    StaticStrides, Strides, index, order, shape, strides,
+};
 
 mod lane;
 pub use lane::{Lane, LaneMut};

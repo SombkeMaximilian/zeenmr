@@ -1,16 +1,34 @@
-use crate::dimension::{DimIndex, Dimension, DynDim, StaticDim, assert_rank_compatible};
+use crate::dimension::{
+    DimIndex, Dimension, DynDim, IntoDimension, StaticDim, assert_rank_compatible,
+};
 use crate::intensity_array::iter::{Indices, LaneGeometries, LaneOffsets};
 
 #[cfg(feature = "rayon")]
 use crate::intensity_array::iter::{Par, ParIndices, ParLaneGeometries, ParLaneOffsets};
 
-/// Priority order of the dimensions of an array.
+/// Ordering of the dimensions of an array with a rank determined at runtime.
+pub type DynDimOrder = DimOrder<DynDim<usize>>;
+
+/// Ordering of the dimensions of an array with a rank determined at
+/// compile-time.
+pub type StaticDimOrder<const N: usize> = DimOrder<StaticDim<usize, N>>;
+
+/// Ordering of the dimensions of an array.
 ///
 /// An order is always a permutation of `0..rank`, so no dimension is visited
 /// twice or skipped, and indexing a slice of that rank by any entry is
 /// infallible.
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct DimOrder<D>(D);
+
+/// Convenience function for creating dimension orders.
+pub fn order<D>(order: D) -> Option<DimOrder<D::Dim>>
+where
+    D: IntoDimension,
+    D::Dim: Dimension<Elem = usize>,
+{
+    DimOrder::new(order.into_dim())
+}
 
 impl<D> DimOrder<D>
 where
@@ -129,9 +147,24 @@ where
     }
 }
 
+/// Multidimensional array index with a rank determined at runtime.
+pub type DynArrayIndex = ArrayIndex<DynDim<usize>>;
+
+/// Multidimensional array index with a rank determined at compile-time.
+pub type StaticArrayIndex<const N: usize> = ArrayIndex<StaticDim<usize, N>>;
+
 /// Multidimensional index into an array.
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct ArrayIndex<D>(D);
+
+/// Convenience function for creating multidimensional indices.
+pub fn index<D>(indices: D) -> ArrayIndex<D::Dim>
+where
+    D: IntoDimension,
+    D::Dim: Dimension<Elem = usize>,
+{
+    ArrayIndex::new(indices.into_dim())
+}
 
 impl<D, const N: usize> From<[usize; N]> for ArrayIndex<D>
 where
@@ -276,11 +309,26 @@ where
     }
 }
 
+/// Shape of an array with a rank determined at runtime.
+pub type DynShape = Shape<DynDim<usize>>;
+
+/// Shape of an array with a rank determined at compile-time.
+pub type StaticShape<const N: usize> = Shape<StaticDim<usize, N>>;
+
 /// Shape of an array.
 ///
 /// The entries represent the extent of the array along each dimension.
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct Shape<D>(D);
+
+/// Convenience function for creating array shapes.
+pub fn shape<D>(extents: D) -> Shape<D::Dim>
+where
+    D: IntoDimension,
+    D::Dim: Dimension<Elem = usize>,
+{
+    Shape::new(extents.into_dim())
+}
 
 impl<D, const N: usize> From<[usize; N]> for Shape<D>
 where
@@ -421,12 +469,27 @@ where
     }
 }
 
+/// Strides of an array with a rank determined at runtime.
+pub type DynStrides = Strides<DynDim<usize>>;
+
+/// Strides of an array with a rank determined at compile-time.
+pub type StaticStrides<const N: usize> = Strides<StaticDim<usize, N>>;
+
 /// Strides of the elements of an array.
 ///
 /// The entries represent how far apart elements along a dimension are in the
 /// contiguous buffer.
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct Strides<D>(D);
+
+/// Convenience function for creating array strides.
+pub fn strides<D>(strides: D) -> Strides<D::Dim>
+where
+    D: IntoDimension,
+    D::Dim: Dimension<Elem = usize>,
+{
+    Strides::new(strides.into_dim())
+}
 
 impl<D> Strides<D>
 where
@@ -487,6 +550,12 @@ where
         Some(Strides(D2::from_dimension(&self.0)?))
     }
 }
+
+/// Layout of an array with a rank determined at runtime.
+pub type DynLayout = Layout<DynDim<usize>>;
+
+/// Layout of an array with a rank determined at compile-time.
+pub type StaticLayout<const N: usize> = Layout<StaticDim<usize, N>>;
 
 /// Layout of an array.
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]

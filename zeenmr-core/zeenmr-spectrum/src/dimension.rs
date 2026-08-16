@@ -1,5 +1,6 @@
 //! Types and traits for multidimensional quantities.
 
+use std::borrow::Cow;
 use std::mem::{self, MaybeUninit};
 use std::ops::{Deref, DerefMut};
 
@@ -64,6 +65,60 @@ pub trait Dimension: Clone + Send + Sync {
     /// Returns the rank of `self`.
     fn rank(&self) -> usize;
 }
+
+/// Conversion into a [`Dimension`].
+pub trait IntoDimension {
+    /// Dimension type this input can be converted into.
+    type Dim: Dimension;
+
+    /// Creates a dimension type from `self`.
+    fn into_dim(self) -> Self::Dim;
+}
+
+impl<T, const N: usize> IntoDimension for [T; N]
+where
+    T: Clone + Send + Sync,
+{
+    type Dim = StaticDim<T, N>;
+
+    fn into_dim(self) -> Self::Dim {
+        StaticDim::from_array(self)
+    }
+}
+
+impl<T, const N: usize> IntoDimension for &[T; N]
+where
+    T: Clone + Send + Sync,
+{
+    type Dim = StaticDim<T, N>;
+
+    fn into_dim(self) -> Self::Dim {
+        StaticDim::from_array(self.clone())
+    }
+}
+
+/// Generates the [`IntoDimension`] impls for the dynamic types, which are all
+/// basically the same.
+macro_rules! into_dyn_dim_impl {
+    ($t:ty) => {
+        impl<T> IntoDimension for $t
+        where
+            T: Clone + Send + Sync,
+        {
+            type Dim = DynDim<T>;
+
+            fn into_dim(self) -> Self::Dim {
+                DynDim::from_slice(self)
+            }
+        }
+    };
+}
+
+into_dyn_dim_impl!(&[T]);
+into_dyn_dim_impl!(&mut [T]);
+into_dyn_dim_impl!(Vec<T>);
+into_dyn_dim_impl!(Box<[T]>);
+into_dyn_dim_impl!(Cow<'_, [T]>);
 
 /// Asserts that the two dimension types have compatible ranks.
 ///
