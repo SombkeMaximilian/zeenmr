@@ -34,16 +34,20 @@ pub unsafe trait SplitAt: Sized {
 /// Parallel iterator over the multidimensional indices of a shape.
 ///
 /// Yields indices in lexicographic order: the last dimension varies fastest.
+#[cfg(feature = "rayon")]
 pub type ParIndices<D> = Par<Indices<D>>;
 
 /// Parallel iterator over the buffer offsets of a lane along one dimension.
+#[cfg(feature = "rayon")]
 pub type ParLaneOffsets = Par<LaneOffsets>;
 
 /// Parallel, strided iterator over the elements of a buffer.
+#[cfg(feature = "rayon")]
 pub type ParLaneElemStrided<'s, T> = Par<LaneElemStrided<'s, T>>;
 
 /// Parallel, strided iterator over mutable references of the elements of a
 /// buffer.
+#[cfg(feature = "rayon")]
 pub type ParLaneElemStridedMut<'s, T> = Par<LaneElemStridedMut<'s, T>>;
 
 /// Iterator over contiguous elements of a buffer.
@@ -79,10 +83,13 @@ pub type ParLaneElemMut<'s, T> =
     StridedIterKind<ParLaneElemContiguousMut<'s, T>, ParLaneElemStridedMut<'s, T>>;
 
 /// Parallel iterator over the lanes of a layout along one dimension.
+#[cfg(feature = "rayon")]
 pub type ParLaneGeometries<D> = Par<LaneGeometries<D>>;
 
 /// Parallel iterator over the lanes of a layout along one dimension.
+#[cfg(feature = "rayon")]
 pub type ParLanes<'s, T, D> = Par<Lanes<'s, T, D>>;
 
 /// Parallel iterator over mutable lanes of an array along one dimension.
+#[cfg(feature = "rayon")]
 pub type ParLanesMut<'s, T, D> = Par<LanesMut<'s, T, D>>;
