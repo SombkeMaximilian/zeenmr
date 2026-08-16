@@ -17,9 +17,9 @@ const MAX_INLINE_RANK: usize = 3;
 pub struct DimIndex(pub usize);
 
 /// Abstraction for multidimensional quantities.
-pub trait Dimension: Clone + Eq + Send + Sync + Sized {
+pub trait Dimension: Clone + Send + Sync {
     /// Element type of the quantity.
-    type Elem: Clone;
+    type Elem: Clone + Send + Sync;
 
     /// Compile time constant rank, if available.
     const RANK: Option<usize>;
@@ -93,7 +93,7 @@ impl<T, const N: usize> From<[T; N]> for StaticDim<T, N> {
 
 impl<T, const N: usize> Dimension for StaticDim<T, N>
 where
-    T: Clone + Eq + Send + Sync,
+    T: Clone + Send + Sync,
 {
     type Elem = T;
 
@@ -407,7 +407,7 @@ where
 
 impl<T> Dimension for DynDim<T>
 where
-    T: Clone + Eq + Send + Sync,
+    T: Clone + Send + Sync,
 {
     type Elem = T;
 

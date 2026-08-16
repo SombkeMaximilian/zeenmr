@@ -581,7 +581,9 @@ where
     pub fn is_row_major(&self) -> bool {
         self.shape
             .row_major_strides()
-            .is_some_and(|row_major_strides| row_major_strides == self.strides)
+            .is_some_and(|row_major_strides| {
+                row_major_strides.as_slice() == self.strides.as_slice()
+            })
     }
 
     /// Returns `true` if the layout covers `offset..offset + len` with no gaps.
