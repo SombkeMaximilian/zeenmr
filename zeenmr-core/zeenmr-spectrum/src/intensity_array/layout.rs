@@ -70,6 +70,11 @@ where
         self.0.as_slice()
     }
 
+    /// Returns a mutable slice containing all dimension indices.
+    pub(crate) fn as_mut_slice(&mut self) -> &mut [usize] {
+        self.0.as_mut_slice()
+    }
+
     /// Returns the order that maps each dimension to its position in `self`.
     pub fn inverse(&self) -> Self {
         let mut inverse =
@@ -405,6 +410,11 @@ where
     pub fn as_slice(&self) -> &[usize] {
         self.0.as_slice()
     }
+
+    /// Returns a mutable slice containing all array element strides.
+    pub(crate) fn as_mut_slice(&mut self) -> &mut [usize] {
+        self.0.as_mut_slice()
+    }
 }
 
 /// Layout of an array.
@@ -459,19 +469,9 @@ where
     /// `None`, or if no contiguous strides can be computed from `shape`, or if
     /// computing the maximum offset that can be addressed overflows.
     pub fn row_major(shape: Shape<D>, offset: usize) -> Option<Self> {
-        let len = shape
-            .product_checked()
-            .filter(|&size| size != 0)?;
         let strides = shape.row_major_strides()?;
-        let max_offset = Self::max_offset_of(&shape, &strides, offset)?;
 
-        Some(Self {
-            shape,
-            strides,
-            offset,
-            max_offset,
-            len,
-        })
+        Self::new(shape, strides, offset)
     }
 
     /// Creates a column-major, contiguous layout with the given shape and
@@ -484,19 +484,9 @@ where
     /// The library stores arrays row-major throughout. See
     /// [`Shape::column_major_strides`].
     pub fn column_major(shape: Shape<D>, offset: usize) -> Option<Self> {
-        let len = shape
-            .product_checked()
-            .filter(|&size| size != 0)?;
         let strides = shape.column_major_strides()?;
-        let max_offset = Self::max_offset_of(&shape, &strides, offset)?;
 
-        Some(Self {
-            shape,
-            strides,
-            offset,
-            max_offset,
-            len,
-        })
+        Self::new(shape, strides, offset)
     }
 
     /// Returns the layout with its dimensions reordered according to `order`.
@@ -514,10 +504,13 @@ where
         let zero = D::from_fn(self.rank(), |_| 0).expect("D can always represent its own rank");
         let mut shape = Shape(zero.clone());
         let mut strides = Strides(zero);
-        let (extents, old_strides) = (self.shape.as_slice(), self.strides.as_slice());
+        let new_extents = shape.as_mut_slice();
+        let new_strides = strides.as_mut_slice();
+        let old_extents = self.shape.as_slice();
+        let old_strides = self.strides.as_slice();
         for (position, dim) in order.iter().enumerate() {
-            shape.as_mut_slice()[position] = extents[dim.0];
-            strides.0.as_mut_slice()[position] = old_strides[dim.0];
+            new_extents[position] = old_extents[dim.0];
+            new_strides[position] = old_strides[dim.0];
         }
 
         Some(Self {
@@ -584,6 +577,13 @@ where
         self.max_offset
     }
 
+    /// Returns `true` if the strides are exactly [`Shape::row_major_strides`].
+    pub fn is_row_major(&self) -> bool {
+        self.shape
+            .row_major_strides()
+            .is_some_and(|row_major_strides| row_major_strides == self.strides)
+    }
+
     /// Returns `true` if the layout covers `offset..offset + len` with no gaps.
     ///
     /// Dimensions with an extent of 1 are ignored, since their stride is never
@@ -605,13 +605,6 @@ where
         }
 
         true
-    }
-
-    /// Returns `true` if the strides are exactly [`Shape::row_major_strides`].
-    pub fn is_row_major(&self) -> bool {
-        self.shape
-            .row_major_strides()
-            .is_some_and(|row_major_strides| row_major_strides == self.strides)
     }
 
     /// Returns `true` if no two indices address the same buffer offset.
@@ -685,23 +678,12 @@ where
     /// row-major layout yields [`DimOrder::lexicographic`], while a
     /// column-major layout yields [`DimOrder::colexicographic`].
     pub fn memory_order(&self) -> DimOrder<D> {
-        let rank = self.rank();
         let strides = self.strides.as_slice();
-        let mut order = D::from_fn(rank, |_| 0).expect("D can always represent its own rank");
+        let mut order = self.lexicographic_order();
         let slots = order.as_mut_slice();
-        slots
-            .iter_mut()
-            .enumerate()
-            .for_each(|(index, slot)| *slot = index);
-        for i in 1..rank {
-            let mut j = i;
-            while j > 0 && strides[slots[j - 1]] < strides[slots[j]] {
-                slots.swap(j - 1, j);
-                j -= 1;
-            }
-        }
+        slots.sort_by_key(|&dim| std::cmp::Reverse(strides[dim]));
 
-        DimOrder(order)
+        order
     }
 
     /// Returns an iterator over the lanes in memory order.
@@ -804,7 +786,7 @@ where
         lane: usize,
         order: &DimOrder<D>,
     ) -> LaneGeometry {
-        // upholds the variant because every offset in a lane geometry is
+        // upholds the invariant because every offset in a lane geometry is
         // bounded from above by `Layout::max_offset`, which doesn't overflow
         // by this type's invariants.
         LaneGeometry {
@@ -970,7 +952,7 @@ where
                 (index < extent).then(|| acc + index * stride)
             })?;
 
-        // upholds the variant because every offset in a lane geometry is
+        // upholds the invariant because every offset in a lane geometry is
         // bounded from above by `Layout::max_offset`, which doesn't overflow
         // by this type's invariants.
         Some(LaneGeometry {
@@ -1061,6 +1043,12 @@ impl LaneGeometry {
 
     /// Returns the range of contiguous buffer offsets addressed by the lane
     /// geometry.
+    ///
+    /// Returns `None` if the lane is not contiguous, or if the exclusive end
+    /// `offset + count` is not representable. This method therefore has a
+    /// stricter requirement than [`LaneGeometry::is_contiguous`]. In such a
+    /// case, [`LaneGeometry::fits_within`] will return `false` for any `len`
+    /// regardless, however.
     #[inline]
     pub fn contiguous_range(&self) -> Option<std::ops::Range<usize>> {
         if self.is_contiguous() {
