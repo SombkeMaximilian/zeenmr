@@ -2,7 +2,7 @@ use crate::dimension::{DimIndex, Dimension, DynDim, StaticDim, assert_rank_compa
 use crate::intensity_array::iter::{Indices, LaneGeometries, LaneOffsets};
 
 #[cfg(feature = "rayon")]
-use crate::intensity_array::iter::{Par, ParIndices, ParLaneGeometries};
+use crate::intensity_array::iter::{Par, ParIndices, ParLaneGeometries, ParLaneOffsets};
 
 /// Priority order of the dimensions of an array.
 ///
@@ -1135,8 +1135,8 @@ impl LaneGeometry {
     /// using [`LaneGeometry::contiguous_range`] as an iterator.
     #[cfg(feature = "rayon")]
     #[inline]
-    pub fn par_offsets(self) -> LaneOffsets {
-        LaneOffsets::new(self)
+    pub fn par_offsets(self) -> ParLaneOffsets {
+        Par::new(LaneOffsets::new(self))
     }
 }
 
