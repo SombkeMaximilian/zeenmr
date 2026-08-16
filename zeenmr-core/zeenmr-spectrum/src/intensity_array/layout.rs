@@ -369,6 +369,8 @@ where
     where
         D2: Dimension<Elem = usize>,
     {
+        const { assert_rank_compatible::<D1, D2>() };
+
         Some(Shape(D2::from_dimension(&self.0)?))
     }
 }
