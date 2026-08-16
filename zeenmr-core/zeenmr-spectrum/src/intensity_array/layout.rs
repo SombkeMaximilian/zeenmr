@@ -43,6 +43,18 @@ where
         D::from_fn(rank, |dim| rank - dim - 1).map(Self)
     }
 
+    /// Returns the order that maps each dimension to its position in `self`.
+    pub fn inverse(&self) -> Self {
+        let mut inverse =
+            D::from_fn(self.rank(), |_| 0).expect("D can always represent its own rank");
+        let slots = inverse.as_mut_slice();
+        for (position, dim) in self.iter().enumerate() {
+            slots[dim.0] = position;
+        }
+
+        Self(inverse)
+    }
+
     /// Returns the rank of `self`.
     pub fn rank(&self) -> usize {
         self.0.rank()
@@ -70,21 +82,15 @@ where
         self.0.as_slice()
     }
 
-    /// Returns a mutable slice containing all dimension indices.
-    pub(crate) fn as_mut_slice(&mut self) -> &mut [usize] {
-        self.0.as_mut_slice()
-    }
-
-    /// Returns the order that maps each dimension to its position in `self`.
-    pub fn inverse(&self) -> Self {
-        let mut inverse =
-            D::from_fn(self.rank(), |_| 0).expect("D can always represent its own rank");
-        let slots = inverse.as_mut_slice();
-        for (position, dim) in self.iter().enumerate() {
-            slots[dim.0] = position;
-        }
-
-        Self(inverse)
+    /// Reorders the dimension by `key`.
+    ///
+    /// Any reordering of a permutation is trivially another permutation.
+    pub fn sort_by_key<K, F>(&mut self, f: F)
+    where
+        F: FnMut(&usize) -> K,
+        K: Ord,
+    {
+        self.0.as_mut_slice().sort_by_key(f);
     }
 }
 
@@ -412,8 +418,25 @@ where
     }
 
     /// Returns a mutable slice containing all array element strides.
-    pub(crate) fn as_mut_slice(&mut self) -> &mut [usize] {
+    pub fn as_mut_slice(&mut self) -> &mut [usize] {
         self.0.as_mut_slice()
+    }
+}
+
+impl<D1> Strides<D1>
+where
+    D1: Dimension<Elem = usize>,
+{
+    /// Returns the equivalent strides over `D2`.
+    ///
+    /// Returns `None` if `D2` cannot represent the rank of `self`.
+    pub fn to_dimension<D2>(&self) -> Option<Strides<D2>>
+    where
+        D2: Dimension<Elem = usize>,
+    {
+        const { assert_rank_compatible::<D1, D2>() };
+
+        Some(Strides(D2::from_dimension(&self.0)?))
     }
 }
 
@@ -645,7 +668,6 @@ where
             .zip(self.strides.as_slice())
             .enumerate()
             .filter(|&(_, (&extent, _))| extent > 1)
-            // breaks ties by picking the last maximum (minimum with `Reverse`)
             .max_by_key(|&(_, (_, &stride))| std::cmp::Reverse(stride))
             .map(|(index, _)| DimIndex(index))
     }
@@ -682,8 +704,7 @@ where
     pub fn memory_order(&self) -> DimOrder<D> {
         let strides = self.strides.as_slice();
         let mut order = self.lexicographic_order();
-        let slots = order.as_mut_slice();
-        slots.sort_by_key(|&dim| std::cmp::Reverse(strides[dim]));
+        order.sort_by_key(|&dim| std::cmp::Reverse(strides[dim]));
 
         order
     }
