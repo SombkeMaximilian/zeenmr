@@ -75,6 +75,17 @@ pub trait IntoDimension {
     fn into_dim(self) -> Self::Dim;
 }
 
+impl<T, const N: usize> IntoDimension for StaticDim<T, N>
+where
+    T: Clone + Send + Sync,
+{
+    type Dim = Self;
+
+    fn into_dim(self) -> Self::Dim {
+        self
+    }
+}
+
 impl<T, const N: usize> IntoDimension for [T; N]
 where
     T: Clone + Send + Sync,
@@ -86,39 +97,71 @@ where
     }
 }
 
-impl<T, const N: usize> IntoDimension for &[T; N]
+impl<T> IntoDimension for DynDim<T>
 where
     T: Clone + Send + Sync,
 {
-    type Dim = StaticDim<T, N>;
+    type Dim = Self;
 
     fn into_dim(self) -> Self::Dim {
-        StaticDim::from_array(self.clone())
+        self
     }
 }
 
-/// Generates the [`IntoDimension`] impls for the dynamic types, which are all
-/// basically the same.
-macro_rules! into_dyn_dim_impl {
-    ($t:ty) => {
-        impl<T> IntoDimension for $t
-        where
-            T: Clone + Send + Sync,
-        {
-            type Dim = DynDim<T>;
+impl<T> IntoDimension for &[T]
+where
+    T: Clone + Send + Sync,
+{
+    type Dim = DynDim<T>;
 
-            fn into_dim(self) -> Self::Dim {
-                DynDim::from_slice(self)
-            }
-        }
-    };
+    fn into_dim(self) -> Self::Dim {
+        DynDim::from_slice(self)
+    }
 }
 
-into_dyn_dim_impl!(&[T]);
-into_dyn_dim_impl!(&mut [T]);
-into_dyn_dim_impl!(Vec<T>);
-into_dyn_dim_impl!(Box<[T]>);
-into_dyn_dim_impl!(Cow<'_, [T]>);
+impl<T> IntoDimension for &mut [T]
+where
+    T: Clone + Send + Sync,
+{
+    type Dim = DynDim<T>;
+
+    fn into_dim(self) -> Self::Dim {
+        DynDim::from_slice(self)
+    }
+}
+
+impl<T> IntoDimension for Vec<T>
+where
+    T: Clone + Send + Sync,
+{
+    type Dim = DynDim<T>;
+
+    fn into_dim(self) -> Self::Dim {
+        DynDim::from_slice(self)
+    }
+}
+
+impl<T> IntoDimension for Box<[T]>
+where
+    T: Clone + Send + Sync,
+{
+    type Dim = DynDim<T>;
+
+    fn into_dim(self) -> Self::Dim {
+        DynDim::from_slice(self)
+    }
+}
+
+impl<T> IntoDimension for Cow<'_, [T]>
+where
+    T: Clone + Send + Sync,
+{
+    type Dim = DynDim<T>;
+
+    fn into_dim(self) -> Self::Dim {
+        DynDim::from_slice(self)
+    }
+}
 
 /// Asserts that the two dimension types have compatible ranks.
 ///
