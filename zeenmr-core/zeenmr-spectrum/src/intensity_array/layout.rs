@@ -898,9 +898,6 @@ where
     /// Returns `true` if the lanes along `dim` in memory order are consecutive,
     /// contiguous chunks of the underlying storage.
     ///
-    /// When this holds, lanes can straightforwardly be handed out as disjoint,
-    /// potentially mutable slices without any offset arithmetic.
-    ///
     /// Always returns `false` if `dim` is out of range.
     pub fn lanes_are_chunks(&self, dim: DimIndex) -> bool {
         let Some(extent) = self.shape.get(dim) else {
