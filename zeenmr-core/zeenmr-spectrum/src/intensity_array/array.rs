@@ -656,11 +656,13 @@ where
     /// # Safety
     ///
     /// `linear` must not exceed [`Layout::max_offset`] of `self.layout`.
-    #[inline]
     unsafe fn elem_unchecked_mut(&mut self, linear: usize) -> &mut S::Elem {
         debug_assert!(linear <= self.layout.max_offset());
         debug_assert!(self.layout.max_offset() < self.storage.as_slice().len());
 
+        // SAFETY: `from_parts` established `max_offset < len`, and `Storage`
+        // guarantees `as_slice` keeps returning that same length. The caller
+        // guarantees `linear <= max_offset`, hence `linear < len`.
         unsafe {
             self.storage
                 .as_mut_slice()
