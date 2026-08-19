@@ -1,7 +1,9 @@
 use crate::dimension::{DimIndex, Dimension, DynDim, StaticDim};
 use crate::intensity_array::iter::{Lanes, LanesMut};
+use crate::intensity_array::storage::{RawAccess, RawAccessMut};
 use crate::intensity_array::{
-    ArrayIndex, DimOrder, Lane, LaneMut, Layout, Shape, Storage, StorageMut, StorageOwned,
+    ArrayIndex, DimOrder, Lane, LaneMut, Layout, RawStorage, RawStorageMut, Shape, Storage,
+    StorageMut, StorageOwned,
 };
 use std::borrow::Cow;
 use std::ops::{Index, IndexMut};
@@ -51,15 +53,18 @@ pub struct Array<S, D> {
     storage: S,
     /// Layout of the array.
     ///
-    /// Every constructor must establish that [`Layout::max_offset`] is less
-    /// than the number of elements in `storage`.
+    /// Every constructor must establish that [`Layout::max_offset`] is a valid
+    /// offset into the allocation `storage` points into, and thereby that every
+    /// smaller offset is too. Further, the elements the layout addresses must
+    /// be borrowed for as long as `storage` borrows them, exclusively when
+    /// `S: RawStorageMut` or `S: StorageMut`.
     layout: Layout<D>,
 }
 
 impl<S1, D1, S2, D2> PartialEq<Array<S2, D2>> for Array<S1, D1>
 where
-    S1: Storage,
-    S2: Storage,
+    S1: RawStorage,
+    S2: RawStorage,
     S1::Elem: PartialEq<S2::Elem>,
     D1: Dimension<Elem = usize>,
     D2: Dimension<Elem = usize>,
@@ -84,7 +89,7 @@ where
 
 impl<S, D> Eq for Array<S, D>
 where
-    S: Storage,
+    S: RawStorage,
     S::Elem: Eq,
     D: Dimension<Elem = usize>,
 {
@@ -92,7 +97,7 @@ where
 
 impl<S, D1, D2> Index<&ArrayIndex<D2>> for Array<S, D1>
 where
-    S: Storage,
+    S: RawStorage,
     D1: Dimension<Elem = usize>,
     D2: Dimension<Elem = usize>,
 {
@@ -116,7 +121,7 @@ where
 
 impl<S, D, const N: usize> Index<[usize; N]> for Array<S, D>
 where
-    S: Storage,
+    S: RawStorage,
     D: Dimension<Elem = usize>,
 {
     type Output = S::Elem;
@@ -131,7 +136,7 @@ where
 
 impl<S, D1, D2> IndexMut<&ArrayIndex<D2>> for Array<S, D1>
 where
-    S: StorageMut,
+    S: RawStorageMut,
     D1: Dimension<Elem = usize>,
     D2: Dimension<Elem = usize>,
 {
@@ -153,7 +158,7 @@ where
 
 impl<S, D, const N: usize> IndexMut<[usize; N]> for Array<S, D>
 where
-    S: StorageMut,
+    S: RawStorageMut,
     D: Dimension<Elem = usize>,
 {
     #[track_caller]
@@ -237,7 +242,79 @@ where
             layout: self.layout.clone(),
         }
     }
+}
 
+impl<S, D> Array<S, D>
+where
+    S: StorageMut,
+    D: Dimension<Elem = usize>,
+{
+    /// Returns a mutable view of the entire array.
+    pub fn view_mut(&mut self) -> ArrayViewMut<'_, S::Elem, D> {
+        let layout = self.layout.clone();
+
+        Array {
+            storage: self.storage.as_mut_slice(),
+            layout,
+        }
+    }
+}
+
+impl<S, D> Array<S, D>
+where
+    S: StorageOwned,
+    D: Dimension<Elem = usize>,
+{
+    /// Creates a row-major, contiguous array from the linear buffer offsets.
+    ///
+    /// `f` is called exactly [`Layout::len`] times with the offsets `0..len`
+    /// in ascending order, which for the resulting layout visits the elements
+    /// in lexicographic index order.
+    ///
+    /// Returns `None` in the same situations that [`Layout::row_major`] does.
+    pub fn from_linear_fn<F>(shape: Shape<D>, f: F) -> Option<Self>
+    where
+        F: FnMut(usize) -> S::Elem,
+    {
+        let layout = Layout::row_major(shape, 0)?;
+        let storage = (0..layout.len()).map(f).collect();
+
+        Self::from_parts(storage, layout)
+    }
+
+    /// Creates a row-major, contiguous array from the multidimensional
+    /// indices.
+    ///
+    /// `f` is called exactly [`Layout::len`] times with every index of the
+    /// shape in lexicographic order.
+    ///
+    /// Returns `None` in the same situations that [`Array::from_linear_fn`]
+    /// does.
+    pub fn from_index_fn<F>(shape: Shape<D>, mut f: F) -> Option<Self>
+    where
+        F: FnMut(&ArrayIndex<D>) -> S::Elem,
+    {
+        let layout = Layout::row_major(shape, 0)?;
+        let rank = layout.rank();
+
+        let mut index =
+            ArrayIndex::new(D::from_fn(rank, |_| 0).expect("D can always represent its own rank"));
+        let mut data = Vec::with_capacity(layout.len());
+
+        for _ in 0..layout.len() {
+            data.push(f(&index));
+            index.increment_lexicographic(layout.shape().as_slice());
+        }
+
+        Self::from_parts(S::from_vec(data), layout)
+    }
+}
+
+impl<S, D> Array<S, D>
+where
+    S: RawStorage,
+    D: Dimension<Elem = usize>,
+{
     /// Returns the equivalent array with a rank determined at runtime.
     pub fn into_dyn(self) -> Array<S, DynDim<usize>> {
         Array {
@@ -297,14 +374,25 @@ where
         dim: DimIndex,
         order: DimOrder<D>,
     ) -> Option<Lanes<'_, S::Elem, D>> {
-        Lanes::new(self.storage.as_slice(), self.layout.clone(), dim, order)
+        // SAFETY: `RawStorage` guarantees the base pointer is non-null and
+        // aligned, and the type invariant guarantees every offset the layout
+        // addresses is valid. The returned lanes borrow `self`, so the elements
+        // stay borrowed for as long as the access pointer exists.
+        unsafe {
+            Lanes::from_access(
+                RawAccess::from_raw(self.storage.as_ptr()),
+                self.layout.clone(),
+                dim,
+                order,
+            )
+        }
     }
 }
 
 #[cfg(feature = "rayon")]
 impl<S, D> Array<S, D>
 where
-    S: Storage,
+    S: RawStorage,
     S::Elem: Sync,
     D: Dimension<Elem = usize>,
 {
@@ -348,25 +436,15 @@ where
         dim: DimIndex,
         order: DimOrder<D>,
     ) -> Option<ParLanes<'_, S::Elem, D>> {
-        Lanes::new(self.storage.as_slice(), self.layout.clone(), dim, order).map(Par::new)
+        self.lanes_with_order(dim, order).map(Par::new)
     }
 }
 
 impl<S, D> Array<S, D>
 where
-    S: StorageMut,
+    S: RawStorageMut,
     D: Dimension<Elem = usize>,
 {
-    /// Returns a mutable view of the entire array.
-    pub fn view_mut(&mut self) -> ArrayViewMut<'_, S::Elem, D> {
-        let layout = self.layout.clone();
-
-        Array {
-            storage: self.storage.as_mut_slice(),
-            layout,
-        }
-    }
-
     /// Returns the dimension along which lanes are contiguous, together with
     /// an iterator over those mutable lanes in memory order.
     ///
@@ -410,14 +488,25 @@ where
         dim: DimIndex,
         order: DimOrder<D>,
     ) -> Option<LanesMut<'_, S::Elem, D>> {
-        LanesMut::new(self.storage.as_mut_slice(), self.layout.clone(), dim, order)
+        // SAFETY: `RawStorageMut` guarantees the base pointer is non-null and
+        // aligned, and the type invariant guarantees every offset the layout
+        // addresses is valid. The returned lanes borrow `self` mutably, so no
+        // other reference to the storage can exist while they do.
+        unsafe {
+            LanesMut::from_access(
+                RawAccessMut::from_raw(self.storage.as_mut_ptr()),
+                self.layout.clone(),
+                dim,
+                order,
+            )
+        }
     }
 }
 
 #[cfg(feature = "rayon")]
 impl<S, D> Array<S, D>
 where
-    S: StorageMut,
+    S: RawStorageMut,
     S::Elem: Send,
     D: Dimension<Elem = usize>,
 {
@@ -471,63 +560,14 @@ where
         dim: DimIndex,
         order: DimOrder<D>,
     ) -> Option<ParLanesMut<'_, S::Elem, D>> {
-        LanesMut::new(self.storage.as_mut_slice(), self.layout.clone(), dim, order).map(Par::new)
-    }
-}
-
-impl<S, D> Array<S, D>
-where
-    S: StorageOwned,
-    D: Dimension<Elem = usize>,
-{
-    /// Creates a row-major, contiguous array from the linear buffer offsets.
-    ///
-    /// `f` is called exactly [`Layout::len`] times with the offsets `0..len`
-    /// in ascending order, which for the resulting layout visits the elements
-    /// in lexicographic index order.
-    ///
-    /// Returns `None` in the same situations that [`Layout::row_major`] does.
-    pub fn from_linear_fn<F>(shape: Shape<D>, f: F) -> Option<Self>
-    where
-        F: FnMut(usize) -> S::Elem,
-    {
-        let layout = Layout::row_major(shape, 0)?;
-        let storage = (0..layout.len()).map(f).collect();
-
-        Self::from_parts(storage, layout)
-    }
-
-    /// Creates a row-major, contiguous array from the multidimensional
-    /// indices.
-    ///
-    /// `f` is called exactly [`Layout::len`] times with every index of the
-    /// shape in lexicographic order.
-    ///
-    /// Returns `None` in the same situations that [`Array::from_linear_fn`]
-    /// does.
-    pub fn from_index_fn<F>(shape: Shape<D>, mut f: F) -> Option<Self>
-    where
-        F: FnMut(&ArrayIndex<D>) -> S::Elem,
-    {
-        let layout = Layout::row_major(shape, 0)?;
-        let rank = layout.rank();
-
-        let mut index =
-            ArrayIndex::new(D::from_fn(rank, |_| 0).expect("D can always represent its own rank"));
-        let mut data = Vec::with_capacity(layout.len());
-
-        for _ in 0..layout.len() {
-            data.push(f(&index));
-            index.increment_lexicographic(layout.shape().as_slice());
-        }
-
-        Self::from_parts(S::from_vec(data), layout)
+        self.lanes_with_order_mut(dim, order)
+            .map(Par::new)
     }
 }
 
 impl<S, D1> Array<S, D1>
 where
-    S: Storage,
+    S: RawStorage,
     D1: Dimension<Elem = usize>,
 {
     /// Returns a reference to the element at `index`.
@@ -574,7 +614,11 @@ where
     {
         let geometry = self.layout.lane_at(dim, index)?;
 
-        Lane::new(self.storage.as_slice(), geometry)
+        // SAFETY: `RawStorage` guarantees the base pointer is non-null and
+        // aligned, and the type invariant guarantees every offset the layout
+        // addresses is valid. The returned lanes borrow `self`, so the elements
+        // stay borrowed for as long as the access pointer exists.
+        Some(unsafe { Lane::from_access(RawAccess::from_raw(self.storage.as_ptr()), geometry) })
     }
 
     /// Returns a reference to the element at the given buffer offset.
@@ -584,18 +628,19 @@ where
     /// `linear` must not exceed [`Layout::max_offset`] of `self.layout`.
     unsafe fn elem_unchecked(&self, linear: usize) -> &S::Elem {
         debug_assert!(linear <= self.layout.max_offset());
-        debug_assert!(self.layout.max_offset() < self.storage.as_slice().len());
 
-        // SAFETY: `from_parts` established `max_offset < len`, and `Storage`
-        // guarantees `as_slice` keeps returning that same length. The caller
-        // guarantees `linear <= max_offset`, hence `linear < len`.
-        unsafe { self.storage.as_slice().get_unchecked(linear) }
+        // SAFETY: the type invariant establishes that `max_offset` is a valid
+        // index into the storage allocation, and the caller guarantees
+        // `linear <= max_offset`. `RawStorage` guarantees the base pointer is
+        // non-null and aligned, so the offset pointer is dereferenceable, and
+        // the `&self` borrow keeps the reference valid.
+        unsafe { &*self.storage.as_ptr().add(linear) }
     }
 }
 
 impl<S, D1> Array<S, D1>
 where
-    S: StorageMut,
+    S: RawStorageMut,
     D1: Dimension<Elem = usize>,
 {
     /// Returns a mutable reference to the element at `index`.
@@ -648,7 +693,13 @@ where
     {
         let geometry = self.layout.lane_at(dim, index)?;
 
-        LaneMut::new(self.storage.as_mut_slice(), geometry)
+        // SAFETY: `RawStorageMut` guarantees the base pointer is non-null and
+        // aligned, and the type invariant guarantees every offset the layout
+        // addresses is valid. The returned lane borrows `self` mutably, so no
+        // other reference to the storage can exist while they do.
+        Some(unsafe {
+            LaneMut::from_access(RawAccessMut::from_raw(self.storage.as_mut_ptr()), geometry)
+        })
     }
 
     /// Returns a mutable reference to the element at the given buffer offset.
@@ -658,16 +709,13 @@ where
     /// `linear` must not exceed [`Layout::max_offset`] of `self.layout`.
     unsafe fn elem_unchecked_mut(&mut self, linear: usize) -> &mut S::Elem {
         debug_assert!(linear <= self.layout.max_offset());
-        debug_assert!(self.layout.max_offset() < self.storage.as_slice().len());
 
-        // SAFETY: `from_parts` established `max_offset < len`, and `Storage`
-        // guarantees `as_slice` keeps returning that same length. The caller
-        // guarantees `linear <= max_offset`, hence `linear < len`.
-        unsafe {
-            self.storage
-                .as_mut_slice()
-                .get_unchecked_mut(linear)
-        }
+        // SAFETY: the type invariant establishes that `max_offset` is a valid
+        // index into the storage allocation, and the caller guarantees
+        // `linear <= max_offset`. `RawStorage` guarantees the base pointer is
+        // non-null and aligned, so the offset pointer is dereferenceable, and
+        // the `&mut self` borrow keeps the reference valid.
+        unsafe { &mut *self.storage.as_mut_ptr().add(linear) }
     }
 }
 
