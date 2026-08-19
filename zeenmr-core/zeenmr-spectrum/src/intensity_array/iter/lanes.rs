@@ -1,8 +1,8 @@
 use crate::dimension::{DimIndex, Dimension};
 use crate::intensity_array::iter::SplitAt;
+use crate::intensity_array::storage::{RawAccess, RawAccessMut};
 use crate::intensity_array::{DimOrder, Lane, LaneGeometry, LaneMut, Layout};
 use std::iter::FusedIterator;
-use std::marker::PhantomData;
 
 /// Iterator over the lanes of a layout along one dimension.
 #[derive(Clone, Debug)]
@@ -117,17 +117,15 @@ where
 /// Iterator over the lane views of an array along one dimension.
 #[derive(Debug)]
 pub struct Lanes<'s, T, D> {
-    /// Base pointer of the storage.
-    base: *const T,
+    /// Access pointer of the storage
+    access: RawAccess<'s, T>,
     /// Geometries of the lanes.
     ///
     /// # Safety
     ///
-    /// All lanes returned by this iterator must only address offsets within
-    /// bounds of `base`.
+    /// All lanes returned by this iterator must only address valid offsets into
+    /// the allocation `access` points to.
     geometries: LaneGeometries<D>,
-    /// Lifetime marker for the reference.
-    lifetime: PhantomData<&'s T>,
 }
 
 impl<T, D> Clone for Lanes<'_, T, D>
@@ -136,29 +134,10 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            base: self.base,
+            access: self.access,
             geometries: self.geometries.clone(),
-            lifetime: self.lifetime,
         }
     }
-}
-
-// SAFETY: grants shared access to `T`, so it is Send when `T` is Sync and `D`
-// is Send.
-unsafe impl<T, D> Send for Lanes<'_, T, D>
-where
-    T: Sync,
-    D: Send,
-{
-}
-
-// SAFETY: grants shared access to `T`, so it is Sync when `T` is Sync and `D`
-// is Sync.
-unsafe impl<T, D> Sync for Lanes<'_, T, D>
-where
-    T: Sync,
-    D: Sync,
-{
 }
 
 impl<'s, T, D> Iterator for Lanes<'s, T, D>
@@ -172,7 +151,7 @@ where
 
         // SAFETY: geometries returned by `self.geometries` are guaranteed to
         // fulfil the requirements.
-        Some(unsafe { Lane::from_raw(self.base, geometry) })
+        Some(unsafe { Lane::from_access(self.access, geometry) })
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -189,7 +168,7 @@ where
 
         // SAFETY: geometries returned by `self.geometries` are guaranteed to
         // fulfil the requirements.
-        Some(unsafe { Lane::from_raw(self.base, geometry) })
+        Some(unsafe { Lane::from_access(self.access, geometry) })
     }
 }
 
@@ -197,7 +176,8 @@ impl<'s, T, D> ExactSizeIterator for Lanes<'s, T, D> where D: Dimension<Elem = u
 
 impl<'s, T, D> FusedIterator for Lanes<'s, T, D> where D: Dimension<Elem = usize> {}
 
-// SAFETY: see `LaneGeometries`.
+// SAFETY: see `LaneGeometries`, and disjoint lane numbers imply disjoint
+// offsets.
 unsafe impl<T, D> SplitAt for Lanes<'_, T, D>
 where
     D: Dimension<Elem = usize>,
@@ -207,14 +187,12 @@ where
 
         (
             Self {
-                base: self.base,
+                access: self.access,
                 geometries: left,
-                lifetime: PhantomData,
             },
             Self {
-                base: self.base,
+                access: self.access,
                 geometries: right,
-                lifetime: PhantomData,
             },
         )
     }
@@ -229,9 +207,7 @@ where
     ///
     /// Lane views are numbered according to `order` over the other dimensions.
     ///
-    /// Returns `None` if `dim` is out of range, if `order` has a different
-    /// rank than `layout`, or if `layout` can address an offset past the end
-    /// of `base`.
+    /// Returns `None` in the same situations that [`LaneGeometries::new`] does.
     ///
     /// Prefer the `lanes_*` methods on [`Array`].
     ///
@@ -247,9 +223,36 @@ where
         }
 
         Some(Self {
-            base: base.as_ptr(),
+            access: RawAccess::from_slice(base),
             geometries: LaneGeometries::new(layout, dim, order)?,
-            lifetime: PhantomData,
+        })
+    }
+
+    /// Creates an iterator over the lane views of `layout` along `dim` within
+    /// the allocation `access` points into.
+    ///
+    /// Lane views are numbered according to `order` over the other dimensions.
+    ///
+    /// Returns `None` in the same situations that [`LaneGeometries::new`] does.
+    ///
+    /// Prefer the `lanes_*` methods on [`Array`].
+    ///
+    /// [`Array`]: crate::intensity_array::Array
+    ///
+    /// # Safety
+    ///
+    /// Every offset layout addresses must be a valid offset into the allocation
+    /// `access` points into, and its elements must be borrowed immutably for
+    /// `'s`.
+    pub(crate) unsafe fn from_access(
+        access: RawAccess<'s, T>,
+        layout: Layout<D>,
+        dim: DimIndex,
+        order: DimOrder<D>,
+    ) -> Option<Self> {
+        Some(Self {
+            access,
+            geometries: LaneGeometries::new(layout, dim, order)?,
         })
     }
 }
@@ -257,27 +260,18 @@ where
 /// Iterator over mutable lane views of an array along one dimension.
 #[derive(Debug)]
 pub struct LanesMut<'s, T, D> {
-    /// Base pointer of the storage.
-    base: *mut T,
+    /// Access pointer of the storage
+    access: RawAccessMut<'s, T>,
     /// Geometries of the lanes.
     ///
     /// # Safety
     ///
-    /// All lanes returned by this iterator must only address offsets within
-    /// bounds of `base`, and they must collectively be injective, s.t. no two
-    /// lanes ever address the same offset.
+    /// All lanes returned by this iterator must only address valid offsets into
+    /// the allocation `access` points to, and they must collectively be
+    /// injective, s.t. no two lanes collectively ever address the same offset
+    /// more than once.
     geometries: LaneGeometries<D>,
-    /// Lifetime marker for the mutable reference.
-    lifetime: PhantomData<&'s mut T>,
 }
-
-// SAFETY: grants unique access to `T`, so it is Send when `T` is Send and `D`
-// is Send.
-unsafe impl<T, D> Send for LanesMut<'_, T, D> where T: Send {}
-
-// SAFETY: grants unique access to `T`, so it is Sync when `T` is Sync and `D`
-// is Sync.
-unsafe impl<T, D> Sync for LanesMut<'_, T, D> where T: Sync {}
 
 impl<'s, T, D> Iterator for LanesMut<'s, T, D>
 where
@@ -290,7 +284,7 @@ where
 
         // SAFETY: geometries returned by `self.geometries` are guaranteed to
         // fulfil the requirements.
-        Some(unsafe { LaneMut::from_raw(self.base, geometry) })
+        Some(unsafe { LaneMut::from_access(self.access, geometry) })
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -307,7 +301,7 @@ where
 
         // SAFETY: geometries returned by `self.geometries` are guaranteed to
         // fulfil the requirements.
-        Some(unsafe { LaneMut::from_raw(self.base, geometry) })
+        Some(unsafe { LaneMut::from_access(self.access, geometry) })
     }
 }
 
@@ -324,9 +318,8 @@ where
     ///
     /// Lane views are numbered according to `order` over the other dimensions.
     ///
-    /// Returns `None` if `dim` is out of range, if `order` has a different
-    /// rank than `layout`, or if `layout` can address an offset past the end
-    /// of `base`, or if `layout` is self-overlapping.
+    /// Returns `None` in the same situations that [`LaneGeometries::new`] does,
+    /// and if `layout` is self-overlapping.
     ///
     /// Prefer the `lanes_*` methods on [`Array`].
     ///
@@ -342,14 +335,50 @@ where
         }
 
         Some(Self {
-            base: base.as_mut_ptr(),
+            access: RawAccessMut::from_slice(base),
             geometries: LaneGeometries::new(layout, dim, order)?,
-            lifetime: PhantomData,
+        })
+    }
+
+    /// Creates an iterator over the mutable lane views of `layout` along `dim`
+    /// within the allocation `access` points into.
+    ///
+    /// Lane views are numbered according to `order` over the other dimensions.
+    ///
+    /// Returns `None` in the same situations that [`LaneGeometries::new`] does,
+    /// and if `layout` is self-overlapping.
+    ///
+    /// Prefer the `lanes_*` methods on [`Array`].
+    ///
+    /// [`Array`]: crate::intensity_array::Array
+    ///
+    /// # Safety
+    ///
+    /// Every offset layout addresses must be a valid offset into the allocation
+    /// `access` points into, and its elements must be borrowed mutably for
+    /// `'s`.
+    ///
+    /// Disjointness of the lanes is already established by the layout being
+    /// required to be non-overlapping (otherwise `None` is returned).
+    pub(crate) unsafe fn from_access(
+        access: RawAccessMut<'s, T>,
+        layout: Layout<D>,
+        dim: DimIndex,
+        order: DimOrder<D>,
+    ) -> Option<Self> {
+        if !layout.is_non_overlapping() {
+            return None;
+        }
+
+        Some(Self {
+            access,
+            geometries: LaneGeometries::new(layout, dim, order)?,
         })
     }
 }
 
-// SAFETY: see `LaneGeometries`.
+// SAFETY: see `LaneGeometries`, and disjoint lane numbers imply disjoint
+// offsets.
 unsafe impl<T, D> SplitAt for LanesMut<'_, T, D>
 where
     D: Dimension<Elem = usize>,
@@ -359,15 +388,27 @@ where
 
         (
             Self {
-                base: self.base,
+                access: self.access,
                 geometries: left,
-                lifetime: PhantomData,
             },
             Self {
-                base: self.base,
+                access: self.access,
                 geometries: right,
-                lifetime: PhantomData,
             },
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dimension::DynDim;
+    use static_assertions::assert_impl_all;
+
+    #[test]
+    fn thread_safety() {
+        assert_impl_all!(LaneGeometries<DynDim<usize>>: Send, Sync);
+        assert_impl_all!(Lanes<'_, u8, DynDim<usize>>: Send, Sync);
+        assert_impl_all!(LanesMut<'_, u8, DynDim<usize>>: Send, Sync);
     }
 }

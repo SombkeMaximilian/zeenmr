@@ -16,11 +16,11 @@ use std::sync::Arc;
 ///
 /// # Safety
 ///
-/// For any given value, `as_ptr` must return  the same base pointer on every
-/// call, until that value is modified other than through a slice or pointer it
-/// returned. Writing elements is not such a modification. Operations that may
-/// resize or reallocate the buffer, such as [`Vec::push`] and [`Cow::to_mut`],
-/// are.
+/// For any given value, `as_ptr` must return the same, aligned, non-null base
+/// pointer on every call, until that value is modified other than through a
+/// slice or pointer it returned. Writing elements is not such a modification.
+/// Operations that may resize or reallocate the buffer, such as [`Vec::push`]
+/// and [`Cow::to_mut`], are.
 pub unsafe trait RawStorage: Sized {
     /// Array element type.
     type Elem;
@@ -299,6 +299,181 @@ impl<T> StorageOwned for Arc<[T]> {
 
 /// Pointer type that provides immutable access to elements of an allocation.
 ///
+/// Always non-null and aligned.
+pub(crate) struct RawAccess<'s, T> {
+    /// Base pointer of the storage.
+    ptr: NonNull<T>,
+    /// Lifetime marker for the reference.
+    lifetime: PhantomData<&'s T>,
+}
+
+impl<T> Copy for RawAccess<'_, T> {}
+
+impl<T> Clone for RawAccess<'_, T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T> std::fmt::Debug for RawAccess<'_, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.debug_tuple("RawAccess")
+            .field(&self.ptr)
+            .finish()
+    }
+}
+
+// SAFETY: grants shared access to `T`, so it is Send when `T` is Sync.
+unsafe impl<T> Send for RawAccess<'_, T> where T: Sync {}
+
+// SAFETY: grants shared access to `T`, so it is Sync when `T` is Sync.
+unsafe impl<T> Sync for RawAccess<'_, T> where T: Sync {}
+
+impl<'s, T> RawAccess<'s, T> {
+    /// Creates a raw access pointer to the allocation backing `storage`.
+    pub(crate) fn from_slice(storage: &'s [T]) -> Self {
+        Self {
+            ptr: NonNull::from(storage).cast::<T>(),
+            lifetime: PhantomData,
+        }
+    }
+
+    /// Creates a raw access pointer from a raw pointer.
+    ///
+    /// # Safety
+    ///
+    /// `base` must be non-null and aligned. Every offset addressed by a memory
+    /// geometry this pointer is paired with must be a valid offset into the
+    /// allocation, and its elements must be borrowed immutably for `'s`.
+    pub(crate) unsafe fn from_raw(base: *const T) -> Self {
+        // SAFETY: the caller guarantees that `base` is non-null and aligned.
+        let ptr = unsafe { NonNull::new_unchecked(base.cast_mut()) };
+
+        Self {
+            ptr,
+            lifetime: PhantomData,
+        }
+    }
+
+    /// Returns an access pointer of the same storage borrowing `self`.
+    pub(crate) fn reborrow(&self) -> RawAccess<'_, T> {
+        Self {
+            ptr: self.ptr,
+            lifetime: PhantomData,
+        }
+    }
+
+    /// Returns the base pointer of the allocation.
+    pub(crate) fn as_ptr(&self) -> *const T {
+        self.ptr.as_ptr()
+    }
+}
+
+/// Pointer type that provides unique access to elements of an allocation.
+///
+/// Always non-null and aligned.
+pub(crate) struct RawAccessMut<'s, T> {
+    /// Base pointer of the storage.
+    ptr: NonNull<T>,
+    /// Lifetime marker for the reference.
+    lifetime: PhantomData<&'s mut T>,
+}
+
+impl<T> Copy for RawAccessMut<'_, T> {}
+
+impl<T> Clone for RawAccessMut<'_, T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T> std::fmt::Debug for RawAccessMut<'_, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.debug_tuple("RawAccessMut")
+            .field(&self.ptr)
+            .finish()
+    }
+}
+
+// SAFETY: grants unique access to `T`, so it is Send when `T` is Send.
+unsafe impl<T> Send for RawAccessMut<'_, T> where T: Send {}
+
+// SAFETY: grants unique access to `T`, so it is Sync when `T` is Sync.
+unsafe impl<T> Sync for RawAccessMut<'_, T> where T: Sync {}
+
+impl<'s, T> RawAccessMut<'s, T> {
+    /// Creates a mutable, raw access pointer to the allocation backing
+    /// `storage`.
+    pub(crate) fn from_slice(storage: &'s mut [T]) -> Self {
+        Self {
+            ptr: NonNull::from(storage).cast::<T>(),
+            lifetime: PhantomData,
+        }
+    }
+
+    /// Creates a raw, mutable access pointer from a raw pointer.
+    ///
+    /// # Safety
+    ///
+    /// `base` must be non-null and aligned. Every offset addressed by a memory
+    /// geometry this type is paired with must be a valid offset into the
+    /// allocation, and its elements must be borrowed mutably for `'s`. No
+    /// other live reference to them may exist. Any such geometry must further
+    /// be injective, i.e., it must not create the same offset multiple times.
+    pub(crate) unsafe fn from_raw(base: *mut T) -> Self {
+        // SAFETY: the caller guarantees that `base` is non-null and aligned.
+        let ptr = unsafe { NonNull::new_unchecked(base) };
+
+        Self {
+            ptr,
+            lifetime: PhantomData,
+        }
+    }
+
+    /// Returns a mutable access pointer of the same storage borrowing `self`.
+    pub(crate) fn reborrow(&mut self) -> RawAccessMut<'_, T> {
+        Self {
+            ptr: self.ptr,
+            lifetime: PhantomData,
+        }
+    }
+
+    /// Returns an immutable access pointer of the same storage borrowing
+    /// `self`.
+    pub(crate) fn as_access(&self) -> RawAccess<'_, T> {
+        RawAccess {
+            ptr: self.ptr,
+            lifetime: PhantomData,
+        }
+    }
+
+    /// Converts `self` into an immutable access pointer of the same storage.
+    pub(crate) fn into_access(self) -> RawAccess<'s, T> {
+        RawAccess {
+            ptr: self.ptr,
+            lifetime: PhantomData,
+        }
+    }
+
+    /// Returns the base pointer of the allocation.
+    pub(crate) fn as_ptr(&self) -> *const T {
+        self.ptr.as_ptr()
+    }
+
+    /// Returns the mutable base pointer of the allocation.
+    pub(crate) fn as_mut_ptr(&mut self) -> *mut T {
+        self.ptr.as_ptr()
+    }
+}
+
+/// Pointer wrapper that provides immutable access to elements of an allocation.
+///
+/// Creating an access pointer directly is almost never necessary. Prefer
+/// letting an existing array derive a view, both of which handle the
+/// requirements below. Since part of the soundness contract requires knowing
+/// which geometries such a pointer will be paired with, it is not possible to
+/// reason about it locally.
+///
 /// The pointer this type contains is always non-null and aligned, and this
 /// storage type can be thought of as a weaker `&[T]` in the sense that it
 /// potentially isn't sound to dereference every offset within the allocation
@@ -307,12 +482,7 @@ impl<T> StorageOwned for Arc<[T]> {
 /// See the [`module`] level documentation for more information.
 ///
 /// [`module`]: crate::intensity_array#access-pointers
-pub struct Access<'s, T> {
-    /// Base pointer of the storage.
-    ptr: NonNull<T>,
-    /// Lifetime marker for the reference.
-    lifetime: PhantomData<&'s T>,
-}
+pub struct Access<'s, T>(RawAccess<'s, T>);
 
 impl<T> Copy for Access<'_, T> {}
 
@@ -324,35 +494,51 @@ impl<T> Clone for Access<'_, T> {
 
 impl<T> std::fmt::Debug for Access<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.debug_tuple("Access").field(&self.ptr).finish()
+        f.debug_tuple("Access")
+            .field(&self.as_ptr())
+            .finish()
     }
 }
-
-// SAFETY: grants shared access to `T`, so it is Send when `T` is Sync.
-unsafe impl<T> Send for Access<'_, T> where T: Sync {}
-
-// SAFETY: grants shared access to `T`, so it is Sync when `T` is Sync.
-unsafe impl<T> Sync for Access<'_, T> where T: Sync {}
 
 unsafe impl<T> RawStorage for Access<'_, T> {
     type Elem = T;
 
     fn as_ptr(&self) -> *const Self::Elem {
-        self.ptr.as_ptr()
+        self.0.as_ptr()
     }
 }
 
 impl<'s, T> Access<'s, T> {
     /// Creates an access pointer to the allocation backing `storage`.
     pub fn from_slice(storage: &'s [T]) -> Self {
-        Self {
-            ptr: NonNull::from(storage).cast::<T>(),
-            lifetime: PhantomData,
-        }
+        Self(RawAccess::from_slice(storage))
+    }
+
+    /// Creates a raw access pointer from a raw pointer.
+    ///
+    /// # Safety
+    ///
+    /// `base` must be non-null and aligned. Every offset addressed by a memory
+    /// geometry this pointer is paired with must be a valid offset into the
+    /// allocation, and its elements must be borrowed immutably for `'s`.
+    pub unsafe fn from_raw(base: *const T) -> Self {
+        // SAFETY: the caller guarantees that `base` is non-null and aligned.
+        Self(unsafe { RawAccess::from_raw(base) })
+    }
+
+    /// Returns an access pointer of the same storage borrowing `self`.
+    pub fn reborrow(&mut self) -> Access<'_, T> {
+        Access(self.0.reborrow())
     }
 }
 
-/// Pointer type that provides unique access to elements of an allocation.
+/// Pointer wrapper that provides unique access to elements of an allocation.
+///
+/// Creating an access pointer directly is almost never necessary. Prefer
+/// letting an existing array derive a view, both of which handle the
+/// requirements below. Since part of the soundness contract requires knowing
+/// which geometries such a pointer will be paired with, it is not possible to
+/// reason about it locally.
 ///
 /// The pointer this type contains is always non-null and aligned, and this
 /// storage type can be thought of as a weaker `&mut [T]` in the sense that it
@@ -362,100 +548,103 @@ impl<'s, T> Access<'s, T> {
 /// See the [`module`] level documentation for more information.
 ///
 /// [`module`]: crate::intensity_array#access-pointers
-pub struct AccessMut<'s, T> {
-    /// Base pointer of the storage.
-    ptr: NonNull<T>,
-    /// Lifetime marker for the reference.
-    lifetime: PhantomData<&'s mut T>,
-}
+pub struct AccessMut<'s, T>(RawAccessMut<'s, T>);
 
 impl<T> std::fmt::Debug for AccessMut<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.debug_tuple("AccessMut")
-            .field(&self.ptr)
+            .field(&self.as_ptr())
             .finish()
     }
 }
-
-// SAFETY: grants unique access to `T`, so it is Send when `T` is Send.
-unsafe impl<T> Send for AccessMut<'_, T> where T: Send {}
-
-// SAFETY: grants unique access to `T`, so it is Sync when `T` is Sync.
-unsafe impl<T> Sync for AccessMut<'_, T> where T: Sync {}
 
 unsafe impl<T> RawStorage for AccessMut<'_, T> {
     type Elem = T;
 
     fn as_ptr(&self) -> *const Self::Elem {
-        self.ptr.as_ptr()
+        self.0.as_ptr()
     }
 }
 
 unsafe impl<T> RawStorageMut for AccessMut<'_, T> {
     fn as_mut_ptr(&mut self) -> *mut Self::Elem {
-        self.ptr.as_ptr()
+        self.0.as_mut_ptr()
     }
 }
 
 impl<'s, T> AccessMut<'s, T> {
     /// Creates a mutable access pointer to the allocation backing `storage`.
     pub fn from_slice(storage: &'s mut [T]) -> Self {
-        Self {
-            ptr: NonNull::from(storage).cast::<T>(),
-            lifetime: PhantomData,
-        }
+        Self(RawAccessMut::from_slice(storage))
+    }
+
+    /// Creates a raw, mutable access pointer from a raw pointer.
+    ///
+    /// # Safety
+    ///
+    /// `base` must be non-null and aligned. Every offset addressed by a memory
+    /// geometry this type is paired with must be a valid offset into the
+    /// allocation, and its elements must be borrowed mutably for `'s`. No
+    /// other live reference to them may exist. Any such geometry must further
+    /// be injective, i.e., it must not create the same offset multiple times.
+    pub unsafe fn from_raw(base: *mut T) -> Self {
+        // SAFETY: the caller guarantees that `base` is non-null and aligned.
+        Self(unsafe { RawAccessMut::from_raw(base) })
     }
 
     /// Returns a mutable access pointer of the same storage borrowing `self`.
     pub fn reborrow(&mut self) -> AccessMut<'_, T> {
-        Self {
-            ptr: self.ptr,
-            lifetime: PhantomData,
-        }
+        AccessMut(self.0.reborrow())
     }
 
     /// Returns an immutable access pointer of the same storage borrowing
     /// `self`.
     pub fn as_access(&self) -> Access<'_, T> {
-        Access {
-            ptr: self.ptr,
-            lifetime: PhantomData,
-        }
+        Access(self.0.as_access())
     }
 
     /// Converts `self` into an immutable access pointer of the same storage.
     pub fn into_access(self) -> Access<'s, T> {
-        Access {
-            ptr: self.ptr,
-            lifetime: PhantomData,
-        }
+        Access(self.0.into_access())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use static_assertions::assert_impl_all;
+
+    #[test]
+    fn thread_safety() {
+        assert_impl_all!(Access<'_, u8>: Send, Sync);
+        assert_impl_all!(AccessMut<'_, u8>: Send, Sync);
+        assert_impl_all!(RawAccess<'_, u8>: Send, Sync);
+        assert_impl_all!(RawAccessMut<'_, u8>: Send, Sync);
+    }
 
     #[test]
     fn pointer_size() {
-        const fn assert_size_<T>() {
-            assert!(size_of::<Access<'_, T>>() == size_of::<Option<Access<'_, T>>>());
-            assert!(size_of::<Access<'_, T>>() == size_of::<*const T>());
-            assert!(align_of::<Access<'_, T>>() == align_of::<Option<Access<'_, T>>>());
-            assert!(align_of::<Access<'_, T>>() == align_of::<*const T>());
-            assert!(size_of::<AccessMut<'_, T>>() == size_of::<Option<AccessMut<'_, T>>>());
-            assert!(size_of::<AccessMut<'_, T>>() == size_of::<*mut T>());
-            assert!(align_of::<AccessMut<'_, T>>() == align_of::<Option<AccessMut<'_, T>>>());
-            assert!(align_of::<AccessMut<'_, T>>() == align_of::<*mut T>());
+        const fn assert_size<T>() {
+            const fn assert_block<A, P>() {
+                assert!(size_of::<A>() == size_of::<Option<A>>());
+                assert!(size_of::<A>() == size_of::<P>());
+                assert!(align_of::<A>() == align_of::<Option<A>>());
+                assert!(align_of::<A>() == align_of::<P>());
+            }
+
+            assert_block::<Access<'_, T>, *const T>();
+            assert_block::<AccessMut<'_, T>, *mut T>();
+            assert_block::<RawAccess<'_, T>, *const T>();
+            assert_block::<RawAccessMut<'_, T>, *mut T>();
         }
-        struct ZST;
+        struct Zst;
 
         const _: () = {
-            assert_size_::<u8>();
-            assert_size_::<&u8>();
-            assert_size_::<&mut u8>();
-            assert_size_::<Box<[u8]>>();
-            assert_size_::<ZST>();
+            assert_size::<u8>();
+            assert_size::<&u8>();
+            assert_size::<&mut u8>();
+            assert_size::<Box<[u8]>>();
+            assert_size::<Zst>();
         };
     }
 
