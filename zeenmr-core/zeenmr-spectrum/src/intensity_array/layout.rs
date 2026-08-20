@@ -2,6 +2,7 @@ use crate::dimension::{
     DimIndex, Dimension, DynDim, IntoDimension, StaticDim, assert_rank_compatible,
 };
 use crate::intensity_array::iter::{Indices, LaneGeometries, LaneOffsets};
+use std::ops::{Bound, RangeBounds};
 
 #[cfg(feature = "rayon")]
 use crate::intensity_array::iter::{Par, ParIndices, ParLaneGeometries, ParLaneOffsets};
@@ -629,43 +630,6 @@ where
         Self::new(shape, strides, offset)
     }
 
-    /// Returns the layout with its dimensions reordered according to `order`.
-    ///
-    /// Dimension `i` of the result is dimension `order[i]` of `self`, for both
-    /// extents and strides. Permuting by [`Layout::memory_order`] yields the
-    /// layout whose lexicographic traversal is the most sequential one.
-    ///
-    /// Returns `None` if `order` has a different rank than `self`.
-    pub fn permuted(&self, order: &DimOrder<D>) -> Option<Self> {
-        if order.rank() != self.rank() {
-            return None;
-        }
-
-        let zero = D::from_fn(self.rank(), |_| 0).expect("D can always represent its own rank");
-        let mut shape = Shape(zero.clone());
-        let mut strides = Strides(zero);
-        let new_extents = shape.as_mut_slice();
-        let new_strides = strides.as_mut_slice();
-        let old_extents = self.shape.as_slice();
-        let old_strides = self.strides.as_slice();
-        for (position, dim) in order.iter().enumerate() {
-            new_extents[position] = old_extents[dim.0];
-            new_strides[position] = old_strides[dim.0];
-        }
-
-        Some(Self {
-            shape,
-            strides,
-            // these carry over as is (pinky promise) because reordering the
-            // exclusively finite, non-negative terms of a finite sum/product
-            // can't make it overflow if the original didn't overflow (which
-            // all other constructors guarantee) and does not change it
-            offset: self.offset,
-            max_offset: self.max_offset,
-            len: self.len,
-        })
-    }
-
     /// Returns the equivalent layout with a rank determined at runtime.
     pub fn into_dyn(self) -> Layout<DynDim<usize>> {
         self.to_dimension()
@@ -677,6 +641,176 @@ where
     /// Returns `None` if `self` does not have rank `N`.
     pub fn try_into_static<const N: usize>(self) -> Option<Layout<StaticDim<usize, N>>> {
         self.to_dimension()
+    }
+
+    /// Returns the layout with dimensions of extent 1 dropped.
+    ///
+    /// The rank of the layout reduces by the number of dropped dimensions.
+    /// Every other property of the layout remains unchanged.
+    ///
+    /// Note that any `DimIndex` created prior to this method call becomes
+    /// meaningless.
+    pub fn unit_extents_dropped(&self) -> Layout<DynDim<usize>> {
+        let (extents, strides) = self
+            .shape
+            .as_slice()
+            .iter()
+            .zip(self.strides.as_slice())
+            .filter(|&(&extent, _)| extent != 1)
+            .map(|(&extent, &stride)| (extent, stride))
+            .unzip::<usize, usize, Vec<usize>, Vec<usize>>();
+
+        Layout {
+            shape: Shape(DynDim::from_slice(extents)),
+            strides: Strides(DynDim::from_slice(strides)),
+            // the other fields carry over as is since dimensions of extent 1
+            // contribute to none of them.
+            offset: self.offset,
+            max_offset: self.max_offset,
+            len: self.len,
+        }
+    }
+
+    /// Returns the layout with its extent along `dim` restricted to `range`.
+    ///
+    /// Returns `None` if `dim` is out of range, or if `range` is empty or not
+    /// contained in `0..extent`.
+    pub fn cropped<R>(&self, dim: DimIndex, range: R) -> Option<Self>
+    where
+        R: RangeBounds<usize>,
+    {
+        let mut layout = self.clone();
+        layout.crop(dim, range)?;
+
+        Some(layout)
+    }
+
+    /// Restricts the extent along `dim` to `range`.
+    ///
+    /// Returns `None` if `dim` is out of range, or if `range` is empty or not
+    /// contained in `0..extent`. In any such case, `self` remains unmodified.
+    pub fn crop<R>(&mut self, dim: DimIndex, range: R) -> Option<&mut Self>
+    where
+        R: RangeBounds<usize>,
+    {
+        let extent = self.shape.get(dim)?;
+        let stride = self.strides.get(dim)?;
+        let start = match range.start_bound() {
+            Bound::Included(&start) => start,
+            Bound::Excluded(&start) => start.checked_add(1)?,
+            Bound::Unbounded => 0,
+        };
+        let end = match range.end_bound() {
+            Bound::Included(&end) => end.checked_add(1)?,
+            Bound::Excluded(&end) => end,
+            Bound::Unbounded => extent,
+        };
+
+        if start >= end || end > extent {
+            return None;
+        }
+
+        self.offset += start * stride;
+        self.max_offset -= (extent - end) * stride;
+        self.len = (self.len / extent) * (end - start);
+        self.shape.as_mut_slice()[dim.0] = end - start;
+
+        debug_assert_eq!(
+            Self::max_offset_of(&self.shape, &self.strides, self.offset),
+            Some(self.max_offset)
+        );
+        debug_assert_eq!(self.shape.product_checked(), Some(self.len));
+
+        Some(self)
+    }
+
+    /// Returns the layout with its extent along `dim` restricted to 1 at
+    /// `index`.
+    ///
+    /// Returns `None` if `dim` is out of range, or if `index` is not less
+    /// than the extent along `dim`.
+    pub fn restricted(&self, dim: DimIndex, index: usize) -> Option<Self> {
+        let mut layout = self.clone();
+        layout.restrict(dim, index)?;
+
+        Some(layout)
+    }
+
+    /// Restricts the extent along `dim` to 1 at `index`.
+    ///
+    /// Returns `None` if `dim` is out of range, or if `index` is not less
+    /// than the extent along `dim`. In any such case, `self` remains
+    /// unmodified.
+    pub fn restrict(&mut self, dim: DimIndex, index: usize) -> Option<&mut Self> {
+        let extent = self.shape.get(dim)?;
+        let stride = self.strides.get(dim)?;
+
+        if index >= extent {
+            return None;
+        }
+
+        self.offset += index * stride;
+        self.max_offset -= (extent - index - 1) * stride;
+        self.len /= extent;
+        self.shape.as_mut_slice()[dim.0] = 1;
+
+        debug_assert_eq!(
+            Self::max_offset_of(&self.shape, &self.strides, self.offset),
+            Some(self.max_offset)
+        );
+        debug_assert_eq!(self.shape.product_checked(), Some(self.len));
+
+        Some(self)
+    }
+
+    /// Returns the layout with its dimensions reordered according to `order`.
+    ///
+    /// Dimension `i` of the result is dimension `order[i]` of `self`, for both
+    /// extents and strides. Permuting by [`Layout::memory_order`] yields the
+    /// layout whose lexicographic traversal is the most sequential one.
+    ///
+    /// Returns `None` if `order` has a different rank than `self`.
+    pub fn permuted(&self, order: &DimOrder<D>) -> Option<Self> {
+        let mut layout = self.clone();
+        layout.permute(order)?;
+
+        Some(layout)
+    }
+
+    /// Reorders the dimensions according to `order`.
+    ///
+    /// Dimension `i` of the result is dimension `order[i]` of `self`, for both
+    /// extents and strides. Permuting by [`Layout::memory_order`] yields the
+    /// layout whose lexicographic traversal is the most sequential one.
+    ///
+    /// Returns `None` if `order` has a different rank than `self`, in which
+    /// case `self` remains unmodified.
+    pub fn permute(&mut self, order: &DimOrder<D>) -> Option<&mut Self> {
+        if order.rank() != self.rank() {
+            return None;
+        }
+
+        let order = order.as_slice();
+        let old = self.shape.as_slice();
+        self.shape = D::from_fn(self.rank(), |dim| old[order[dim].0])
+            .map(Shape)
+            .expect("D can always represent its own rank");
+        let old = self.strides.as_slice();
+        self.strides = D::from_fn(self.rank(), |dim| old[order[dim].0])
+            .map(Strides)
+            .expect("D can always represent its own rank");
+
+        debug_assert_eq!(
+            Self::max_offset_of(&self.shape, &self.strides, self.offset),
+            Some(self.max_offset)
+        );
+        debug_assert_eq!(self.shape.product_checked(), Some(self.len));
+
+        // the other fields carry over as is (pinky promise) because reordering
+        // the exclusively finite, non-negative terms of a finite sum/product
+        // can't make it overflow if the original didn't overflow (which
+        // all other constructors guarantee) and does not change it
+        Some(self)
     }
 
     /// Returns the rank of `self`.
@@ -1726,6 +1860,101 @@ mod tests {
                 assert_eq!(column_major, Layout::column_major(shape.clone(), offset));
             }
         }
+    }
+
+    #[test]
+    fn cropped_layout() {
+        let shape = Shape::new(DynDim::from_array([5, 5, 10]));
+        let layout = Layout::row_major(shape, 0).expect("hand verified");
+
+        assert!(layout.cropped(DimIndex(0), 2..4).is_some());
+        assert!(layout.cropped(DimIndex(0), 2..).is_some());
+        assert!(layout.cropped(DimIndex(0), ..4).is_some());
+        assert!(layout.cropped(DimIndex(0), ..).is_some());
+        assert!(layout.cropped(DimIndex(0), 2..6).is_none());
+        assert!(layout.cropped(DimIndex(0), 2..2).is_none());
+
+        let cropped = layout
+            .cropped(DimIndex(0), 2..4)
+            .and_then(|layout| layout.cropped(DimIndex(1), 3..5))
+            .and_then(|layout| layout.cropped(DimIndex(2), ..3))
+            .expect("all in bounds");
+
+        assert_eq!(cropped.shape.as_slice(), &[2, 2, 3]);
+        assert_eq!(cropped.strides.as_slice(), layout.strides.as_slice());
+        assert_eq!(cropped.offset, 130);
+        assert_eq!(cropped.max_offset, 192);
+        assert_eq!(cropped.len, 12);
+
+        let mut cropped_in_place = layout.clone();
+        cropped_in_place
+            .crop(DimIndex(0), 2..4)
+            .and_then(|layout| layout.crop(DimIndex(1), 3..5))
+            .and_then(|layout| layout.crop(DimIndex(2), ..3))
+            .expect("all in bounds");
+
+        assert_eq!(cropped, cropped_in_place);
+    }
+
+    #[test]
+    fn restricted_layout() {
+        let shape = Shape::new(DynDim::from_array([5, 5, 10]));
+        let layout = Layout::row_major(shape, 0).expect("hand verified");
+
+        let restricted = layout
+            .restricted(DimIndex(0), 4)
+            .and_then(|layout| layout.restricted(DimIndex(1), 1))
+            .expect("all in bounds");
+
+        assert_eq!(restricted.shape.as_slice(), &[1, 1, 10]);
+        assert_eq!(restricted.strides.as_slice(), layout.strides.as_slice());
+        assert_eq!(restricted.offset, 210);
+        assert_eq!(restricted.max_offset, 219);
+        assert_eq!(restricted.len, 10);
+
+        let mut restricted_in_place = layout.clone();
+        restricted_in_place
+            .restrict(DimIndex(0), 4)
+            .and_then(|layout| layout.restrict(DimIndex(1), 1))
+            .expect("all in bounds");
+
+        assert_eq!(restricted, restricted_in_place);
+    }
+
+    #[test]
+    fn drop_unit_extents() {
+        let shape = Shape::new(DynDim::from_array([5, 5, 10]));
+        let layout = Layout::row_major(shape, 0).expect("hand verified");
+
+        let rank_one = layout
+            .clone()
+            .crop(DimIndex(0), 3..5)
+            .and_then(|layout| layout.restrict(DimIndex(1), 2))
+            .and_then(|layout| layout.restrict(DimIndex(2), 2))
+            .map(|layout| layout.unit_extents_dropped())
+            .expect("all in bounds");
+
+        assert_eq!(rank_one.rank(), 1);
+        assert_eq!(rank_one.shape.as_slice(), &[2]);
+        assert_eq!(rank_one.strides.as_slice(), &[50]);
+        assert_eq!(rank_one.offset, 172);
+        assert_eq!(rank_one.max_offset, 222);
+        assert_eq!(rank_one.len, 2);
+
+        let rank_zero = layout
+            .clone()
+            .restrict(DimIndex(0), 4)
+            .and_then(|layout| layout.restrict(DimIndex(1), 2))
+            .and_then(|layout| layout.restrict(DimIndex(2), 1))
+            .map(|layout| layout.unit_extents_dropped())
+            .expect("all in bounds");
+
+        assert_eq!(rank_zero.rank(), 0);
+        assert_eq!(rank_zero.shape.as_slice(), &[]);
+        assert_eq!(rank_zero.strides.as_slice(), &[]);
+        assert_eq!(rank_zero.offset, 221);
+        assert_eq!(rank_zero.max_offset, 221);
+        assert_eq!(rank_zero.len, 1);
     }
 
     #[test]
