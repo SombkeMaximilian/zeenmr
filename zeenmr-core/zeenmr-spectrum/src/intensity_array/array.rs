@@ -1,4 +1,4 @@
-use crate::dimension::{DimIndex, Dimension, DynDim, StaticDim};
+use crate::dimension::{assert_rank_compatible, DimIndex, Dimension, DynDim, StaticDim};
 use crate::intensity_array::iter::{Lanes, LanesMut};
 use crate::intensity_array::storage::{RawAccess, RawAccessMut};
 use crate::intensity_array::{
@@ -71,6 +71,8 @@ where
 {
     // TODO: replace this with fastest lane iteration
     fn eq(&self, other: &Array<S2, D2>) -> bool {
+        const { assert_rank_compatible::<D1, D2>() };
+
         if self.shape().as_slice() != other.shape().as_slice() {
             return false;
         }
@@ -105,6 +107,7 @@ where
 
     #[track_caller]
     fn index(&self, index: &ArrayIndex<D2>) -> &Self::Output {
+        const { assert_rank_compatible::<D1, D2>() };
         if index.rank() != self.rank() {
             index_rank_mismatch(index.rank(), self.rank());
         }
@@ -142,6 +145,7 @@ where
 {
     #[track_caller]
     fn index_mut(&mut self, index: &ArrayIndex<D2>) -> &mut Self::Output {
+        const { assert_rank_compatible::<D1, D2>() };
         if index.rank() != self.rank() {
             index_rank_mismatch(index.rank(), self.rank());
         }
@@ -578,6 +582,8 @@ where
     where
         D2: Dimension<Elem = usize>,
     {
+        const { assert_rank_compatible::<D1, D2>() };
+
         let linear = self.layout.linear(index)?;
 
         // SAFETY: `Layout::linear` returned `Some`, so every component of
@@ -596,6 +602,8 @@ where
     where
         D2: Dimension<Elem = usize>,
     {
+        const { assert_rank_compatible::<D1, D2>() };
+
         // SAFETY: the caller guarantees that `index` is in bounds, so the
         // offset is at most `max_offset`.
         unsafe { self.elem_unchecked(self.layout.linear_unvalidated(index)) }
@@ -612,6 +620,8 @@ where
     where
         D2: Dimension<Elem = usize>,
     {
+        const { assert_rank_compatible::<D1, D2>() };
+
         let geometry = self.layout.lane_at(dim, index)?;
 
         // SAFETY: `RawStorage` guarantees the base pointer is non-null and
@@ -651,6 +661,8 @@ where
     where
         D2: Dimension<Elem = usize>,
     {
+        const { assert_rank_compatible::<D1, D2>() };
+
         let linear = self.layout.linear(index)?;
 
         // SAFETY: `Layout::linear` returned `Some`, so every component of
@@ -670,6 +682,8 @@ where
     where
         D2: Dimension<Elem = usize>,
     {
+        const { assert_rank_compatible::<D1, D2>() };
+
         // SAFETY: the caller guarantees that `index` is in bounds, so the
         // offset is at most `max_offset`.
         unsafe { self.elem_unchecked_mut(self.layout.linear_unvalidated(index)) }
@@ -691,6 +705,8 @@ where
     where
         D2: Dimension<Elem = usize>,
     {
+        const { assert_rank_compatible::<D1, D2>() };
+
         let geometry = self.layout.lane_at(dim, index)?;
 
         // SAFETY: `RawStorageMut` guarantees the base pointer is non-null and
