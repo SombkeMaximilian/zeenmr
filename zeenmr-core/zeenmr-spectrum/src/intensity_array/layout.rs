@@ -648,8 +648,8 @@ where
     /// The rank of the layout reduces by the number of dropped dimensions.
     /// Every other property of the layout remains unchanged.
     ///
-    /// Note that any `DimIndex` created prior to this method call becomes
-    /// meaningless.
+    /// Note that any `DimIndex` created prior to this method call potentially
+    /// becomes meaningless.
     pub fn unit_extents_dropped(&self) -> Layout<DynDim<usize>> {
         let (extents, strides) = self
             .shape
@@ -1117,6 +1117,32 @@ where
             .try_fold(offset, |acc, (&extent, &stride)| {
                 acc.checked_add(extent.checked_sub(1)?.checked_mul(stride)?)
             })
+    }
+}
+
+impl Layout<DynDim<usize>> {
+    /// Drops all dimensions of extent 1 from the layout.
+    ///
+    /// The rank of the layout reduces by the number of dropped dimensions.
+    /// Every other property of the layout remains unchanged.
+    ///
+    /// Note that any `DimIndex` created prior to this method call potentially
+    /// becomes meaningless.
+    pub fn drop_unit_extents(&mut self) -> &mut Self {
+        let (extents, strides) = self
+            .shape
+            .as_slice()
+            .iter()
+            .zip(self.strides.as_slice())
+            .filter(|&(&extent, _)| extent != 1)
+            .map(|(&extent, &stride)| (extent, stride))
+            .unzip::<usize, usize, Vec<usize>, Vec<usize>>();
+        self.shape = Shape(DynDim::from_slice(extents));
+        self.strides = Strides(DynDim::from_slice(strides));
+
+        // the other fields carry over as is since dimensions of extent 1
+        // contribute to none of them.
+        self
     }
 }
 
@@ -1941,6 +1967,16 @@ mod tests {
         assert_eq!(rank_one.max_offset, 222);
         assert_eq!(rank_one.len, 2);
 
+        let mut rank_one_in_place = layout.clone();
+        rank_one_in_place
+            .crop(DimIndex(0), 3..5)
+            .and_then(|layout| layout.restrict(DimIndex(1), 2))
+            .and_then(|layout| layout.restrict(DimIndex(2), 2))
+            .map(|layout| layout.drop_unit_extents())
+            .expect("all in bounds");
+
+        assert_eq!(rank_one, rank_one_in_place);
+
         let rank_zero = layout
             .clone()
             .restrict(DimIndex(0), 4)
@@ -1955,6 +1991,16 @@ mod tests {
         assert_eq!(rank_zero.offset, 221);
         assert_eq!(rank_zero.max_offset, 221);
         assert_eq!(rank_zero.len, 1);
+
+        let mut rank_zero_in_place = layout.clone();
+        rank_zero_in_place
+            .restrict(DimIndex(0), 4)
+            .and_then(|layout| layout.restrict(DimIndex(1), 2))
+            .and_then(|layout| layout.restrict(DimIndex(2), 1))
+            .map(|layout| layout.drop_unit_extents())
+            .expect("all in bounds");
+
+        assert_eq!(rank_zero, rank_zero_in_place);
     }
 
     #[test]
