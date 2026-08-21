@@ -763,56 +763,6 @@ where
         Some(self)
     }
 
-    /// Returns the layout with its dimensions reordered according to `order`.
-    ///
-    /// Dimension `i` of the result is dimension `order[i]` of `self`, for both
-    /// extents and strides. Permuting by [`Layout::memory_order`] yields the
-    /// layout whose lexicographic traversal is the most sequential one.
-    ///
-    /// Returns `None` if `order` has a different rank than `self`.
-    pub fn permuted(&self, order: &DimOrder<D>) -> Option<Self> {
-        let mut layout = self.clone();
-        layout.permute(order)?;
-
-        Some(layout)
-    }
-
-    /// Reorders the dimensions according to `order`.
-    ///
-    /// Dimension `i` of the result is dimension `order[i]` of `self`, for both
-    /// extents and strides. Permuting by [`Layout::memory_order`] yields the
-    /// layout whose lexicographic traversal is the most sequential one.
-    ///
-    /// Returns `None` if `order` has a different rank than `self`, in which
-    /// case `self` remains unmodified.
-    pub fn permute(&mut self, order: &DimOrder<D>) -> Option<&mut Self> {
-        if order.rank() != self.rank() {
-            return None;
-        }
-
-        let order = order.as_slice();
-        let old = self.shape.as_slice();
-        self.shape = D::from_fn(self.rank(), |dim| old[order[dim].0])
-            .map(Shape)
-            .expect("D can always represent its own rank");
-        let old = self.strides.as_slice();
-        self.strides = D::from_fn(self.rank(), |dim| old[order[dim].0])
-            .map(Strides)
-            .expect("D can always represent its own rank");
-
-        debug_assert_eq!(
-            Self::max_offset_of(&self.shape, &self.strides, self.offset),
-            Some(self.max_offset)
-        );
-        debug_assert_eq!(self.shape.product_checked(), Some(self.len));
-
-        // the other fields carry over as is (pinky promise) because reordering
-        // the exclusively finite, non-negative terms of a finite sum/product
-        // can't make it overflow if the original didn't overflow (which
-        // all other constructors guarantee) and does not change it
-        Some(self)
-    }
-
     /// Returns the rank of `self`.
     pub fn rank(&self) -> usize {
         self.shape.rank()
@@ -1166,6 +1116,65 @@ where
             max_offset: self.max_offset,
             len: self.len,
         })
+    }
+
+    /// Returns the layout with its dimensions reordered according to `order`.
+    ///
+    /// Dimension `i` of the result is dimension `order[i]` of `self`, for both
+    /// extents and strides. Permuting by [`Layout::memory_order`] yields the
+    /// layout whose lexicographic traversal is the most sequential one.
+    ///
+    /// Returns `None` if `order` has a different rank than `self`.
+    pub fn permuted<D2>(&self, order: &DimOrder<D2>) -> Option<Self>
+    where
+        D2: Dimension<Elem = usize>,
+    {
+        const { assert_rank_compatible::<D1, D2>() };
+
+        let mut layout = self.clone();
+        layout.permute(order)?;
+
+        Some(layout)
+    }
+
+    /// Reorders the dimensions according to `order`.
+    ///
+    /// Dimension `i` of the result is dimension `order[i]` of `self`, for both
+    /// extents and strides. Permuting by [`Layout::memory_order`] yields the
+    /// layout whose lexicographic traversal is the most sequential one.
+    ///
+    /// Returns `None` if `order` has a different rank than `self`, in which
+    /// case `self` remains unmodified.
+    pub fn permute<D2>(&mut self, order: &DimOrder<D2>) -> Option<&mut Self>
+    where
+        D2: Dimension<Elem = usize>,
+    {
+        const { assert_rank_compatible::<D1, D2>() };
+        if order.rank() != self.rank() {
+            return None;
+        }
+
+        let order = order.as_slice();
+        let old = self.shape.as_slice();
+        self.shape = D1::from_fn(self.rank(), |dim| old[order[dim].0])
+            .map(Shape)
+            .expect("D can always represent its own rank");
+        let old = self.strides.as_slice();
+        self.strides = D1::from_fn(self.rank(), |dim| old[order[dim].0])
+            .map(Strides)
+            .expect("D can always represent its own rank");
+
+        debug_assert_eq!(
+            Self::max_offset_of(&self.shape, &self.strides, self.offset),
+            Some(self.max_offset)
+        );
+        debug_assert_eq!(self.shape.product_checked(), Some(self.len));
+
+        // the other fields carry over as is (pinky promise) because reordering
+        // the exclusively finite, non-negative terms of a finite sum/product
+        // can't make it overflow if the original didn't overflow (which
+        // all other constructors guarantee) and does not change it
+        Some(self)
     }
 
     /// Returns the linear buffer offset of `index`.
