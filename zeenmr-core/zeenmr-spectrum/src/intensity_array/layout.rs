@@ -671,6 +671,45 @@ where
         }
     }
 
+    /// Returns the layout with its extent along `dim` restricted to 1 at
+    /// `index`.
+    ///
+    /// Returns `None` if `dim` is out of range, or if `index` is not less
+    /// than the extent along `dim`.
+    pub fn restricted(&self, dim: DimIndex, index: usize) -> Option<Self> {
+        let mut layout = self.clone();
+        layout.restrict(dim, index)?;
+
+        Some(layout)
+    }
+
+    /// Restricts the extent along `dim` to 1 at `index`.
+    ///
+    /// Returns `None` if `dim` is out of range, or if `index` is not less
+    /// than the extent along `dim`. In any such case, `self` remains
+    /// unmodified.
+    pub fn restrict(&mut self, dim: DimIndex, index: usize) -> Option<&mut Self> {
+        let extent = self.shape.get(dim)?;
+        let stride = self.strides.get(dim)?;
+
+        if index >= extent {
+            return None;
+        }
+
+        self.offset += index * stride;
+        self.max_offset -= (extent - index - 1) * stride;
+        self.len /= extent;
+        self.shape.as_mut_slice()[dim.0] = 1;
+
+        debug_assert_eq!(
+            Self::max_offset_of(&self.shape, &self.strides, self.offset),
+            Some(self.max_offset)
+        );
+        debug_assert_eq!(self.shape.product_checked(), Some(self.len));
+
+        Some(self)
+    }
+
     /// Returns the layout with its extent along `dim` restricted to `range`.
     ///
     /// Returns `None` if `dim` is out of range, or if `range` is empty or not
@@ -714,45 +753,6 @@ where
         self.max_offset -= (extent - end) * stride;
         self.len = (self.len / extent) * (end - start);
         self.shape.as_mut_slice()[dim.0] = end - start;
-
-        debug_assert_eq!(
-            Self::max_offset_of(&self.shape, &self.strides, self.offset),
-            Some(self.max_offset)
-        );
-        debug_assert_eq!(self.shape.product_checked(), Some(self.len));
-
-        Some(self)
-    }
-
-    /// Returns the layout with its extent along `dim` restricted to 1 at
-    /// `index`.
-    ///
-    /// Returns `None` if `dim` is out of range, or if `index` is not less
-    /// than the extent along `dim`.
-    pub fn restricted(&self, dim: DimIndex, index: usize) -> Option<Self> {
-        let mut layout = self.clone();
-        layout.restrict(dim, index)?;
-
-        Some(layout)
-    }
-
-    /// Restricts the extent along `dim` to 1 at `index`.
-    ///
-    /// Returns `None` if `dim` is out of range, or if `index` is not less
-    /// than the extent along `dim`. In any such case, `self` remains
-    /// unmodified.
-    pub fn restrict(&mut self, dim: DimIndex, index: usize) -> Option<&mut Self> {
-        let extent = self.shape.get(dim)?;
-        let stride = self.strides.get(dim)?;
-
-        if index >= extent {
-            return None;
-        }
-
-        self.offset += index * stride;
-        self.max_offset -= (extent - index - 1) * stride;
-        self.len /= extent;
-        self.shape.as_mut_slice()[dim.0] = 1;
 
         debug_assert_eq!(
             Self::max_offset_of(&self.shape, &self.strides, self.offset),
