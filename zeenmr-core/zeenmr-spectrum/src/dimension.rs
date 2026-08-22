@@ -199,7 +199,6 @@ where
 
     const RANK: Option<usize> = Some(N);
 
-    #[inline]
     fn from_fn<F>(rank: usize, f: F) -> Option<Self>
     where
         F: FnMut(usize) -> Self::Elem,
@@ -251,17 +250,14 @@ where
         }
     }
 
-    #[inline]
     fn as_slice(&self) -> &[Self::Elem] {
         self.0.as_ref()
     }
 
-    #[inline]
     fn as_mut_slice(&mut self) -> &mut [Self::Elem] {
         self.0.as_mut()
     }
 
-    #[inline]
     fn rank(&self) -> usize {
         N
     }
