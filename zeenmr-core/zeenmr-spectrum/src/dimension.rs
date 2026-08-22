@@ -416,6 +416,21 @@ impl<T> DynDimInner<T> {
     }
 }
 
+impl<T> DynDimInner<T> {
+    /// Creates a representation from an owned `Vec<T>` by moving its elements.
+    fn from_vec(mut value: Vec<T>) -> Self {
+        if value.len() <= MAX_INLINE_RANK {
+            let rank = value.len();
+            let mut iter = value.drain(..);
+
+            Self::try_from_fn(rank, |_| iter.next())
+                .expect("iter should contain exactly `rank` items")
+        } else {
+            Self::Heap(value)
+        }
+    }
+}
+
 impl<T> DynDimInner<T>
 where
     T: Clone,
@@ -443,12 +458,12 @@ where
     // (https://github.com/rust-lang/rust/issues/89379)
     fn from_slice<S>(value: S) -> Self
     where
-        S: AsRef<[T]> + Into<Vec<T>>,
+        S: AsRef<[T]>,
     {
-        let rank = value.as_ref().len();
+        let value = value.as_ref();
+        let rank = value.len();
 
         if rank <= MAX_INLINE_RANK {
-            let value = value.as_ref();
             let mut storage = [const { MaybeUninit::<T>::uninit() }; MAX_INLINE_RANK];
             let mut guard = Guard {
                 array_mut: &mut storage,
@@ -465,7 +480,7 @@ where
                 rank: rank as u8,
             }
         } else {
-            Self::Heap(value.into())
+            Self::Heap(value.to_vec())
         }
     }
 }
@@ -497,7 +512,7 @@ where
     T: Clone,
 {
     fn from(value: Vec<T>) -> Self {
-        Self::from_slice(value)
+        Self::from_vec(value)
     }
 }
 
@@ -543,6 +558,13 @@ where
     }
 }
 
+impl<T> DynDim<T> {
+    /// Creates a representation from a `Vec<T>`.
+    pub fn from_vec(value: Vec<T>) -> Self {
+        Self(DynDimInner::from_vec(value))
+    }
+}
+
 impl<T> DynDim<T>
 where
     T: Clone,
@@ -555,7 +577,7 @@ where
     /// Creates a new dynamic dimensional quantity from a slice.
     pub fn from_slice<S>(value: S) -> Self
     where
-        S: AsRef<[T]> + Into<Vec<T>>,
+        S: AsRef<[T]>,
     {
         Self(DynDimInner::from_slice(value))
     }

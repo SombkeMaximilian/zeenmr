@@ -661,8 +661,8 @@ where
             .unzip::<usize, usize, Vec<usize>, Vec<usize>>();
 
         Layout {
-            shape: Shape(DynDim::from_slice(extents)),
-            strides: Strides(DynDim::from_slice(strides)),
+            shape: Shape(DynDim::from_vec(extents)),
+            strides: Strides(DynDim::from_vec(strides)),
             // the other fields carry over as is since dimensions of extent 1
             // contribute to none of them.
             offset: self.offset,
@@ -1087,8 +1087,8 @@ impl Layout<DynDim<usize>> {
             .filter(|&(&extent, _)| extent != 1)
             .map(|(&extent, &stride)| (extent, stride))
             .unzip::<usize, usize, Vec<usize>, Vec<usize>>();
-        self.shape = Shape(DynDim::from_slice(extents));
-        self.strides = Strides(DynDim::from_slice(strides));
+        self.shape = Shape(DynDim::from_vec(extents));
+        self.strides = Strides(DynDim::from_vec(strides));
 
         // the other fields carry over as is since dimensions of extent 1
         // contribute to none of them.
