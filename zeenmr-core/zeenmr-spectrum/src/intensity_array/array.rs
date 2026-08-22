@@ -1,4 +1,4 @@
-use crate::dimension::{assert_rank_compatible, DimIndex, Dimension, DynDim, StaticDim};
+use crate::dimension::{DimIndex, Dimension, DynDim, StaticDim, assert_rank_compatible};
 use crate::intensity_array::iter::{Lanes, LanesMut};
 use crate::intensity_array::storage::{RawAccess, RawAccessMut};
 use crate::intensity_array::{
@@ -6,7 +6,7 @@ use crate::intensity_array::{
     StorageMut, StorageOwned,
 };
 use std::borrow::Cow;
-use std::ops::{Index, IndexMut};
+use std::ops::{Index, IndexMut, RangeBounds};
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -97,6 +97,22 @@ where
 {
 }
 
+impl<S, D1, D2> Index<ArrayIndex<D2>> for Array<S, D1>
+where
+    S: RawStorage,
+    D1: Dimension<Elem = usize>,
+    D2: Dimension<Elem = usize>,
+{
+    type Output = S::Elem;
+
+    #[track_caller]
+    fn index(&self, index: ArrayIndex<D2>) -> &Self::Output {
+        const { assert_rank_compatible::<D1, D2>() };
+
+        self.index(&index)
+    }
+}
+
 impl<S, D1, D2> Index<&ArrayIndex<D2>> for Array<S, D1>
 where
     S: RawStorage,
@@ -134,6 +150,20 @@ where
         let index = ArrayIndex::<StaticDim<usize, N>>::from(index);
 
         &self[&index]
+    }
+}
+
+impl<S, D1, D2> IndexMut<ArrayIndex<D2>> for Array<S, D1>
+where
+    S: RawStorageMut,
+    D1: Dimension<Elem = usize>,
+    D2: Dimension<Elem = usize>,
+{
+    #[track_caller]
+    fn index_mut(&mut self, index: ArrayIndex<D2>) -> &mut Self::Output {
+        const { assert_rank_compatible::<D1, D2>() };
+
+        self.index_mut(&index)
     }
 }
 
@@ -340,6 +370,30 @@ where
         }
     }
 
+    /// Restricts the extent along `dim` to 1 at `index`.
+    ///
+    /// Returns `None` if `dim` is out of range, or if `index` is not less
+    /// than the extent along `dim`. In any such case, `self` remains
+    /// unmodified.
+    pub fn restrict(&mut self, dim: DimIndex, index: usize) -> Option<&mut Self> {
+        self.layout.restrict(dim, index)?;
+
+        Some(self)
+    }
+
+    /// Restricts the extent along `dim` to `range`.
+    ///
+    /// Returns `None` if `dim` is out of range, or if `range` is empty or not
+    /// contained in `0..extent`. In any such case, `self` remains unmodified.
+    pub fn crop<R>(&mut self, dim: DimIndex, range: R) -> Option<&mut Self>
+    where
+        R: RangeBounds<usize>,
+    {
+        self.layout.crop(dim, range)?;
+
+        Some(self)
+    }
+
     /// Returns the dimension along which lanes are contiguous, together with
     /// an iterator over those lanes in memory order.
     ///
@@ -390,6 +444,116 @@ where
                 order,
             )
         }
+    }
+}
+
+impl<S> Array<S, DynDim<usize>>
+where
+    S: RawStorage,
+{
+    /// Drops dimensions of extent 1 from the array.
+    ///
+    /// The rank of the array reduces by the number of dropped dimensionas.
+    /// Every other property of the array remains unchanged.
+    ///
+    /// Note that any `DimIndex` created prior to this method call potentially
+    /// becomes meaningless.
+    pub fn drop_unit_extents(&mut self) -> &mut Self {
+        self.layout.drop_unit_extents();
+
+        self
+    }
+}
+
+impl<S, D> Array<S, D>
+where
+    S: RawStorage,
+    D: Dimension<Elem = usize>,
+    Array<S, D>: Clone,
+{
+    /// Returns the array with dimensions of extent 1 dropped.
+    ///
+    /// For owned storage, this clones the entire buffer. Converting the array
+    /// to a dynamic one with [`Array::into_dyn`], and then calling
+    /// [`Array::drop_unit_extents`] on the result will avoid the clone.
+    /// Alternatively, acquiring a view via [`Array::view`] and calling this
+    /// method on the result preserves the static array.
+    ///
+    /// [`Array::drop_unit_extents`]: ArrayDyn::drop_unit_extents
+    ///
+    /// The rank of the array reduces by the number of dropped dimensions.
+    /// Every other property of the array remains unchanged.
+    ///
+    /// Note that any `DimIndex` created prior to this method call potentially
+    /// becomes meaningless.
+    pub fn unit_extents_dropped(&self) -> Array<S, DynDim<usize>> {
+        let mut array = self.clone().into_dyn();
+        array.drop_unit_extents();
+
+        array
+    }
+
+    /// Returns the array with its extent along `dim` restricted to 1 at
+    /// `index`.
+    ///
+    /// For owned storage, this clones the entire buffer. Acquiring a view via
+    /// [`Array::view`] and calling this method on the result avoids the clone.
+    /// This operation can also be performed in place through
+    /// [`Array::restrict`].
+    ///
+    /// Returns `None` if `dim` is out of range, or if `index` is not less
+    /// than the extent along `dim`.
+    pub fn restricted(&self, dim: DimIndex, index: usize) -> Option<Self> {
+        let mut array = self.clone();
+        array.restrict(dim, index)?;
+
+        Some(array)
+    }
+
+    /// Returns the array with its extent along `dim` restricted to `range`.
+    ///
+    /// For owned storage, this clones the entire buffer. Acquiring a view via
+    /// [`Array::view`] and calling this method on the result avoids the clone.
+    /// This operation can also be performed in place with [`Array::crop`].
+    ///
+    /// Returns `None` if `dim` is out of range, or if `range` is empty or not
+    /// contained in `0..extent`.
+    pub fn cropped<R>(&self, dim: DimIndex, range: R) -> Option<Self>
+    where
+        R: RangeBounds<usize>,
+    {
+        let mut array = self.clone();
+        array.crop(dim, range)?;
+
+        Some(array)
+    }
+}
+
+impl<S, D1> Array<S, D1>
+where
+    S: RawStorage,
+    D1: Dimension<Elem = usize>,
+    Array<S, D1>: Clone,
+{
+    /// Returns the array with its dimensions reordered according to `order`.
+    ///
+    /// For owned storage, this clones the entire buffer. Acquiring a view via
+    /// [`Array::view`] and calling this method on the result avoids the clone.
+    /// This operation can also be performed in place with [`Array::permute`].
+    ///
+    /// Dimension `i` of the result is dimension `order[i]` of `self`, for both
+    /// extents and strides. Permuting by [`Layout::memory_order`] yields the
+    /// layout whose lexicographic traversal is the most sequential one.
+    ///
+    /// Returns `None` if `order` has a different rank than `self`.
+    pub fn permuted<D2>(&self, order: &DimOrder<D2>) -> Option<Self>
+    where
+        D2: Dimension<Elem = usize>,
+    {
+        let mut array = self.clone();
+        array.permute(order)?;
+
+        Some(array)
     }
 }
 
@@ -574,6 +738,23 @@ where
     S: RawStorage,
     D1: Dimension<Elem = usize>,
 {
+    /// Reorders the dimensions accroding to `order`.
+    ///
+    /// Dimension `i` of the result is dimension `order[i]` of `self`, for both
+    /// extents and strides. Permuting by [`Layout::memory_order`] yields the
+    /// layout whose lexicographic traversal is the most sequential one.
+    ///
+    /// Returns `None` if `order` has a different rank than `self`, in which
+    /// case `self` remains unmodified.
+    pub fn permute<D2>(&mut self, order: &DimOrder<D2>) -> Option<&mut Self>
+    where
+        D2: Dimension<Elem = usize>,
+    {
+        self.layout.permute(order)?;
+
+        Some(self)
+    }
+
     /// Returns a reference to the element at `index`.
     ///
     /// Returns `None` if `index` has a different rank than the array, or if
@@ -754,8 +935,17 @@ fn index_rank_mismatch(index_rank: usize, array_rank: usize) -> ! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::intensity_array::Strides;
     use crate::intensity_array::iter::{LaneElemStrided, LaneElemStridedMut};
+    use crate::intensity_array::{AccessMut, Strides};
+    use static_assertions::assert_not_impl_any;
+
+    #[test]
+    fn mutable_borrows_not_clone() {
+        assert_not_impl_any!(ArrayViewMut<'_, u8, StaticDim<usize, 1>>: Copy, Clone);
+        assert_not_impl_any!(ArrayViewMut<'_, u8, DynDim<usize>>: Copy, Clone);
+        assert_not_impl_any!(Array<AccessMut<'_, u8>, StaticDim<usize, 1>>: Copy, Clone);
+        assert_not_impl_any!(Array<AccessMut<'_, u8>, DynDim<usize>>: Copy, Clone);
+    }
 
     #[test]
     fn from_parts_boundary() {
@@ -812,85 +1002,6 @@ mod tests {
         let layout = Layout::row_major(shape, 2).expect("hand verified");
 
         assert!(Array::from_parts(short, layout).is_none());
-    }
-
-    #[test]
-    fn zero_extents() {
-        let storage = (0..6).collect::<Box<[i32]>>();
-
-        for extents in [[6, 0], [0, 6], [0, 0]] {
-            let shape = Shape::new(DynDim::from_array(extents));
-
-            assert!(Array::new(storage.as_ref(), shape).is_none());
-        }
-    }
-
-    #[test]
-    fn rank_zero_array() {
-        let zero = DynDim::from_array([]);
-        let shape = Shape::new(zero);
-        let array = Array::new(vec![0].into_boxed_slice(), shape.clone()).expect("hand verified");
-
-        assert_eq!(array.rank(), 0);
-        assert_eq!(array.len(), 1);
-        assert!(!array.is_empty());
-        assert_eq!(array[[]], 0);
-        assert_eq!(
-            array.get(&ArrayIndex::new(DynDim::from_array([]))),
-            Some(&0)
-        );
-        assert_eq!(array.get(&ArrayIndex::new(DynDim::from_array([0]))), None);
-        assert!(array.contiguous_lanes().is_none());
-        assert!(array.lanes_memory_order(DimIndex(0)).is_none());
-    }
-
-    #[test]
-    fn element_access_is_complete() {
-        let shape = Shape::new(DynDim::from_array([2, 3, 4]));
-        let mut array = ArrayOwned::from_linear_fn(shape, |i| i as i32).expect("hand verified");
-
-        for (expected, index) in array
-            .shape()
-            .indices_lexicographic()
-            .unwrap()
-            .enumerate()
-            .map(|(expected, index)| (expected as i32, index))
-        {
-            assert_eq!(array[&index], expected);
-            assert_eq!(array.get(&index), Some(&expected));
-            assert_eq!(array.get_mut(&index).as_deref(), Some(&expected));
-            // SAFETY: indices generated by the array's shape are always valid.
-            assert_eq!(unsafe { *array.get_unchecked(&index) }, expected);
-            assert_eq!(unsafe { *array.get_unchecked_mut(&index) }, expected);
-        }
-    }
-
-    #[test]
-    fn element_mutation_is_complete() {
-        let shape = Shape::new(DynDim::from_array([2, 3, 4]));
-        let mut array = ArrayOwned::from_linear_fn(shape, |i| i as i32).expect("hand verified");
-        let indices = array
-            .shape()
-            .indices_lexicographic()
-            .expect("hand verified")
-            .collect::<Vec<ArrayIndex<DynDim<usize>>>>();
-
-        for index in &indices {
-            array[index] += 1;
-        }
-        for index in &indices {
-            *array.get_mut(index).expect("in bounds") += 10;
-        }
-        for index in &indices {
-            // SAFETY: indices generated by the array's shape are always valid.
-            unsafe { *array.get_unchecked_mut(index) += 100 };
-        }
-
-        for index in &indices {
-            let offset = array.layout().linear_unvalidated(index) as i32;
-
-            assert_eq!(array[index], offset + 111);
-        }
     }
 
     #[test]
@@ -980,6 +1091,250 @@ mod tests {
         let clone = array.clone();
 
         assert_eq!(clone, array);
+    }
+
+    #[test]
+    fn zero_extents() {
+        let storage = (0..6).collect::<Box<[i32]>>();
+
+        for extents in [[6, 0], [0, 6], [0, 0]] {
+            let shape = Shape::new(DynDim::from_array(extents));
+
+            assert!(Array::new(storage.as_ref(), shape).is_none());
+        }
+    }
+
+    #[test]
+    fn rank_zero_array() {
+        let zero = DynDim::from_array([]);
+        let shape = Shape::new(zero);
+        let array = Array::new(vec![0].into_boxed_slice(), shape.clone()).expect("hand verified");
+
+        assert_eq!(array.rank(), 0);
+        assert_eq!(array.len(), 1);
+        assert!(!array.is_empty());
+        assert_eq!(array[[]], 0);
+        assert_eq!(
+            array.get(&ArrayIndex::new(DynDim::from_array([]))),
+            Some(&0)
+        );
+        assert_eq!(array.get(&ArrayIndex::new(DynDim::from_array([0]))), None);
+        assert!(array.contiguous_lanes().is_none());
+        assert!(array.lanes_memory_order(DimIndex(0)).is_none());
+    }
+
+    #[test]
+    fn cropped_array() {
+        let shape = Shape::new(DynDim::from_array([5, 5, 10]));
+        let array = ArrayOwned::from_linear_fn(shape, |i| i as i32).expect("hand verified");
+
+        assert!(array.cropped(DimIndex(0), 2..4).is_some());
+        assert!(array.cropped(DimIndex(0), 2..).is_some());
+        assert!(array.cropped(DimIndex(0), ..4).is_some());
+        assert!(array.cropped(DimIndex(0), ..).is_some());
+        assert!(array.cropped(DimIndex(0), 2..6).is_none());
+        assert!(array.cropped(DimIndex(0), 2..2).is_none());
+
+        let cropped = array
+            .view()
+            .cropped(DimIndex(0), 2..4)
+            .and_then(|array| array.cropped(DimIndex(1), 3..5))
+            .and_then(|array| array.cropped(DimIndex(2), ..3))
+            .expect("all in bounds");
+
+        assert_eq!(
+            cropped,
+            Array::from_parts(
+                vec![130, 131, 132, 140, 141, 142, 180, 181, 182, 190, 191, 192],
+                Layout::row_major(cropped.shape().clone(), 0).expect("hand verified"),
+            )
+            .expect("hand verified"),
+        );
+
+        let mut cropped_in_place = array.view();
+        cropped_in_place
+            .crop(DimIndex(0), 2..4)
+            .and_then(|array| array.crop(DimIndex(1), 3..5))
+            .and_then(|array| array.crop(DimIndex(2), ..3))
+            .expect("all in bounds");
+
+        assert_eq!(cropped, cropped_in_place);
+        assert_eq!(cropped.shape(), cropped_in_place.shape());
+        assert_eq!(cropped.layout(), cropped_in_place.layout());
+    }
+
+    #[test]
+    fn restricted_array() {
+        let shape = Shape::new(DynDim::from_array([5, 5, 10]));
+        let array = ArrayOwned::from_linear_fn(shape, |i| i as i32).expect("hand verified");
+
+        let restricted = array
+            .view()
+            .restricted(DimIndex(0), 4)
+            .and_then(|array| array.restricted(DimIndex(1), 1))
+            .expect("all in bounds");
+
+        assert_eq!(
+            restricted,
+            Array::from_parts(
+                (210..220).collect::<Vec<i32>>(),
+                Layout::row_major(restricted.shape().clone(), 0).expect("hand verified"),
+            )
+            .expect("hand verified"),
+        );
+
+        let mut restricted_in_place = array.view();
+        restricted_in_place
+            .restrict(DimIndex(0), 4)
+            .and_then(|array| array.restrict(DimIndex(1), 1))
+            .expect("all in bounds");
+
+        assert_eq!(restricted, restricted_in_place);
+        assert_eq!(restricted.shape(), restricted_in_place.shape());
+        assert_eq!(restricted.layout(), restricted_in_place.layout());
+    }
+
+    #[test]
+    fn drop_unit_extents() {
+        let shape = Shape::new(DynDim::from_array([5, 5, 10]));
+        let array = ArrayOwned::from_linear_fn(shape, |i| i as i32).expect("hand verified");
+
+        let rank_one = array
+            .view()
+            .cropped(DimIndex(0), 3..5)
+            .and_then(|array| array.restricted(DimIndex(1), 2))
+            .and_then(|array| array.restricted(DimIndex(2), 2))
+            .map(|array| array.unit_extents_dropped())
+            .expect("all in bounds");
+
+        assert_eq!(
+            rank_one,
+            Array::from_parts(
+                vec![172, 222],
+                Layout::row_major(rank_one.shape().clone(), 0).expect("hand verified"),
+            )
+            .expect("hand verified"),
+        );
+
+        let mut rank_one_in_place = array.view();
+        rank_one_in_place
+            .crop(DimIndex(0), 3..5)
+            .and_then(|array| array.restrict(DimIndex(1), 2))
+            .and_then(|array| array.restrict(DimIndex(2), 2))
+            .map(|array| array.drop_unit_extents())
+            .expect("all in bounds");
+
+        assert_eq!(rank_one, rank_one_in_place);
+        assert_eq!(rank_one.shape(), rank_one_in_place.shape());
+        assert_eq!(rank_one.layout(), rank_one_in_place.layout());
+
+        let rank_zero = array
+            .view()
+            .restrict(DimIndex(0), 4)
+            .and_then(|array| array.restrict(DimIndex(1), 2))
+            .and_then(|array| array.restrict(DimIndex(2), 1))
+            .map(|array| array.unit_extents_dropped())
+            .expect("all in bounds");
+
+        assert_eq!(
+            rank_zero,
+            Array::new(vec![221], rank_zero.shape().clone()).expect("hand verified")
+        );
+
+        let mut rank_zero_in_place = array.view();
+        rank_zero_in_place
+            .restrict(DimIndex(0), 4)
+            .and_then(|array| array.restrict(DimIndex(1), 2))
+            .and_then(|array| array.restrict(DimIndex(2), 1))
+            .map(|array| array.drop_unit_extents())
+            .expect("all in bounds");
+
+        assert_eq!(rank_zero, rank_zero_in_place);
+        assert_eq!(rank_zero.shape(), rank_zero_in_place.shape());
+        assert_eq!(rank_zero.layout(), rank_zero_in_place.layout());
+    }
+
+    #[test]
+    fn permuted_round_trip() {
+        let shape = Shape::new(DynDim::from_array([2, 2, 3]));
+        let array = ArrayOwned::from_linear_fn(shape, |i| i as i32).expect("hand verified");
+        let order = DimOrder::new(DynDim::from_array([1, 2, 0])).expect("hand verified");
+
+        let permuted = array.view().permuted(&order).expect("same rank");
+        let restored = permuted
+            .permuted(&order.inverse())
+            .expect("same rank");
+
+        assert_eq!(
+            permuted,
+            Array::new(
+                vec![0, 6, 1, 7, 2, 8, 3, 9, 4, 10, 5, 11],
+                Shape::new(DynDim::from_array([2, 3, 2]))
+            )
+            .expect("hand verified")
+        );
+        assert_eq!(restored, array);
+
+        let mut permuted_in_place = array.view();
+        permuted_in_place
+            .permute(&order)
+            .expect("same rank");
+        let mut restored_in_place = permuted_in_place.view();
+        restored_in_place
+            .permute(&order.inverse())
+            .expect("same rank");
+
+        assert_eq!(permuted, permuted_in_place);
+        assert_eq!(restored, restored_in_place);
+    }
+
+    #[test]
+    fn element_access_is_complete() {
+        let shape = Shape::new(DynDim::from_array([2, 3, 4]));
+        let mut array = ArrayOwned::from_linear_fn(shape, |i| i as i32).expect("hand verified");
+
+        for (expected, index) in array
+            .shape()
+            .indices_lexicographic()
+            .unwrap()
+            .enumerate()
+            .map(|(expected, index)| (expected as i32, index))
+        {
+            assert_eq!(array[&index], expected);
+            assert_eq!(array.get(&index), Some(&expected));
+            assert_eq!(array.get_mut(&index).as_deref(), Some(&expected));
+            // SAFETY: indices generated by the array's shape are always valid.
+            assert_eq!(unsafe { *array.get_unchecked(&index) }, expected);
+            assert_eq!(unsafe { *array.get_unchecked_mut(&index) }, expected);
+        }
+    }
+
+    #[test]
+    fn element_mutation_is_complete() {
+        let shape = Shape::new(DynDim::from_array([2, 3, 4]));
+        let mut array = ArrayOwned::from_linear_fn(shape, |i| i as i32).expect("hand verified");
+        let indices = array
+            .shape()
+            .indices_lexicographic()
+            .expect("hand verified")
+            .collect::<Vec<ArrayIndex<DynDim<usize>>>>();
+
+        for index in &indices {
+            array[index] += 1;
+        }
+        for index in &indices {
+            *array.get_mut(index).expect("in bounds") += 10;
+        }
+        for index in &indices {
+            // SAFETY: indices generated by the array's shape are always valid.
+            unsafe { *array.get_unchecked_mut(index) += 100 };
+        }
+
+        for index in &indices {
+            let offset = array.layout().linear_unvalidated(index) as i32;
+
+            assert_eq!(array[index], offset + 111);
+        }
     }
 
     #[test]

@@ -2017,7 +2017,8 @@ mod tests {
         let shape = Shape::new(DynDim::from_array([2, 3, 4]));
         let layout = Layout::row_major(shape, 5).expect("hand verified");
         let order = DimOrder::new(DynDim::from_array([1, 2, 0])).expect("hand verified");
-        let permuted = layout.permuted(&order).unwrap();
+
+        let permuted = layout.permuted(&order).expect("same rank");
         let restored = permuted
             .permuted(&order.inverse())
             .expect("same rank");
@@ -2029,6 +2030,18 @@ mod tests {
         assert_eq!(permuted.len(), layout.len());
         assert_eq!(restored.shape().as_slice(), layout.shape().as_slice());
         assert_eq!(restored.strides().as_slice(), layout.strides().as_slice());
+
+        let mut permuted_in_place = layout.clone();
+        permuted_in_place
+            .permute(&order)
+            .expect("same rank");
+        let mut restored_in_place = permuted_in_place.clone();
+        restored_in_place
+            .permute(&order.inverse())
+            .expect("same rank");
+
+        assert_eq!(permuted, permuted_in_place);
+        assert_eq!(restored, restored_in_place);
     }
 
     #[test]
