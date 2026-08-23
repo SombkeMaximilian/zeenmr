@@ -19,13 +19,13 @@ use zeenmr::{
     spectrum::{
         Spectrum1D,
         axis::{FrequencyAxis, Larmor, ShiftReference},
+        axis::range::{FiniteBounds, FrequencyRange},
         builder_1d::Builder1D,
     },
 };
 
 mod workspace_dir;
 use workspace_dir::workspace_dir;
-use zeenmr::spectrum::axis::range::{FiniteBounds, FrequencyRange};
 
 fn read_spectrum<T, P>(path: P) -> Spectrum1D<T, Arc<[T]>>
 where
