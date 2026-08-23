@@ -145,7 +145,7 @@ pub trait Domain {
 ///
 /// # Invariants
 ///
-/// Bounds must not be negative, `NaN` or either infinity.
+/// Bounds must not be `NaN` or either infinity.
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub struct Frequency;
 
@@ -156,7 +156,7 @@ impl Domain for Frequency {
     where
         T: Float,
     {
-        start.is_finite() && start >= T::zero() && end.is_finite() && end >= T::zero()
+        start.is_finite() && end.is_finite()
     }
 }
 
@@ -345,15 +345,11 @@ where
     ///
     /// Returns `None` if the bounds are invalid for the domain.
     pub fn new(start: T, end: T) -> Option<Self> {
-        if D::is_valid(start, end) {
-            Some(Self {
-                start,
-                end,
-                domain: PhantomData,
-            })
-        } else {
-            None
+        if !D::is_valid(start, end) || !(end - start).is_finite() {
+            return None;
         }
+
+        Some(Self { start, end, domain: PhantomData })
     }
 
     /// Returns an equivalent range with `start <= end`, swapping bounds if
@@ -462,15 +458,12 @@ mod tests {
             assert!(FrequencyRange::new(zero, one).is_some());
             assert!(FrequencyRange::new(one, zero).is_some());
 
-            assert!(FrequencyRange::new(-one, zero).is_none());
             assert!(FrequencyRange::new(nan, zero).is_none());
             assert!(FrequencyRange::new(inf, zero).is_none());
             assert!(FrequencyRange::new(neg_inf, zero).is_none());
-            assert!(FrequencyRange::new(zero, -one).is_none());
             assert!(FrequencyRange::new(zero, nan).is_none());
             assert!(FrequencyRange::new(zero, inf).is_none());
             assert!(FrequencyRange::new(zero, neg_inf).is_none());
-            assert!(FrequencyRange::new(-one, -one).is_none());
             assert!(FrequencyRange::new(nan, nan).is_none());
             assert!(FrequencyRange::new(inf, inf).is_none());
             assert!(FrequencyRange::new(neg_inf, neg_inf).is_none());
@@ -762,9 +755,8 @@ mod tests {
             assert_eq!(asc.signed_width(), T::one());
             assert_eq!(desc.signed_width(), -T::one());
 
-            let overflow = ShiftRange::new(T::min_value(), T::max_value()).unwrap();
-            assert!(!overflow.width().is_finite());
-            assert!(!overflow.signed_width().is_finite());
+            let overflow = ShiftRange::new(T::min_value(), T::max_value());
+            assert!(overflow.is_none());
         }
 
         widths_::<f32>();
@@ -795,8 +787,8 @@ mod tests {
             assert_eq!(asc.center(), half);
             assert_eq!(desc.center(), half);
 
-            let wide = ShiftRange::new(T::min_value(), T::max_value()).unwrap();
-            assert_eq!(wide.center(), T::zero());
+            let overflow = ShiftRange::new(T::min_value(), T::max_value());
+            assert!(overflow.is_none());
         }
 
         center_::<f32>();
@@ -838,15 +830,12 @@ mod tests {
             T: Float + serde::de::DeserializeOwned + std::fmt::Debug,
         {
             let bad_freq_ranges = [
-                "{ \"start\": 0.0, \"end\": -1.0 }",
                 "{ \"start\": 0.0, \"end\": NaN }",
                 "{ \"start\": 0.0, \"end\": Infinity }",
                 "{ \"start\": 0.0, \"end\": -Infinity }",
-                "{ \"start\": -1.0, \"end\": 0.0 }",
                 "{ \"start\": NaN, \"end\": 0.0 }",
                 "{ \"start\": Infinity, \"end\": 0.0 }",
                 "{ \"start\": -Infinity, \"end\": 0.0 }",
-                "{ \"start\": -1.0, \"end\": -1.0 }",
                 "{ \"start\": NaN, \"end\": NaN }",
                 "{ \"start\": Infinity, \"end\": Infinity }",
                 "{ \"start\": -Infinity, \"end\": -Infinity }",
