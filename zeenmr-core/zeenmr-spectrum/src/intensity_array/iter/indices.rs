@@ -1,6 +1,6 @@
 use crate::dimension::Dimension;
-use crate::intensity_array::iter::SplitAt;
 use crate::intensity_array::{ArrayIndex, Shape};
+use crate::iter::SplitAt;
 use std::iter::FusedIterator;
 
 /// Iterator over the multidimensional indices of a shape.

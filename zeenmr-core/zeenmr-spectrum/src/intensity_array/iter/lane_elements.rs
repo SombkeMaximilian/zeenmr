@@ -1,5 +1,5 @@
 use crate::intensity_array::LaneGeometry;
-use crate::intensity_array::iter::SplitAt;
+use crate::iter::SplitAt;
 use std::iter::FusedIterator;
 use std::marker::PhantomData;
 

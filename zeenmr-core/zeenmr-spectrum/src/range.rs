@@ -349,7 +349,11 @@ where
             return None;
         }
 
-        Some(Self { start, end, domain: PhantomData })
+        Some(Self {
+            start,
+            end,
+            domain: PhantomData,
+        })
     }
 
     /// Returns an equivalent range with `start <= end`, swapping bounds if

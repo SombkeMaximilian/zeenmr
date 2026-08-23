@@ -5,7 +5,9 @@ use crate::intensity_array::iter::{Indices, LaneGeometries, LaneOffsets};
 use std::ops::{Bound, RangeBounds};
 
 #[cfg(feature = "rayon")]
-use crate::intensity_array::iter::{Par, ParIndices, ParLaneGeometries, ParLaneOffsets};
+use crate::intensity_array::iter::{ParIndices, ParLaneGeometries, ParLaneOffsets};
+#[cfg(feature = "rayon")]
+use crate::iter::Par;
 
 /// Ordering of the dimensions of an array with a rank determined at runtime.
 pub type DynDimOrder = DimOrder<DynDim<usize>>;

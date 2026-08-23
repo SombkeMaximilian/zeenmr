@@ -5,6 +5,8 @@
 
 pub mod error;
 
+pub mod iter;
+
 pub mod axis;
 
 pub mod dimension;

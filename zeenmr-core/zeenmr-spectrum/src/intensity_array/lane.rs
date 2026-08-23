@@ -3,7 +3,9 @@ use crate::intensity_array::iter::{LaneElem, LaneElemMut, LaneElemStrided, LaneE
 use crate::intensity_array::storage::{RawAccess, RawAccessMut};
 
 #[cfg(feature = "rayon")]
-use crate::intensity_array::iter::{Par, ParLaneElem, ParLaneElemMut};
+use crate::intensity_array::iter::{ParLaneElem, ParLaneElemMut};
+#[cfg(feature = "rayon")]
+use crate::iter::Par;
 #[cfg(feature = "rayon")]
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator};
 

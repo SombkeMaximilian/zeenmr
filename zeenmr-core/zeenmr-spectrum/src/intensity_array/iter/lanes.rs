@@ -1,7 +1,7 @@
 use crate::dimension::{DimIndex, Dimension};
-use crate::intensity_array::iter::SplitAt;
 use crate::intensity_array::storage::{RawAccess, RawAccessMut};
 use crate::intensity_array::{DimOrder, Lane, LaneGeometry, LaneMut, Layout};
+use crate::iter::SplitAt;
 use std::iter::FusedIterator;
 
 /// Iterator over the lanes of a layout along one dimension.

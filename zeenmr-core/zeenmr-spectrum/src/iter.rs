@@ -1,11 +1,30 @@
-use crate::intensity_array::iter::SplitAt;
+//! Types and traits for iterators in this crate.
+
+#[cfg(feature = "rayon")]
 use rayon::iter::plumbing::{Consumer, Producer, ProducerCallback, UnindexedConsumer, bridge};
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
+/// Iterators that can be split into two halves at an index.
+///
+/// # Safety
+///
+/// `split_at` must yield at most `index` items on the left and the remainder,
+/// if any, on the right, in the original order. Left and right must be
+/// disjoint at the boundary in terms of yielded element enumeration. That is,
+/// if we split at index `k`, left must only contain elements `[start, k)` and
+/// right must only contain elements `[k, len)`.
+pub unsafe trait SplitAt: Sized {
+    /// Splits the iterator at the provided `index`.
+    fn split_at(self, index: usize) -> (Self, Self);
+}
+
 /// Generalized parallel wrapper for the iterators of this module.
+#[cfg(feature = "rayon")]
 #[derive(Clone, Debug)]
 pub struct Par<I>(I);
 
+#[cfg(feature = "rayon")]
 impl<I> ParallelIterator for Par<I>
 where
     I: SplitAt + DoubleEndedIterator + ExactSizeIterator + Send,
@@ -25,6 +44,7 @@ where
     }
 }
 
+#[cfg(feature = "rayon")]
 impl<I> IndexedParallelIterator for Par<I>
 where
     I: SplitAt + DoubleEndedIterator + ExactSizeIterator + Send,
@@ -49,6 +69,7 @@ where
     }
 }
 
+#[cfg(feature = "rayon")]
 impl<I> Par<I> {
     /// Wraps `iter`, producing a parallel version of it.
     ///
@@ -60,8 +81,10 @@ impl<I> Par<I> {
 }
 
 /// Producer for [`Par`].
+#[cfg(feature = "rayon")]
 struct ParProducer<I>(I);
 
+#[cfg(feature = "rayon")]
 impl<I> Producer for ParProducer<I>
 where
     I: SplitAt + DoubleEndedIterator + ExactSizeIterator + Send,

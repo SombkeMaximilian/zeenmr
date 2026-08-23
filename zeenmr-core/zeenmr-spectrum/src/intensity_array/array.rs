@@ -11,7 +11,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 #[cfg(feature = "rayon")]
-use crate::intensity_array::iter::{Par, ParLanes, ParLanesMut};
+use crate::intensity_array::iter::{ParLanes, ParLanesMut};
+#[cfg(feature = "rayon")]
+use crate::iter::Par;
 
 /// Array borrowing its storage immutably.
 pub type ArrayView<'s, T, D> = Array<&'s [T], D>;
