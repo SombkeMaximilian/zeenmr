@@ -8,8 +8,8 @@ use std::ops::Range;
 use zeenmr_peakshape::PeakShape;
 use zeenmr_peakshape::batch_superposition::{Standard, SuperpositionKernel};
 use zeenmr_spectrum::Spectrum1D;
+use zeenmr_spectrum::axis::range::{FiniteBounds, ShiftRange};
 use zeenmr_spectrum::intensity_array::Storage;
-use zeenmr_spectrum::range::{FiniteBounds, ShiftRange};
 
 #[cfg(feature = "rayon")]
 use crate::fitting::ParFit;

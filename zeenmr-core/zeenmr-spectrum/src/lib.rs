@@ -13,8 +13,6 @@ pub mod dimension;
 
 pub mod intensity_array;
 
-pub mod range;
-
 mod nucleus;
 pub use nucleus::Nucleus;
 

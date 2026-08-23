@@ -249,8 +249,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::axis::range::FrequencyRange;
     use crate::axis::{Larmor, ShiftReference};
-    use crate::range::FrequencyRange;
 
     fn valid_axis<T>() -> FrequencyAxis<T>
     where

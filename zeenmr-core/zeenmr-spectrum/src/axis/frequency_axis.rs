@@ -1,5 +1,5 @@
 use crate::axis::iter::AxisValues;
-use crate::range::{FiniteBounds, FrequencyRange, ShiftRange, SpectralRange};
+use crate::axis::range::{FiniteBounds, FrequencyRange, ShiftRange, SpectralRange};
 use num_traits::Float;
 use std::cmp::Ordering;
 
