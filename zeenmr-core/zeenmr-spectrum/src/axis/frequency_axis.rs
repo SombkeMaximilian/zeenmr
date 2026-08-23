@@ -598,7 +598,7 @@ where
         let start = self.range.start();
         let step = self.freq_step(len);
 
-        ParAxisValues::new(start, step, len)
+        ParAxisValues::new(AxisValues::new(start, step, len))
     }
 
     /// Returns a parallel iterator over `len` equally spaced chemical shifts
@@ -623,7 +623,7 @@ where
         let start = self.shift_range().start();
         let step = self.shift_step(len);
 
-        ParAxisValues::new(start, step, len)
+        ParAxisValues::new(AxisValues::new(start, step, len))
     }
 }
 

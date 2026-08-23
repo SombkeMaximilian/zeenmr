@@ -1,12 +1,15 @@
 //! Iterator types for axes.
 
+use crate::iter::SplitAt;
 use num_traits::Float;
 use std::iter::FusedIterator;
 
 #[cfg(feature = "rayon")]
-use rayon::iter::plumbing::{Consumer, Producer, ProducerCallback, UnindexedConsumer, bridge};
+use crate::iter::Par;
+
+/// Parallel iterator over evenly spaced elements spanning an axis.
 #[cfg(feature = "rayon")]
-use rayon::prelude::*;
+pub type ParAxisValues<T> = Par<AxisValues<T>>;
 
 /// Iterator over evenly spaced elements spanning an axis.
 #[derive(Clone, Debug)]
@@ -65,6 +68,31 @@ impl<T> ExactSizeIterator for AxisValues<T> where T: Float {}
 
 impl<T> FusedIterator for AxisValues<T> where T: Float {}
 
+// SAFETY: setting left.back and right.front to `self.front + index` achieves
+// the disjoint split required by `SplitAt`.
+unsafe impl<T> SplitAt for AxisValues<T>
+where
+    T: Clone,
+{
+    fn split_at(self, index: usize) -> (Self, Self) {
+        let mid = self.front + index;
+        let left = Self {
+            start: self.start.clone(),
+            step: self.step.clone(),
+            front: self.front,
+            back: mid,
+        };
+        let right = Self {
+            start: self.start,
+            step: self.step,
+            front: mid,
+            back: self.back,
+        };
+
+        (left, right)
+    }
+}
+
 impl<T> AxisValues<T> {
     /// Creates a new `AxisValues`.
     ///
@@ -76,97 +104,5 @@ impl<T> AxisValues<T> {
             front: 0,
             back: len,
         }
-    }
-}
-
-/// Parallel iterator over evenly spaced elements spanning an axis.
-#[cfg(feature = "rayon")]
-#[derive(Clone, Debug)]
-pub struct ParAxisValues<T>(AxisValues<T>);
-
-#[cfg(feature = "rayon")]
-impl<T> ParallelIterator for ParAxisValues<T>
-where
-    T: Float + Send,
-{
-    type Item = T;
-
-    fn drive_unindexed<C>(self, consumer: C) -> C::Result
-    where
-        C: UnindexedConsumer<Self::Item>,
-    {
-        bridge(self, consumer)
-    }
-
-    fn opt_len(&self) -> Option<usize> {
-        Some(self.len())
-    }
-}
-
-#[cfg(feature = "rayon")]
-impl<T> IndexedParallelIterator for ParAxisValues<T>
-where
-    T: Float + Send,
-{
-    fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    fn drive<C>(self, consumer: C) -> C::Result
-    where
-        C: Consumer<Self::Item>,
-    {
-        bridge(self, consumer)
-    }
-
-    fn with_producer<CB>(self, callback: CB) -> CB::Output
-    where
-        CB: ProducerCallback<Self::Item>,
-    {
-        callback.callback(AxisValuesProducer(self.0))
-    }
-}
-
-#[cfg(feature = "rayon")]
-impl<T> ParAxisValues<T>
-where
-    T: Float + Send,
-{
-    /// Creates a new `ParAxisValues`.
-    ///
-    /// Prefer using the methods on the concrete axis types.
-    pub fn new(start: T, step: T, len: usize) -> Self {
-        Self(AxisValues::new(start, step, len))
-    }
-}
-
-/// Producer for [`ParAxisValues`].
-#[cfg(feature = "rayon")]
-struct AxisValuesProducer<T>(AxisValues<T>);
-
-#[cfg(feature = "rayon")]
-impl<T> Producer for AxisValuesProducer<T>
-where
-    T: Float + Send,
-{
-    type Item = T;
-    type IntoIter = AxisValues<T>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0
-    }
-
-    fn split_at(self, index: usize) -> (Self, Self) {
-        let mid = self.0.front + index;
-        let left = AxisValues {
-            back: mid,
-            ..self.0
-        };
-        let right = AxisValues {
-            front: mid,
-            ..self.0
-        };
-
-        (Self(left), Self(right))
     }
 }

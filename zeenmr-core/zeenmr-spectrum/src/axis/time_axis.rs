@@ -113,7 +113,7 @@ where
     /// Passing a `len` that cannot be represented by `T` may lead to
     /// significant errors (e.g., `len > 2^24` for `f32`).
     pub fn par_iter(&self, len: usize) -> ParAxisValues<T> {
-        ParAxisValues::new(T::zero(), self.dwell, len)
+        ParAxisValues::new(AxisValues::new(T::zero(), self.dwell, len))
     }
 }
 
