@@ -1,10 +1,10 @@
-use crate::axis::iter::AxisIter;
+use crate::axis::iter::AxisValues;
 use crate::range::{FiniteBounds, FrequencyRange, ShiftRange, SpectralRange};
 use num_traits::Float;
 use std::cmp::Ordering;
 
 #[cfg(feature = "rayon")]
-use crate::axis::iter::ParAxisIter;
+use crate::axis::iter::ParAxisValues;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -538,11 +538,11 @@ where
     /// may not be exactly identical to the end of the frequency range. Passing
     /// a `len` that cannot be represented by `T` may also lead to significant
     /// errors (e.g., `len > 2^24` for `f32`).
-    pub fn freqs(&self, len: usize) -> AxisIter<T> {
+    pub fn freqs(&self, len: usize) -> AxisValues<T> {
         let start = self.range.start();
         let step = self.freq_step(len);
 
-        AxisIter::new(start, step, len)
+        AxisValues::new(start, step, len)
     }
 
     /// Returns an iterator over `len` equally spaced chemical shifts spanning
@@ -563,11 +563,11 @@ where
     /// may not be exactly identical to the end of the frequency range. Passing
     /// a `len` that cannot be represented by `T` may also lead to significant
     /// errors (e.g., `len > 2^24` for `f32`).
-    pub fn shifts(&self, len: usize) -> AxisIter<T> {
+    pub fn shifts(&self, len: usize) -> AxisValues<T> {
         let start = self.shift_range().start();
         let step = self.shift_step(len);
 
-        AxisIter::new(start, step, len)
+        AxisValues::new(start, step, len)
     }
 }
 
@@ -594,11 +594,11 @@ where
     /// may not be exactly identical to the end of the frequency range. Passing
     /// a `len` that cannot be represented by `T` may also lead to significant
     /// errors (e.g., `len > 2^24` for `f32`).
-    pub fn par_freqs(&self, len: usize) -> ParAxisIter<T> {
+    pub fn par_freqs(&self, len: usize) -> ParAxisValues<T> {
         let start = self.range.start();
         let step = self.freq_step(len);
 
-        ParAxisIter::new(start, step, len)
+        ParAxisValues::new(start, step, len)
     }
 
     /// Returns a parallel iterator over `len` equally spaced chemical shifts
@@ -619,11 +619,11 @@ where
     /// may not be exactly identical to the end of the frequency range. Passing
     /// a `len` that cannot be represented by `T` may also lead to significant
     /// errors (e.g., `len > 2^24` for `f32`).
-    pub fn par_shifts(&self, len: usize) -> ParAxisIter<T> {
+    pub fn par_shifts(&self, len: usize) -> ParAxisValues<T> {
         let start = self.shift_range().start();
         let step = self.shift_step(len);
 
-        ParAxisIter::new(start, step, len)
+        ParAxisValues::new(start, step, len)
     }
 }
 
@@ -681,14 +681,14 @@ where
     /// Returns an iterator over the frequencies in the grid.
     ///
     /// See [`FrequencyAxis::freqs`] for its exact behavior.
-    pub fn freqs(&self) -> AxisIter<T> {
+    pub fn freqs(&self) -> AxisValues<T> {
         self.axis.freqs(self.len)
     }
 
     /// Returns an iterator over the chemical shifts in the grid.
     ///
     /// See [`FrequencyAxis::shifts`] for its exact behavior.
-    pub fn shifts(&self) -> AxisIter<T> {
+    pub fn shifts(&self) -> AxisValues<T> {
         self.axis.shifts(self.len)
     }
 }
@@ -701,14 +701,14 @@ where
     /// Returns a parallel iterator over the frequencies in the grid.
     ///
     /// See [`FrequencyAxis::par_freqs`] for its exact behavior.
-    pub fn par_freqs(&self) -> ParAxisIter<T> {
+    pub fn par_freqs(&self) -> ParAxisValues<T> {
         self.axis.par_freqs(self.len)
     }
 
     /// Returns a parallel iterator over the chemical shifts in the grid.
     ///
     /// See [`FrequencyAxis::par_shifts`] for its exact behavior.
-    pub fn par_shifts(&self) -> ParAxisIter<T> {
+    pub fn par_shifts(&self) -> ParAxisValues<T> {
         self.axis.par_shifts(self.len)
     }
 }

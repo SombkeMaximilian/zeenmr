@@ -1,8 +1,8 @@
-use crate::axis::iter::AxisIter;
+use crate::axis::iter::AxisValues;
 use num_traits::Float;
 
 #[cfg(feature = "rayon")]
-use crate::axis::iter::ParAxisIter;
+use crate::axis::iter::ParAxisValues;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
@@ -91,8 +91,8 @@ where
     ///
     /// Passing a `len` that cannot be represented by `T` may lead to
     /// significant errors (e.g., `len > 2^24` for `f32`).
-    pub fn iter(&self, len: usize) -> AxisIter<T> {
-        AxisIter::new(T::zero(), self.dwell, len)
+    pub fn iter(&self, len: usize) -> AxisValues<T> {
+        AxisValues::new(T::zero(), self.dwell, len)
     }
 }
 
@@ -112,8 +112,8 @@ where
     ///
     /// Passing a `len` that cannot be represented by `T` may lead to
     /// significant errors (e.g., `len > 2^24` for `f32`).
-    pub fn par_iter(&self, len: usize) -> ParAxisIter<T> {
-        ParAxisIter::new(T::zero(), self.dwell, len)
+    pub fn par_iter(&self, len: usize) -> ParAxisValues<T> {
+        ParAxisValues::new(T::zero(), self.dwell, len)
     }
 }
 
@@ -135,7 +135,7 @@ where
     T: Float,
 {
     type Item = T;
-    type IntoIter = AxisIter<T>;
+    type IntoIter = AxisValues<T>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
@@ -147,7 +147,7 @@ where
     T: Float,
 {
     type Item = T;
-    type IntoIter = AxisIter<T>;
+    type IntoIter = AxisValues<T>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
@@ -159,7 +159,7 @@ where
     T: Float,
 {
     type Item = T;
-    type IntoIter = AxisIter<T>;
+    type IntoIter = AxisValues<T>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
@@ -193,7 +193,7 @@ where
     /// Returns an iterator over the time offsets in the grid.
     ///
     /// See [`TimeAxis::iter`] for its exact behavior.
-    pub fn iter(&self) -> AxisIter<T> {
+    pub fn iter(&self) -> AxisValues<T> {
         self.axis.iter(self.len)
     }
 }
@@ -203,7 +203,7 @@ impl<'axis, T> IntoParallelIterator for TimeGrid<'axis, T>
 where
     T: Float + Send,
 {
-    type Iter = ParAxisIter<T>;
+    type Iter = ParAxisValues<T>;
     type Item = T;
 
     fn into_par_iter(self) -> Self::Iter {
@@ -216,7 +216,7 @@ impl<'axis, T> IntoParallelIterator for &TimeGrid<'axis, T>
 where
     T: Float + Send,
 {
-    type Iter = ParAxisIter<T>;
+    type Iter = ParAxisValues<T>;
     type Item = T;
 
     fn into_par_iter(self) -> Self::Iter {
@@ -229,7 +229,7 @@ impl<'axis, T> IntoParallelIterator for &mut TimeGrid<'axis, T>
 where
     T: Float + Send,
 {
-    type Iter = ParAxisIter<T>;
+    type Iter = ParAxisValues<T>;
     type Item = T;
 
     fn into_par_iter(self) -> Self::Iter {
@@ -245,7 +245,7 @@ where
     /// Returns a parallel iterator over the time offsets in the grid.
     ///
     /// See [`TimeAxis::par_iter`] for its exact behavior.
-    pub fn par_iter(&self) -> ParAxisIter<T> {
+    pub fn par_iter(&self) -> ParAxisValues<T> {
         self.axis.par_iter(self.len)
     }
 }

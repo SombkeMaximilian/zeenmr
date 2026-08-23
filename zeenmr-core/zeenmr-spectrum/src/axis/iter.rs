@@ -10,7 +10,7 @@ use rayon::prelude::*;
 
 /// Iterator over evenly spaced elements spanning an axis.
 #[derive(Clone, Debug)]
-pub struct AxisIter<T> {
+pub struct AxisValues<T> {
     /// Start of the range.
     start: T,
     /// Signed step size.
@@ -21,7 +21,7 @@ pub struct AxisIter<T> {
     back: usize,
 }
 
-impl<T> Iterator for AxisIter<T>
+impl<T> Iterator for AxisValues<T>
 where
     T: Float,
 {
@@ -45,7 +45,7 @@ where
     }
 }
 
-impl<T> DoubleEndedIterator for AxisIter<T>
+impl<T> DoubleEndedIterator for AxisValues<T>
 where
     T: Float,
 {
@@ -61,16 +61,16 @@ where
     }
 }
 
-impl<T> ExactSizeIterator for AxisIter<T> where T: Float {}
+impl<T> ExactSizeIterator for AxisValues<T> where T: Float {}
 
-impl<T> FusedIterator for AxisIter<T> where T: Float {}
+impl<T> FusedIterator for AxisValues<T> where T: Float {}
 
-impl<T> AxisIter<T> {
-    /// Creates a new `AxisIter`.
+impl<T> AxisValues<T> {
+    /// Creates a new `AxisValues`.
     ///
     /// Prefer using the methods on the concrete axis types.
     pub fn new(start: T, step: T, len: usize) -> Self {
-        AxisIter {
+        AxisValues {
             start,
             step,
             front: 0,
@@ -82,10 +82,10 @@ impl<T> AxisIter<T> {
 /// Parallel iterator over evenly spaced elements spanning an axis.
 #[cfg(feature = "rayon")]
 #[derive(Clone, Debug)]
-pub struct ParAxisIter<T>(AxisIter<T>);
+pub struct ParAxisValues<T>(AxisValues<T>);
 
 #[cfg(feature = "rayon")]
-impl<T> ParallelIterator for ParAxisIter<T>
+impl<T> ParallelIterator for ParAxisValues<T>
 where
     T: Float + Send,
 {
@@ -104,7 +104,7 @@ where
 }
 
 #[cfg(feature = "rayon")]
-impl<T> IndexedParallelIterator for ParAxisIter<T>
+impl<T> IndexedParallelIterator for ParAxisValues<T>
 where
     T: Float + Send,
 {
@@ -123,34 +123,34 @@ where
     where
         CB: ProducerCallback<Self::Item>,
     {
-        callback.callback(AxisIterProducer(self.0))
+        callback.callback(AxisValuesProducer(self.0))
     }
 }
 
 #[cfg(feature = "rayon")]
-impl<T> ParAxisIter<T>
+impl<T> ParAxisValues<T>
 where
     T: Float + Send,
 {
-    /// Creates a new `ParAxisIter`.
+    /// Creates a new `ParAxisValues`.
     ///
     /// Prefer using the methods on the concrete axis types.
     pub fn new(start: T, step: T, len: usize) -> Self {
-        Self(AxisIter::new(start, step, len))
+        Self(AxisValues::new(start, step, len))
     }
 }
 
-/// Producer for [`ParAxisIter`].
+/// Producer for [`ParAxisValues`].
 #[cfg(feature = "rayon")]
-struct AxisIterProducer<T>(AxisIter<T>);
+struct AxisValuesProducer<T>(AxisValues<T>);
 
 #[cfg(feature = "rayon")]
-impl<T> Producer for AxisIterProducer<T>
+impl<T> Producer for AxisValuesProducer<T>
 where
     T: Float + Send,
 {
     type Item = T;
-    type IntoIter = AxisIter<T>;
+    type IntoIter = AxisValues<T>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0
@@ -158,11 +158,11 @@ where
 
     fn split_at(self, index: usize) -> (Self, Self) {
         let mid = self.0.front + index;
-        let left = AxisIter {
+        let left = AxisValues {
             back: mid,
             ..self.0
         };
-        let right = AxisIter {
+        let right = AxisValues {
             front: mid,
             ..self.0
         };
