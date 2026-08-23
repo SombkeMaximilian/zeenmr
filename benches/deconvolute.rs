@@ -18,7 +18,7 @@ use zeenmr::{
     peak_shape::Lorentzian,
     spectrum::{
         Spectrum1D,
-        axis::{FrequencyAxis, ShiftReference},
+        axis::{FrequencyAxis, Larmor, ShiftReference},
         builder_1d::Builder1D,
         range::{FiniteBounds, FrequencyRange},
     },
@@ -52,6 +52,7 @@ where
         .get("SFO1")
         .and_then(Value::as_f64)
         .and_then(T::from)
+        .and_then(Larmor::new)
         .unwrap();
     let ref_freq = freq_range.start();
     let ref_shift = bruker.children[0]

@@ -1,13 +1,277 @@
 use crate::axis::iter::AxisIter;
-use crate::axis::reference::ShiftReference;
 use crate::range::{FiniteBounds, FrequencyRange, ShiftRange, SpectralRange};
 use num_traits::Float;
+use std::cmp::Ordering;
 
 #[cfg(feature = "rayon")]
 use crate::axis::iter::ParAxisIter;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+
+/// Larmor frequency of an NMR experiment.
+///
+/// The contained value is in units of megahertz.
+///
+/// # Invariants
+///
+/// The contained value must not be zero, `NaN`, or one of the infinities.
+///
+/// # Serialization with [Serde]
+///
+/// [Serde]: https://serde.rs/
+///
+/// With the `serde` feature enabled, `Larmor` can be serialized using `serde`.
+/// The two directions have different requirements:
+///
+/// - [`Serialize`] needs only `T: Serialize`. A `Larmor` that exists is already
+///   valid.
+/// - [`Deserialize`] needs `T: Float + Deserialize<'de>`, so that the values
+///   can be checked against the invariants.
+///
+/// [`Serialize`]: https://docs.rs/serde/latest/serde/trait.Serialize.html
+/// [`Deserialize`]: https://docs.rs/serde/latest/serde/trait.Deserialize.html
+///
+/// Deserialization goes through [`Larmor::new`] and fails if the values are
+/// invalid according to the invariants.
+#[derive(Copy, Clone, PartialEq, PartialOrd, Debug)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(
+        try_from = "RawLarmor<T>",
+        bound(deserialize = "T: Float + Deserialize<'de>")
+    )
+)]
+#[repr(transparent)]
+pub struct Larmor<T>(T);
+
+// we banished NaNs so this is okay as per Rust's Eq docs.
+impl<T> Eq for Larmor<T> where T: Float {}
+
+// we have to silence clippy because it can't understand that this only works
+// for T: Float
+#[allow(clippy::derive_ord_xor_partial_ord)]
+// we banished NaNs so this is okay as per Rust's Ord docs.
+impl<T> Ord for Larmor<T>
+where
+    T: Float,
+{
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other)
+            .expect("construction rejects NaN, so the ordering is total")
+    }
+}
+
+impl<T> Larmor<T>
+where
+    T: Float,
+{
+    /// Creates a new larmor frequency.
+    ///
+    /// `freq` is in units of megahertz.
+    ///
+    /// Returns `None` if `freq` is zero, `NaN` or one of the infinities.
+    pub fn new(freq: T) -> Option<Self> {
+        if !freq.is_finite() || freq.is_zero() {
+            return None;
+        }
+
+        Some(Self(freq))
+    }
+
+    /// Returns the contained value.
+    pub fn get(&self) -> T {
+        self.0
+    }
+}
+
+#[cfg(feature = "serde")]
+#[derive(Deserialize)]
+struct RawLarmor<T>(T);
+
+#[cfg(feature = "serde")]
+impl<T> TryFrom<RawLarmor<T>> for Larmor<T>
+where
+    T: Float,
+{
+    type Error = &'static str;
+
+    fn try_from(value: RawLarmor<T>) -> Result<Self, Self::Error> {
+        Self::new(value.0).ok_or("invalid larmor frequency value")
+    }
+}
+
+/// Represents a reference used for calibrating chemical shifts in the NMR
+/// spectrum.
+///
+/// # Invariants
+///
+/// Neither value may be `NaN` nor one of the infinities, and the frequency must
+/// not be negative.
+///
+/// # Serialization with [Serde]
+///
+/// [Serde]: https://serde.rs/
+///
+/// With the `serde` feature enabled, `ShiftReference` can be serialized using
+/// `serde`. The two directions have different requirements:
+///
+/// - [`Serialize`] needs only `T: Serialize`. A `ShiftReference` that exists is
+///   already valid.
+/// - [`Deserialize`] needs `T: Float + Deserialize<'de>`, so that the values
+///   can be checked against the invariants.
+///
+/// [`Serialize`]: https://docs.rs/serde/latest/serde/trait.Serialize.html
+/// [`Deserialize`]: https://docs.rs/serde/latest/serde/trait.Deserialize.html
+///
+/// Deserialization goes through [`ShiftReference::new`] and fails if the values
+/// are invalid according to the invariants.
+#[derive(Copy, Clone, PartialEq, PartialOrd, Debug)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(
+        try_from = "RawShiftReference<T>",
+        bound(deserialize = "T: Float + Deserialize<'de>")
+    )
+)]
+pub struct ShiftReference<T> {
+    /// Chemical shift of the reference.
+    shift: T,
+    /// Frequency that the chemical shift is anchored to.
+    freq: T,
+}
+
+impl<T> Default for ShiftReference<T>
+where
+    T: Float,
+{
+    /// Returns the identity reference: 0 ppm anchored at 0 Hz.
+    fn default() -> Self {
+        Self {
+            shift: T::zero(),
+            freq: T::zero(),
+        }
+    }
+}
+
+// we banished NaNs so this is okay as per Rust's Eq docs.
+impl<T> Eq for ShiftReference<T> where T: Float {}
+
+// we have to silence clippy because it can't understand that this only works
+// for T: Float
+#[allow(clippy::derive_ord_xor_partial_ord)]
+// we banished NaNs so this is okay as per Rust's Ord docs.
+impl<T> Ord for ShiftReference<T>
+where
+    T: Float,
+{
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other)
+            .expect("construction rejects NaN, so the ordering is total")
+    }
+}
+
+impl<T> ShiftReference<T>
+where
+    T: Float,
+{
+    /// Creates a new `ShiftReference`.
+    ///
+    /// Maps the provided frequency to the provided chemical shift.
+    ///
+    /// Returns `None` if either input is `NaN` or one of the infinities, or if
+    /// `frequency` is negative.
+    pub fn new(shift: T, freq: T) -> Option<Self> {
+        if !(shift.is_finite() && freq.is_finite() && freq >= T::zero()) {
+            return None;
+        }
+
+        Some(Self { shift, freq })
+    }
+
+    /// Creates a new `ShiftReference`.
+    ///
+    /// Maps zero on the frequency scale to the provided chemical shift.
+    ///
+    /// Returns `None` if `shift` is one of the infinities or `NaN`.
+    pub fn from_shift(shift: T) -> Option<Self> {
+        Self::new(shift, T::zero())
+    }
+
+    /// Creates a new `ShiftReference`.
+    ///
+    /// Maps the provided frequency to zero on the chemical shift scale.
+    ///
+    /// Returns `None` if `frequency` is negative, `NaN`, or one of the
+    /// infinities.
+    pub fn from_freq(freq: T) -> Option<Self> {
+        Self::new(T::zero(), freq)
+    }
+
+    /// Returns the offset to apply to chemical shift values.
+    ///
+    /// Returns `None` if the calculation below produces a non-finite offset.
+    ///
+    /// # Formulation
+    ///
+    /// In order to calculate the chemical shift of a frequency value, divide it
+    /// by the larmor frequency and add the offset to it:
+    ///
+    /// ```text
+    /// shift = offset + frequency / larmor
+    /// ```
+    pub fn offset(&self, larmor: Larmor<T>) -> Option<T> {
+        let offset = self.shift - self.freq / larmor.0;
+
+        if offset.is_finite() {
+            Some(offset)
+        } else {
+            None
+        }
+    }
+
+    /// Returns the offset to apply to chemical shift values.
+    ///
+    /// Does not validate the resulting offset, which may be one of the
+    /// infinities.
+    ///
+    /// # Formulation
+    ///
+    /// In order to calculate the chemical shift of a frequency value, divide it
+    /// by the larmor frequency and add the offset to it:
+    ///
+    /// ```text
+    /// shift = offset + frequency / larmor
+    /// ```
+    pub fn offset_unvalidated(&self, larmor: Larmor<T>) -> T {
+        self.shift - self.freq / larmor.0
+    }
+}
+
+/// Raw chemical shift reference without invariants as an intermediate for
+/// deserialization.
+#[cfg(feature = "serde")]
+#[derive(Deserialize)]
+struct RawShiftReference<T> {
+    /// Chemical shift of the reference.
+    shift: T,
+    /// Frequency that the chemical shift is anchored to.
+    freq: T,
+}
+
+#[cfg(feature = "serde")]
+impl<T> TryFrom<RawShiftReference<T>> for ShiftReference<T>
+where
+    T: Float,
+{
+    type Error = &'static str;
+
+    fn try_from(value: RawShiftReference<T>) -> Result<Self, Self::Error> {
+        Self::new(value.shift, value.freq).ok_or("invalid chemical shift reference values")
+    }
+}
 
 /// Frequency axis of a spectrum.
 ///
@@ -61,7 +325,7 @@ pub struct FrequencyAxis<T> {
     /// frequency.
     ///
     /// See also: [NMRCentral](https://web.archive.org/web/20110926141002/http://nmrcentral.com/2011/08/chemical-shift/)
-    larmor: T,
+    larmor: Larmor<T>,
     /// Chemical shift reference.
     reference: ShiftReference<T>,
 }
@@ -74,10 +338,14 @@ where
     ///
     /// Returns `None` if `larmor` is incompatible with `reference`, or if the
     /// frequency range boundaries map to non-finite chemical shifts.
-    pub fn new(range: FrequencyRange<T>, larmor: T, reference: ShiftReference<T>) -> Option<Self> {
+    pub fn new(
+        range: FrequencyRange<T>,
+        larmor: Larmor<T>,
+        reference: ShiftReference<T>,
+    ) -> Option<Self> {
         let offset = reference.offset(larmor)?;
-        let start = offset + range.start() / larmor;
-        let end = offset + range.end() / larmor;
+        let start = offset + range.start() / larmor.0;
+        let end = offset + range.end() / larmor.0;
 
         if !(start.is_finite() && end.is_finite()) {
             return None;
@@ -109,7 +377,7 @@ where
     }
 
     /// Returns the larmor frequency.
-    pub fn larmor(&self) -> T {
+    pub fn larmor(&self) -> Larmor<T> {
         self.larmor
     }
 
@@ -129,8 +397,8 @@ where
 
         // never panics because `new` would return `None` in the cases it could
         ShiftRange::new(
-            offset + self.range.start() / self.larmor,
-            offset + self.range.end() / self.larmor,
+            offset + self.range.start() / self.larmor.0,
+            offset + self.range.end() / self.larmor.0,
         )
         .expect("invariants guarantee that this is fine")
     }
@@ -157,7 +425,7 @@ where
     ///
     /// If `len <= 1`, the returned step size is `0`.
     pub fn shift_step(&self, len: usize) -> T {
-        self.freq_step(len) / self.larmor
+        self.freq_step(len) / self.larmor.0
     }
 
     /// Converts a frequency to a chemical shift.
@@ -168,7 +436,7 @@ where
             return None;
         }
 
-        Some(self.reference.offset_unvalidated(self.larmor) + freq / self.larmor)
+        Some(self.reference.offset_unvalidated(self.larmor) + freq / self.larmor.0)
     }
 
     /// Converts a chemical shift to a frequency.
@@ -183,7 +451,7 @@ where
         }
 
         let offset = self.reference.offset_unvalidated(self.larmor);
-        let freq = (shift - offset) * self.larmor;
+        let freq = (shift - offset) * self.larmor.0;
 
         Some(freq.clamp(self.range.lower(), self.range.upper()))
     }
@@ -426,7 +694,7 @@ where
 }
 
 #[cfg(feature = "rayon")]
-impl<'axis, T> FrequencyGrid<'axis, T>
+impl<T> FrequencyGrid<'_, T>
 where
     T: Float + Send,
 {
@@ -447,18 +715,15 @@ where
 
 /// Raw axis without invariants as an intermediate for deserialization.
 #[cfg(feature = "serde")]
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize),
-    serde(bound(deserialize = "T: Float + Deserialize<'de>"))
-)]
+#[derive(Deserialize)]
+#[serde(bound(deserialize = "T: Float + Deserialize<'de>"))]
 struct RawFrequencyAxis<T> {
     /// Frequency range of the full axis.
     range: FrequencyRange<T>,
     /// Larmor frequency of the nucleus in the experiment.
     ///
     /// Stored in units of megahertz.
-    larmor: T,
+    larmor: Larmor<T>,
     /// Chemical shift reference.
     reference: ShiftReference<T>,
 }
@@ -483,41 +748,11 @@ mod tests {
     use super::*;
     use static_assertions::assert_impl_all;
 
-    fn test_parameters<T>() -> (FrequencyRange<T>, T, ShiftReference<T>)
-    where
-        T: Float,
-    {
-        let start = T::zero();
-        let end = T::from(12000_u32).unwrap();
-        let ref_freq = T::from(3000_u32).unwrap();
-        let range = FrequencyRange::new(start, end).unwrap();
-        let larmor = T::from(600.25_f64).unwrap();
-        let reference = ShiftReference::from_freq(ref_freq).unwrap();
-
-        (range, larmor, reference)
-    }
-
     #[test]
     fn thread_safety() {
+        assert_impl_all!(ShiftReference<f32>: Send, Sync);
+        assert_impl_all!(ShiftReference<f64>: Send, Sync);
         assert_impl_all!(FrequencyAxis<f32>: Send, Sync);
         assert_impl_all!(FrequencyAxis<f64>: Send, Sync);
-    }
-
-    #[test]
-    fn invariants() {
-        fn invariants_<T>()
-        where
-            T: Float + std::fmt::Debug,
-        {
-            let larmors = [T::zero(), T::nan(), T::infinity(), T::neg_infinity()];
-            let (range, _, reference) = test_parameters();
-
-            for larmor in larmors {
-                assert!(FrequencyAxis::new(range, larmor, reference).is_none());
-            }
-        }
-
-        invariants_::<f32>();
-        invariants_::<f64>();
     }
 }

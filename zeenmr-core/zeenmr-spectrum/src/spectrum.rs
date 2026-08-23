@@ -249,7 +249,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::axis::ShiftReference;
+    use crate::axis::{Larmor, ShiftReference};
     use crate::range::FrequencyRange;
 
     fn valid_axis<T>() -> FrequencyAxis<T>
@@ -263,7 +263,7 @@ mod tests {
 
         FrequencyAxis::new(
             FrequencyRange::new(start, end).unwrap(),
-            larmor,
+            Larmor::new(larmor).unwrap(),
             ShiftReference::from_freq(ref_freq).unwrap(),
         )
         .unwrap()
