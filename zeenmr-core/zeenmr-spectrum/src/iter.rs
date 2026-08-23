@@ -13,7 +13,9 @@ use rayon::prelude::*;
 /// if any, on the right, in the original order. Left and right must be
 /// disjoint at the boundary in terms of yielded element enumeration. That is,
 /// if we split at index `k`, left must only contain elements `[start, k)` and
-/// right must only contain elements `[k, len)`.
+/// right must only contain elements `[k, len)`. If `index >= len`, then the
+/// left part must contain the entire iterator, while the right part must be
+/// empty.
 pub unsafe trait SplitAt: Sized {
     /// Splits the iterator at the provided `index`.
     fn split_at(self, index: usize) -> (Self, Self);

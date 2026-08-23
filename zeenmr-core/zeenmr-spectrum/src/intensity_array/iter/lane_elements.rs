@@ -51,11 +51,12 @@ impl ExactSizeIterator for LaneOffsets {}
 
 impl FusedIterator for LaneOffsets {}
 
-// SAFETY: setting left.back and right.front to `self.front + index` achieves
-// the disjoint split required by `SplitAt`.
+// SAFETY: setting left.back and right.front to `self.front + index` or
+// `self.back`, whichever is smaller, achieves the disjoint split required by
+// `SplitAt`.
 unsafe impl SplitAt for LaneOffsets {
     fn split_at(self, index: usize) -> (Self, Self) {
-        let mid = self.front + index;
+        let mid = (self.front + index).max(self.back);
         let left = Self {
             geometry: self.geometry,
             front: self.front,

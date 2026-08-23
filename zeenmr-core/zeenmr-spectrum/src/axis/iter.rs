@@ -68,14 +68,15 @@ impl<T> ExactSizeIterator for AxisValues<T> where T: Float {}
 
 impl<T> FusedIterator for AxisValues<T> where T: Float {}
 
-// SAFETY: setting left.back and right.front to `self.front + index` achieves
-// the disjoint split required by `SplitAt`.
+// SAFETY: setting left.back and right.front to `self.front + index` or
+// `self.back`, whichever is smaller, achieves the disjoint split required by
+// `SplitAt`.
 unsafe impl<T> SplitAt for AxisValues<T>
 where
     T: Clone,
 {
     fn split_at(self, index: usize) -> (Self, Self) {
-        let mid = self.front + index;
+        let mid = (self.front + index).max(self.back);
         let left = Self {
             start: self.start.clone(),
             step: self.step.clone(),

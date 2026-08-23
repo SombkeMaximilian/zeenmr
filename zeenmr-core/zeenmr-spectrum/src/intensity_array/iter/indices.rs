@@ -74,14 +74,15 @@ impl<D> ExactSizeIterator for Indices<D> where D: Dimension<Elem = usize> {}
 
 impl<D> FusedIterator for Indices<D> where D: Dimension<Elem = usize> {}
 
-// SAFETY: setting left.back and right.front to `self.front + index` achieves
-// the disjoint split required by `SplitAt`.
+// SAFETY: setting left.back and right.front to `self.front + index` or
+// `self.back`, whichever is smaller, achieves the disjoint split required by
+// `SplitAt`.
 unsafe impl<D> SplitAt for Indices<D>
 where
     D: Dimension<Elem = usize>,
 {
     fn split_at(self, index: usize) -> (Self, Self) {
-        let mid = self.front + index;
+        let mid = (self.front + index).max(self.back);
         let left = Self {
             shape: self.shape.clone(),
             front: self.front,
