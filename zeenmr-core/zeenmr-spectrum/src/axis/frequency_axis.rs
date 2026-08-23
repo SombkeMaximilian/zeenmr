@@ -32,7 +32,7 @@ use serde::{Deserialize, Serialize};
 /// [`Serialize`]: https://docs.rs/serde/latest/serde/trait.Serialize.html
 /// [`Deserialize`]: https://docs.rs/serde/latest/serde/trait.Deserialize.html
 ///
-/// Deserialization goes through [`Larmor::new`] and fails if the values are
+/// Deserialization goes through [`Larmor::new`] and fails if the value is
 /// invalid according to the invariants.
 #[derive(Copy, Clone, PartialEq, PartialOrd, Debug)]
 #[cfg_attr(
