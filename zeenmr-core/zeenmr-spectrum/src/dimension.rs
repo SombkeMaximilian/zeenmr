@@ -56,14 +56,23 @@ pub trait Dimension: Clone + Send + Sync {
     where
         D: Dimension<Elem = Self::Elem>;
 
+    /// Creates a multidimensional quantity from an iterator.
+    ///
+    /// Returns `None` if this type can't represent a rank equal to the
+    /// iterator's length.
+    fn try_from_iter<I>(iter: I) -> Option<Self>
+    where
+        I: IntoIterator<Item = Self::Elem>,
+        I::IntoIter: ExactSizeIterator;
+
+    /// Returns the rank of `self`.
+    fn rank(&self) -> usize;
+
     /// Returns a slice containing all dimensions of this quantity.
     fn as_slice(&self) -> &[Self::Elem];
 
     /// Returns a mutable slice containing all dimensions of this quantity.
     fn as_mut_slice(&mut self) -> &mut [Self::Elem];
-
-    /// Returns the rank of `self`.
-    fn rank(&self) -> usize;
 }
 
 /// Conversion into a [`Dimension`].
@@ -191,6 +200,15 @@ impl<T, const N: usize> From<[T; N]> for StaticDim<T, N> {
     }
 }
 
+impl<T, const N: usize> IntoIterator for StaticDim<T, N> {
+    type Item = T;
+    type IntoIter = core::array::IntoIter<T, N>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
 impl<T, const N: usize> Dimension for StaticDim<T, N>
 where
     T: Clone + Send + Sync,
@@ -250,16 +268,30 @@ where
         }
     }
 
+    fn try_from_iter<I>(iter: I) -> Option<Self>
+    where
+        I: IntoIterator<Item = Self::Elem>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        let mut iter = iter.into_iter();
+
+        if iter.len() == N {
+            Self::try_from_fn(N, |_| iter.next())
+        } else {
+            None
+        }
+    }
+
+    fn rank(&self) -> usize {
+        N
+    }
+
     fn as_slice(&self) -> &[Self::Elem] {
         self.0.as_ref()
     }
 
     fn as_mut_slice(&mut self) -> &mut [Self::Elem] {
         self.0.as_mut()
-    }
-
-    fn rank(&self) -> usize {
-        N
     }
 }
 
@@ -545,16 +577,26 @@ where
         Some(Self::from_slice(other.as_slice()))
     }
 
+    fn try_from_iter<I>(iter: I) -> Option<Self>
+    where
+        I: IntoIterator<Item = Self::Elem>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        let mut iter = iter.into_iter();
+
+        Self::try_from_fn(iter.len(), |_| iter.next())
+    }
+
+    fn rank(&self) -> usize {
+        self.as_slice().len()
+    }
+
     fn as_slice(&self) -> &[Self::Elem] {
         self.0.deref()
     }
 
     fn as_mut_slice(&mut self) -> &mut [Self::Elem] {
         self.0.deref_mut()
-    }
-
-    fn rank(&self) -> usize {
-        self.as_slice().len()
     }
 }
 
