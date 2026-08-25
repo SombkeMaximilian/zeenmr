@@ -1,5 +1,7 @@
 use crate::axis::{FrequencyAxis, TimeAxis};
-use crate::dimension::{assert_rank_compatible, Dimension, DynDim, StaticDim, DimIndex, IntoDimension};
+use crate::dimension::{
+    DimIndex, Dimension, DynDim, IntoDimension, StaticDim, assert_rank_compatible,
+};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -49,7 +51,7 @@ where
     }
 
     /// Returns the equivalent axes with a rank determined at runtime.
-    pub fn into_dyn(self) -> Axes<DynDim<A::Elem>> {
+    pub fn to_dyn(self) -> Axes<DynDim<A::Elem>> {
         self.to_dimension()
             .expect("DynDim can represent any rank")
     }
@@ -57,7 +59,7 @@ where
     /// Returns the equivalent axes of rank `N`.
     ///
     /// Returns `None` if `self` does not have rank `N`.
-    pub fn try_into_static<const N: usize>(self) -> Option<Axes<StaticDim<A::Elem, N>>> {
+    pub fn try_to_static<const N: usize>(self) -> Option<Axes<StaticDim<A::Elem, N>>> {
         self.to_dimension()
     }
 

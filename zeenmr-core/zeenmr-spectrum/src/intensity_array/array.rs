@@ -355,7 +355,7 @@ where
     pub fn into_dyn(self) -> Array<S, DynDim<usize>> {
         Array {
             storage: self.storage,
-            layout: self.layout.into_dyn(),
+            layout: self.layout.to_dyn(),
         }
     }
 

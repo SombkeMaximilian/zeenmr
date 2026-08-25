@@ -77,7 +77,7 @@ where
     }
 
     /// Returns the equivalent order with a rank determined at runtime.
-    pub fn into_dyn(self) -> DimOrder<DynDim<usize>> {
+    pub fn to_dyn(&self) -> DimOrder<DynDim<usize>> {
         self.to_dimension()
             .expect("DynDim can represent any rank")
     }
@@ -85,7 +85,7 @@ where
     /// Returns the equivalent order of rank `N`.
     ///
     /// Returns `None` if `self` does not have rank `N`.
-    pub fn try_into_static<const N: usize>(self) -> Option<DimOrder<StaticDim<usize, N>>> {
+    pub fn try_to_static<const N: usize>(&self) -> Option<DimOrder<StaticDim<usize, N>>> {
         self.to_dimension()
     }
 
@@ -188,7 +188,7 @@ where
     }
 
     /// Returns the equivalent index with a rank determined at runtime.
-    pub fn into_dyn(self) -> ArrayIndex<DynDim<usize>> {
+    pub fn to_dyn(&self) -> ArrayIndex<DynDim<usize>> {
         self.to_dimension()
             .expect("DynDim can represent any rank")
     }
@@ -196,7 +196,7 @@ where
     /// Returns the equivalent index of rank `N`.
     ///
     /// Returns `None` if `self` does not have rank `N`.
-    pub fn try_into_static<const N: usize>(self) -> Option<ArrayIndex<StaticDim<usize, N>>> {
+    pub fn try_to_static<const N: usize>(&self) -> Option<ArrayIndex<StaticDim<usize, N>>> {
         self.to_dimension()
     }
 
@@ -352,7 +352,7 @@ where
     }
 
     /// Returns the equivalent shape with a rank determined at runtime.
-    pub fn into_dyn(self) -> Shape<DynDim<usize>> {
+    pub fn to_dyn(&self) -> Shape<DynDim<usize>> {
         self.to_dimension()
             .expect("DynDim can represent any rank")
     }
@@ -360,7 +360,7 @@ where
     /// Returns the equivalent shape of rank `N`.
     ///
     /// Returns `None` if `self` does not have rank `N`.
-    pub fn try_into_static<const N: usize>(self) -> Option<Shape<StaticDim<usize, N>>> {
+    pub fn try_to_static<const N: usize>(&self) -> Option<Shape<StaticDim<usize, N>>> {
         self.to_dimension()
     }
 
@@ -504,7 +504,7 @@ where
     }
 
     /// Returns the equivalent strides with a rank determined at runtime.
-    pub fn into_dyn(self) -> Strides<DynDim<usize>> {
+    pub fn to_dyn(&self) -> Strides<DynDim<usize>> {
         self.to_dimension()
             .expect("DynDim can represent any rank")
     }
@@ -512,7 +512,7 @@ where
     /// Returns the equivalent strides of rank `N`.
     ///
     /// Returns `None` if `self` does not have rank `N`.
-    pub fn try_into_static<const N: usize>(self) -> Option<Strides<StaticDim<usize, N>>> {
+    pub fn try_to_static<const N: usize>(&self) -> Option<Strides<StaticDim<usize, N>>> {
         self.to_dimension()
     }
 
@@ -633,7 +633,7 @@ where
     }
 
     /// Returns the equivalent layout with a rank determined at runtime.
-    pub fn into_dyn(self) -> Layout<DynDim<usize>> {
+    pub fn to_dyn(&self) -> Layout<DynDim<usize>> {
         self.to_dimension()
             .expect("DynDim can represent any rank")
     }
@@ -641,7 +641,7 @@ where
     /// Returns the equivalent layout of rank `N`.
     ///
     /// Returns `None` if `self` does not have rank `N`.
-    pub fn try_into_static<const N: usize>(self) -> Option<Layout<StaticDim<usize, N>>> {
+    pub fn try_to_static<const N: usize>(&self) -> Option<Layout<StaticDim<usize, N>>> {
         self.to_dimension()
     }
 
