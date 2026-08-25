@@ -18,8 +18,8 @@ use zeenmr::{
     peak_shape::Lorentzian,
     spectrum::{
         Spectrum1D,
-        axis::{FrequencyAxis, Larmor, ShiftReference},
         axis::range::{FiniteBounds, FrequencyRange},
+        axis::{FrequencyAxis, Larmor, ShiftReference},
         builder_1d::Builder1D,
     },
 };
