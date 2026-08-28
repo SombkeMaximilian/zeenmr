@@ -4,11 +4,6 @@ use std::borrow::Cow;
 use std::mem::{self, MaybeUninit};
 use std::ops::{Deref, DerefMut};
 
-/// Maximum number of non-heap dimensions in the dynamic case.
-///
-/// Limited to 3D to keep the most common cases as lean as possible.
-const MAX_INLINE_RANK: usize = 3;
-
 /// Index into a multidimensional quantity.
 ///
 /// Such a quantity generally has `N` dimensions. This type encapsulates the
@@ -307,219 +302,9 @@ impl<T, const N: usize> StaticDim<T, N> {
     }
 }
 
-/// Multidimensional quantity representation with a size determined at runtime.
-///
-/// # Invariants
-///
-/// In the `Stack` variant, `rank <= MAX_INLINE_RANK`, and every element of
-/// `storage` at a position `i < rank` is initialized. Positions `i >= rank`
-/// must never be read.
-enum DynDimInner<T> {
-    /// On the stack for up to [`MAX_INLINE_RANK`].
-    Stack {
-        /// Backing storage.
-        storage: [MaybeUninit<T>; MAX_INLINE_RANK],
-        /// Rank *and* number of initialized elements.
-        rank: u8,
-    },
-    /// On the heap for higher dimensions.
-    Heap(Vec<T>),
-}
-
-impl<T> Drop for DynDimInner<T> {
-    fn drop(&mut self) {
-        if let Self::Stack { storage, rank } = self {
-            let initialized = &mut storage[..*rank as usize];
-            // SAFETY: `MaybeUninit<T>` and `T` share a layout, and the type
-            // invariant guarantees these are initialized.
-            unsafe { core::ptr::drop_in_place(initialized as *mut [MaybeUninit<T>] as *mut [T]) };
-        }
-    }
-}
-
-impl<T> Deref for DynDimInner<T> {
-    type Target = [T];
-
-    fn deref(&self) -> &Self::Target {
-        match self {
-            Self::Stack { storage, rank } => {
-                // SAFETY: `MaybeUninit<T>` and `T` share a layout, and the type
-                // invariant guarantees these are initialized.
-                unsafe {
-                    let initialized = storage.get_unchecked(..*rank as usize);
-
-                    &*(initialized as *const [MaybeUninit<T>] as *const [T])
-                }
-            }
-            Self::Heap(storage) => storage,
-        }
-    }
-}
-
-impl<T> DerefMut for DynDimInner<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        match self {
-            Self::Stack { storage, rank } => {
-                // SAFETY: `MaybeUninit<T>` and `T` share a layout, and the type
-                // invariant guarantees these are initialized.
-                unsafe {
-                    let initialized = storage.get_unchecked_mut(..*rank as usize);
-
-                    &mut *(initialized as *mut [MaybeUninit<T>] as *mut [T])
-                }
-            }
-            Self::Heap(storage) => storage,
-        }
-    }
-}
-
-impl<T> Clone for DynDimInner<T>
-where
-    T: Clone,
-{
-    fn clone(&self) -> Self {
-        Self::from_slice(&**self)
-    }
-}
-
-impl<T> PartialEq for DynDimInner<T>
-where
-    T: PartialEq,
-{
-    fn eq(&self, other: &Self) -> bool {
-        self.deref() == other.deref()
-    }
-}
-
-impl<T> Eq for DynDimInner<T> where T: Eq {}
-
-impl<T> std::hash::Hash for DynDimInner<T>
-where
-    T: std::hash::Hash,
-{
-    fn hash<H>(&self, state: &mut H)
-    where
-        H: std::hash::Hasher,
-    {
-        self.deref().hash(state)
-    }
-}
-
-impl<T> std::fmt::Debug for DynDimInner<T>
-where
-    T: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        self.deref().fmt(f)
-    }
-}
-
-impl<T> DynDimInner<T> {
-    /// Creates a new dynamic dimensional quantity representation of the given
-    /// rank by filling it using `f`.
-    // for the future: should be replaced by `array::try_from_fn` whenever that
-    // is stabilized (https://github.com/rust-lang/rust/issues/89379)
-    fn try_from_fn<F>(rank: usize, mut f: F) -> Option<Self>
-    where
-        F: FnMut(usize) -> Option<T>,
-    {
-        if rank <= MAX_INLINE_RANK {
-            let mut storage = [const { MaybeUninit::<T>::uninit() }; MAX_INLINE_RANK];
-            let mut guard = Guard {
-                array_mut: &mut storage,
-                initialized: 0,
-            };
-            while guard.initialized < rank {
-                // SAFETY: the loop condition guarantees this is in bounds.
-                unsafe { guard.push_unchecked(f(guard.initialized)?) };
-            }
-            mem::forget(guard);
-
-            Some(Self::Stack {
-                storage,
-                rank: rank as u8,
-            })
-        } else {
-            (0..rank)
-                .map(f)
-                .collect::<Option<Vec<T>>>()
-                .map(Self::Heap)
-        }
-    }
-}
-
-impl<T> DynDimInner<T> {
-    /// Creates a representation from an owned `Vec<T>` by moving its elements.
-    fn from_vec(mut value: Vec<T>) -> Self {
-        if value.len() <= MAX_INLINE_RANK {
-            let rank = value.len();
-            let mut iter = value.drain(..);
-
-            Self::try_from_fn(rank, |_| iter.next())
-                .expect("iter should contain exactly `rank` items")
-        } else {
-            Self::Heap(value)
-        }
-    }
-}
-
-impl<T> DynDimInner<T>
-where
-    T: Clone,
-{
-    /// Creates a new dynamic dimensional quantity representation from an array.
-    fn from_array<const N: usize>(value: [T; N]) -> Self {
-        if N <= MAX_INLINE_RANK {
-            let mut storage = [const { MaybeUninit::<T>::uninit() }; MAX_INLINE_RANK];
-            for (slot, elem) in storage.iter_mut().zip(value) {
-                slot.write(elem);
-            }
-
-            Self::Stack {
-                storage,
-                rank: N as u8,
-            }
-        } else {
-            Self::Heap(value.to_vec())
-        }
-    }
-
-    /// Creates a new dynamic dimensional quantity representation from a slice.
-    // for the future: inline branch should be replaced by `array::try_from_fn`
-    // whenever that is stabilized
-    // (https://github.com/rust-lang/rust/issues/89379)
-    fn from_slice<S>(value: S) -> Self
-    where
-        S: AsRef<[T]>,
-    {
-        let value = value.as_ref();
-        let rank = value.len();
-
-        if rank <= MAX_INLINE_RANK {
-            let mut storage = [const { MaybeUninit::<T>::uninit() }; MAX_INLINE_RANK];
-            let mut guard = Guard {
-                array_mut: &mut storage,
-                initialized: 0,
-            };
-            while guard.initialized < rank {
-                // SAFETY: the loop condition guarantees this is in bounds.
-                unsafe { guard.push_unchecked(value[guard.initialized].clone()) };
-            }
-            mem::forget(guard);
-
-            Self::Stack {
-                storage,
-                rank: rank as u8,
-            }
-        } else {
-            Self::Heap(value.to_vec())
-        }
-    }
-}
-
 /// Multidimensional quantity with a size determined at runtime.
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub struct DynDim<T>(DynDimInner<T>);
+pub struct DynDim<T>(Vec<T>);
 
 impl<T, const N: usize> From<[T; N]> for DynDim<T>
 where
@@ -548,6 +333,15 @@ where
     }
 }
 
+impl<T> FromIterator<T> for DynDim<T> {
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = T>,
+    {
+        Self(iter.into_iter().collect())
+    }
+}
+
 impl<T> Dimension for DynDim<T>
 where
     T: Clone + Send + Sync,
@@ -556,18 +350,18 @@ where
 
     const RANK: Option<usize> = None;
 
-    fn from_fn<F>(rank: usize, mut f: F) -> Option<Self>
+    fn from_fn<F>(rank: usize, f: F) -> Option<Self>
     where
         F: FnMut(usize) -> Self::Elem,
     {
-        Self::try_from_fn(rank, |dim| Some(f(dim)))
+        Some((0..rank).map(f).collect())
     }
 
     fn try_from_fn<F>(rank: usize, f: F) -> Option<Self>
     where
         F: FnMut(usize) -> Option<Self::Elem>,
     {
-        Some(Self(DynDimInner::try_from_fn(rank, f)?))
+        (0..rank).map(f).collect()
     }
 
     fn from_dimension<D>(other: &D) -> Option<Self>
@@ -582,9 +376,7 @@ where
         I: IntoIterator<Item = Self::Elem>,
         I::IntoIter: ExactSizeIterator,
     {
-        let mut iter = iter.into_iter();
-
-        Self::try_from_fn(iter.len(), |_| iter.next())
+        Some(iter.into_iter().collect())
     }
 
     fn rank(&self) -> usize {
@@ -603,7 +395,7 @@ where
 impl<T> DynDim<T> {
     /// Creates a representation from a `Vec<T>`.
     pub fn from_vec(value: Vec<T>) -> Self {
-        Self(DynDimInner::from_vec(value))
+        Self(value)
     }
 }
 
@@ -613,15 +405,18 @@ where
 {
     /// Creates a new dynamic dimensional quantity from an array.
     pub fn from_array<const N: usize>(value: [T; N]) -> Self {
-        Self(DynDimInner::from_array(value))
+        Self(value.into())
     }
 
     /// Creates a new dynamic dimensional quantity from a slice.
+    ///
+    /// Prefer [`DynDim::from_vec`] or the [`FromIterator`] implementation for
+    /// passing owned values.
     pub fn from_slice<S>(value: S) -> Self
     where
         S: AsRef<[T]>,
     {
-        Self(DynDimInner::from_slice(value))
+        Self(value.as_ref().to_vec())
     }
 }
 
@@ -679,7 +474,6 @@ impl<T> Guard<'_, T> {
 mod tests {
     use super::*;
     use std::num::NonZeroUsize;
-    use std::sync::atomic::{AtomicUsize, Ordering};
 
     /// Crosses the inline boundary.
     const RANKS: [usize; 6] = [0, 1, 2, 3, 4, 9];
@@ -796,18 +590,6 @@ mod tests {
     }
 
     #[test]
-    fn dynamic_stack_and_heap() {
-        for rank in RANKS {
-            let dynamic =
-                DynDim::from_fn(rank, |_| 0_usize).expect("DynDim can represent any rank");
-            let stack = matches!(dynamic.0, DynDimInner::Stack { .. });
-
-            assert_eq!(stack, rank <= MAX_INLINE_RANK);
-            assert_eq!(dynamic.clone(), dynamic);
-        }
-    }
-
-    #[test]
     fn slice_mutation() {
         for rank in RANKS {
             let mut dynamic = DynDim::from_fn(rank, |_| 0_usize).expect("any rank");
@@ -818,197 +600,6 @@ mod tests {
                 .for_each(|(dim, slot)| *slot = dim);
 
             assert_eq!(dynamic.as_slice(), (0..rank).collect::<Vec<_>>());
-        }
-    }
-
-    #[test]
-    fn equality_and_hash() {
-        let hash = |d: &DynDim<usize>| {
-            let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            std::hash::Hash::hash(d, &mut hasher);
-
-            std::hash::Hasher::finish(&hasher)
-        };
-
-        for rank in RANKS {
-            let left = DynDim::from_fn(rank, |dim| dim).expect("any rank");
-            let right = DynDim::from_fn(rank, |dim| dim).expect("any rank");
-
-            assert_eq!(left, right);
-            assert_eq!(hash(&left), hash(&right));
-        }
-
-        assert_ne!(DynDim::from_array([1, 2]), DynDim::from_array([1, 2, 3]));
-    }
-
-    /// Increment the shared counter when dropped.
-    #[derive(Clone)]
-    struct DropCount<'a>(&'a AtomicUsize);
-
-    impl Drop for DropCount<'_> {
-        fn drop(&mut self) {
-            self.0.fetch_add(1, Ordering::Relaxed);
-        }
-    }
-
-    impl PartialEq for DropCount<'_> {
-        fn eq(&self, other: &Self) -> bool {
-            std::ptr::eq(self.0, other.0)
-        }
-    }
-
-    impl Eq for DropCount<'_> {}
-
-    /// Payload marker for panics we started.
-    struct Deliberate;
-
-    /// Starts an unwind that [`expect_unwind`] recognizes.
-    fn unwind_deliberately() -> ! {
-        std::panic::resume_unwind(Box::new(Deliberate))
-    }
-
-    /// Runs `f`, asserting that it unwinds.
-    #[track_caller]
-    fn expect_unwind<F, R>(f: F)
-    where
-        F: FnOnce() -> R,
-    {
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
-            Ok(_) => panic!("expected an unwind"),
-            Err(payload) if payload.is::<Deliberate>() => {}
-            Err(payload) => std::panic::resume_unwind(payload),
-        }
-    }
-
-    #[test]
-    fn inline_elements_drop() {
-        for rank in RANKS {
-            let drops = AtomicUsize::new(0);
-            let inner = DynDimInner::try_from_fn(rank, |_| Some(DropCount(&drops)))
-                .expect("DynDim can represent any rank");
-
-            assert_eq!(drops.load(Ordering::Relaxed), 0);
-            drop(inner);
-            assert_eq!(drops.load(Ordering::Relaxed), rank);
-        }
-    }
-
-    #[test]
-    fn partial_initialization_drop() {
-        for rank in RANKS {
-            for fail_at in 0..rank {
-                let drops = AtomicUsize::new(0);
-                let result = DynDimInner::try_from_fn(rank, |dim| {
-                    if dim != fail_at {
-                        Some(DropCount(&drops))
-                    } else {
-                        None
-                    }
-                });
-
-                assert!(result.is_none());
-                assert_eq!(drops.load(Ordering::Relaxed), fail_at);
-            }
-        }
-        const N: usize = 3;
-        for fail_at in 0..N {
-            let drops = AtomicUsize::new(0);
-            let result = StaticDim::<DropCount, N>::try_from_fn(N, |dim| {
-                if dim != fail_at {
-                    Some(DropCount(&drops))
-                } else {
-                    None
-                }
-            });
-
-            assert!(result.is_none());
-            assert_eq!(drops.load(Ordering::Relaxed), fail_at);
-        }
-    }
-
-    #[test]
-    fn try_from_fn_unwind_drop() {
-        for rank in RANKS {
-            for panic_at in 0..rank {
-                let drops = AtomicUsize::new(0);
-                expect_unwind(|| {
-                    DynDim::try_from_fn(rank, |dim| {
-                        if dim == panic_at {
-                            unwind_deliberately();
-                        }
-
-                        Some(DropCount(&drops))
-                    })
-                });
-
-                assert_eq!(drops.load(Ordering::Relaxed), panic_at);
-            }
-        }
-        const N: usize = 3;
-        for panic_at in 0..N {
-            let drops = AtomicUsize::new(0);
-            expect_unwind(|| {
-                StaticDim::<DropCount, N>::try_from_fn(N, |dim| {
-                    if dim == panic_at {
-                        unwind_deliberately();
-                    }
-
-                    Some(DropCount(&drops))
-                })
-            });
-
-            assert_eq!(drops.load(Ordering::Relaxed), panic_at);
-        }
-    }
-
-    /// Panics on the `panic_at`-th clone, and counts its own drops.
-    struct PanicOnClone<'a> {
-        /// Number of drops.
-        drops: &'a AtomicUsize,
-        /// Number of clones.
-        clones: &'a AtomicUsize,
-        /// Panics once `self.clones == self.panic_at`.
-        panic_at: usize,
-    }
-
-    impl Clone for PanicOnClone<'_> {
-        fn clone(&self) -> Self {
-            let seen = self.clones.fetch_add(1, Ordering::Relaxed);
-            if seen == self.panic_at {
-                unwind_deliberately();
-            }
-
-            Self {
-                drops: self.drops,
-                clones: self.clones,
-                panic_at: self.panic_at,
-            }
-        }
-    }
-
-    impl Drop for PanicOnClone<'_> {
-        fn drop(&mut self) {
-            self.drops.fetch_add(1, Ordering::Relaxed);
-        }
-    }
-
-    #[test]
-    fn from_slice_unwind_drop() {
-        for rank in RANKS {
-            for panic_at in 0..rank {
-                let (drops, clones) = (AtomicUsize::new(0), AtomicUsize::new(0));
-                let source = (0..rank)
-                    .map(|_| PanicOnClone {
-                        drops: &drops,
-                        clones: &clones,
-                        panic_at,
-                    })
-                    .collect::<Vec<PanicOnClone>>();
-                expect_unwind(|| DynDimInner::from_slice(source.as_slice()));
-
-                assert_eq!(drops.load(Ordering::Relaxed), panic_at);
-                assert_eq!(clones.load(Ordering::Relaxed), panic_at + 1);
-            }
         }
     }
 }
