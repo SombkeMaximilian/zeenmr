@@ -217,9 +217,14 @@ where
         self.0.rank()
     }
 
-    /// Returns the array index at the specified `DimIndex`.
+    /// Returns the array index at `index`.
     pub fn get(&self, index: DimIndex) -> Option<usize> {
-        self.0.as_slice().get(index.0).copied()
+        self.0.get(index).copied()
+    }
+
+    /// Returns a mutable reference to the array index at `index`.
+    pub fn get_mut(&mut self, index: DimIndex) -> Option<&mut usize> {
+        self.0.get_mut(index)
     }
 
     /// Returns a slice containing all array indices.
@@ -369,9 +374,14 @@ where
         self.0.rank()
     }
 
-    /// Returns the array extent at the specified `DimIndex`.
+    /// Returns the array extent at `index`.
     pub fn get(&self, index: DimIndex) -> Option<usize> {
-        self.0.as_slice().get(index.0).copied()
+        self.0.get(index).copied()
+    }
+
+    /// Returns a mutable reference to the array extent at `index`.
+    pub fn get_mut(&mut self, index: DimIndex) -> Option<&mut usize> {
+        self.0.get_mut(index)
     }
 
     /// Returns a slice containing all array extents.
@@ -521,9 +531,14 @@ where
         self.0.rank()
     }
 
-    /// Returns the element stride at the specified `DimIndex`.
+    /// Returns the element stride at `index`.
     pub fn get(&self, index: DimIndex) -> Option<usize> {
-        self.0.as_slice().get(index.0).copied()
+        self.0.get(index).copied()
+    }
+
+    /// Returns a mutable reference to the array stride at `index`.
+    pub fn get_mut(&mut self, index: DimIndex) -> Option<&mut usize> {
+        self.0.get_mut(index)
     }
 
     /// Returns a slice containing all array element strides.
@@ -1003,6 +1018,10 @@ where
     /// `dim` must be in range, `order` must have the same rank as the layout,
     /// and `lane` must be less than [`Layout::lane_count`]. Otherwise, the
     /// result is meaningless.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `dim` is not in range.
     pub(crate) fn lane_unvalidated(
         &self,
         dim: DimIndex,
@@ -1014,8 +1033,14 @@ where
         // by this type's invariants.
         LaneGeometry {
             offset: self.lane_offset_unvalidated(dim, lane, order),
-            stride: self.strides.as_slice()[dim.0],
-            count: self.shape.as_slice()[dim.0],
+            stride: self
+                .strides
+                .get(dim)
+                .expect("`dim` should be in range"),
+            count: self
+                .shape
+                .get(dim)
+                .expect("`dim` should be in range"),
         }
     }
 

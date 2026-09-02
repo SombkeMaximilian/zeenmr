@@ -68,9 +68,14 @@ where
         self.0.rank()
     }
 
-    /// Returns a reference to the axis at the specified `DimIndex`.
+    /// Returns a reference to the axis at `index`.
     pub fn get(&self, index: DimIndex) -> Option<&A::Elem> {
-        self.0.as_slice().get(index.0)
+        self.0.get(index)
+    }
+
+    /// Returns a mutable reference to the axis at `index`.
+    pub fn get_mut(&mut self, index: DimIndex) -> Option<&mut A::Elem> {
+        self.0.get_mut(index)
     }
 
     /// Returns a slice containing all axes.

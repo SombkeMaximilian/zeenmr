@@ -63,6 +63,12 @@ pub trait Dimension: Clone + Send + Sync {
     /// Returns the rank of `self`.
     fn rank(&self) -> usize;
 
+    /// Returns a reference to the dimension element at `index`.
+    fn get(&self, index: DimIndex) -> Option<&Self::Elem>;
+
+    /// Returns a mutable reference to the dimension element at `index`.
+    fn get_mut(&mut self, index: DimIndex) -> Option<&mut Self::Elem>;
+
     /// Returns a slice containing all dimensions of this quantity.
     fn as_slice(&self) -> &[Self::Elem];
 
@@ -281,6 +287,14 @@ where
         N
     }
 
+    fn get(&self, index: DimIndex) -> Option<&Self::Elem> {
+        self.0.get(index.0)
+    }
+
+    fn get_mut(&mut self, index: DimIndex) -> Option<&mut Self::Elem> {
+        self.0.get_mut(index.0)
+    }
+
     fn as_slice(&self) -> &[Self::Elem] {
         self.0.as_ref()
     }
@@ -381,6 +395,14 @@ where
 
     fn rank(&self) -> usize {
         self.as_slice().len()
+    }
+
+    fn get(&self, index: DimIndex) -> Option<&Self::Elem> {
+        self.0.get(index.0)
+    }
+
+    fn get_mut(&mut self, index: DimIndex) -> Option<&mut Self::Elem> {
+        self.0.get_mut(index.0)
     }
 
     fn as_slice(&self) -> &[Self::Elem] {
