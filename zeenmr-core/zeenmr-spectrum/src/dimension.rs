@@ -141,7 +141,7 @@ where
     type Dim = DynDim<T>;
 
     fn into_dim(self) -> Self::Dim {
-        DynDim::from_slice(self)
+        DynDim::from_vec(self)
     }
 }
 
@@ -152,7 +152,7 @@ where
     type Dim = DynDim<T>;
 
     fn into_dim(self) -> Self::Dim {
-        DynDim::from_slice(self)
+        DynDim::from_vec(self.into_vec())
     }
 }
 
@@ -163,7 +163,7 @@ where
     type Dim = DynDim<T>;
 
     fn into_dim(self) -> Self::Dim {
-        DynDim::from_slice(self)
+        DynDim::from_vec(self.into_owned())
     }
 }
 
