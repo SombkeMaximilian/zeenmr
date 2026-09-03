@@ -24,7 +24,7 @@ categories = [
 [features]
 default = []
 rayon = ["dep:rayon"]
-serde = ["dep:serde", "uom/serde"]
+serde = ["dep:serde", "dep:serde_arrays", "uom/serde"]
 
 [dependencies]
 num-complex = { workspace = true }
@@ -32,6 +32,7 @@ num-traits = { workspace = true }
 uom = { workspace = true }
 rayon = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
+serde_arrays = { workspace = true, optional = true }
 
 [dev-dependencies]
 float-cmp = { workspace = true }

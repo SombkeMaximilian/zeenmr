@@ -4,6 +4,9 @@ use std::borrow::Cow;
 use std::mem::{self, MaybeUninit};
 use std::ops::{Deref, DerefMut};
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 /// Index into a multidimensional quantity.
 ///
 /// Such a quantity generally has `N` dimensions. This type encapsulates the
@@ -11,6 +14,7 @@ use std::ops::{Deref, DerefMut};
 ///
 /// This type has the same size and alignment as `usize`.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize), serde(transparent))]
 #[repr(transparent)]
 pub struct DimIndex(pub usize);
 
@@ -193,7 +197,17 @@ where
 
 /// Multidimensional quantity with a size determined at compile-time.
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub struct StaticDim<T, const N: usize>([T; N]);
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        transparent,
+        bound(serialize = "T: Serialize", deserialize = "T: Deserialize<'de>")
+    )
+)]
+pub struct StaticDim<T, const N: usize>(
+    #[cfg_attr(feature = "serde", serde(with = "serde_arrays"))] [T; N],
+);
 
 impl<T, const N: usize> From<[T; N]> for StaticDim<T, N> {
     fn from(value: [T; N]) -> Self {
@@ -318,6 +332,7 @@ impl<T, const N: usize> StaticDim<T, N> {
 
 /// Multidimensional quantity with a size determined at runtime.
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize), serde(transparent))]
 pub struct DynDim<T>(Vec<T>);
 
 impl<T, const N: usize> From<[T; N]> for DynDim<T>
@@ -623,5 +638,25 @@ mod tests {
 
             assert_eq!(dynamic.as_slice(), (0..rank).collect::<Vec<_>>());
         }
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn serialization_round_trip() {
+        let static_dim = StaticDim::from_array([1, 2, 3, 4, 5]);
+        let ser = serde_json5::to_string(&static_dim).unwrap();
+        let de = serde_json5::from_str::<StaticDim<i32, 5>>(&ser).unwrap();
+
+        assert_eq!(static_dim, de);
+
+        let dyn_dim = DynDim::from_array([1, 2, 3, 4, 5]);
+        let ser = serde_json5::to_string(&dyn_dim).unwrap();
+        let de = serde_json5::from_str::<DynDim<i32>>(&ser).unwrap();
+
+        assert_eq!(dyn_dim, de);
+
+        let cross = serde_json5::from_str::<StaticDim<i32, 5>>(&ser).unwrap();
+
+        assert_eq!(static_dim, cross);
     }
 }
