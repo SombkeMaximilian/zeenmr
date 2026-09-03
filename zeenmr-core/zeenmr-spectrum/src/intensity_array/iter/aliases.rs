@@ -1,7 +1,8 @@
-use crate::intensity_array::iter::{
-    Indices, LaneElemStrided, LaneElemStridedMut, LaneGeometries, LaneOffsets, Lanes, LanesMut,
-    StridedIterKind,
-};
+use crate::intensity_array::iter::{LaneElemStrided, LaneElemStridedMut, StridedIterKind};
+
+#[cfg(feature = "rayon")]
+use crate::intensity_array::iter::{Indices, LaneGeometries, LaneOffsets, Lanes, LanesMut};
+#[cfg(feature = "rayon")]
 use crate::iter::Par;
 
 /// Parallel iterator over the multidimensional indices of a shape.
@@ -39,30 +40,21 @@ pub type LaneElemContiguousMut<'s, T> = std::slice::IterMut<'s, T>;
 pub type ParLaneElemContiguousMut<'s, T> = rayon::slice::IterMut<'s, T>;
 
 /// Iterators over the elements of a lane view.
-pub type LaneElem<'s, T> = StridedIterKind<
-    crate::intensity_array::iter::LaneElemContiguous<'s, T>,
-    LaneElemStrided<'s, T>,
->;
+pub type LaneElem<'s, T> = StridedIterKind<LaneElemContiguous<'s, T>, LaneElemStrided<'s, T>>;
 
 /// Parallel iterators over the elements of a lane view.
 #[cfg(feature = "rayon")]
-pub type ParLaneElem<'s, T> = StridedIterKind<
-    crate::intensity_array::iter::ParLaneElemContiguous<'s, T>,
-    crate::intensity_array::iter::ParLaneElemStrided<'s, T>,
->;
+pub type ParLaneElem<'s, T> =
+    StridedIterKind<ParLaneElemContiguous<'s, T>, ParLaneElemStrided<'s, T>>;
 
 /// Iterator over the elements of a mutable lane view.
-pub type LaneElemMut<'s, T> = StridedIterKind<
-    crate::intensity_array::iter::LaneElemContiguousMut<'s, T>,
-    LaneElemStridedMut<'s, T>,
->;
+pub type LaneElemMut<'s, T> =
+    StridedIterKind<LaneElemContiguousMut<'s, T>, LaneElemStridedMut<'s, T>>;
 
 /// Parallel iterator over the elements of a mutable lane view.
 #[cfg(feature = "rayon")]
-pub type ParLaneElemMut<'s, T> = StridedIterKind<
-    crate::intensity_array::iter::ParLaneElemContiguousMut<'s, T>,
-    crate::intensity_array::iter::ParLaneElemStridedMut<'s, T>,
->;
+pub type ParLaneElemMut<'s, T> =
+    StridedIterKind<ParLaneElemContiguousMut<'s, T>, ParLaneElemStridedMut<'s, T>>;
 
 /// Parallel iterator over the lanes of a layout along one dimension.
 #[cfg(feature = "rayon")]
