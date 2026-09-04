@@ -9,6 +9,9 @@ use crate::intensity_array::iter::{ParIndices, ParLaneGeometries, ParLaneOffsets
 #[cfg(feature = "rayon")]
 use crate::iter::Par;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 /// Ordering of the dimensions of an array with a rank determined at runtime.
 pub type DynDimOrder = DimOrder<DynDim<usize>>;
 
@@ -22,6 +25,14 @@ pub type StaticDimOrder<const N: usize> = DimOrder<StaticDim<usize, N>>;
 /// twice or skipped, and indexing a slice of that rank by any entry is
 /// infallible.
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(
+        try_from = "RawDimOrder<D>",
+        bound(deserialize = "D: Dimension<Elem = usize> + Deserialize<'de>")
+    )
+)]
 pub struct DimOrder<D>(D);
 
 /// Convenience function for creating dimension orders.
@@ -150,6 +161,24 @@ where
     }
 }
 
+/// Raw dimension ordering without invariants as an intermediate for
+/// deserialization.
+#[cfg(feature = "serde")]
+#[derive(Deserialize)]
+struct RawDimOrder<D>(D);
+
+#[cfg(feature = "serde")]
+impl<D> TryFrom<RawDimOrder<D>> for DimOrder<D>
+where
+    D: Dimension<Elem = usize>,
+{
+    type Error = &'static str;
+
+    fn try_from(value: RawDimOrder<D>) -> Result<Self, Self::Error> {
+        Self::new(value.0).ok_or("not a permutation")
+    }
+}
+
 /// Multidimensional array index with a rank determined at runtime.
 pub type DynArrayIndex = ArrayIndex<DynDim<usize>>;
 
@@ -158,6 +187,7 @@ pub type StaticArrayIndex<const N: usize> = ArrayIndex<StaticDim<usize, N>>;
 
 /// Multidimensional index into an array.
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ArrayIndex<D>(D);
 
 /// Convenience function for creating multidimensional indices.
@@ -327,6 +357,7 @@ pub type StaticShape<const N: usize> = Shape<StaticDim<usize, N>>;
 ///
 /// The entries represent the extent of the array along each dimension.
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub struct Shape<D>(D);
 
 /// Convenience function for creating array shapes.
@@ -493,6 +524,7 @@ pub type StaticStrides<const N: usize> = Strides<StaticDim<usize, N>>;
 /// The entries represent how far apart elements along a dimension are in the
 /// contiguous buffer.
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub struct Strides<D>(D);
 
 /// Convenience function for creating array strides.
@@ -577,6 +609,14 @@ pub type StaticLayout<const N: usize> = Layout<StaticDim<usize, N>>;
 
 /// Layout of an array.
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(
+        try_from = "RawLayout<D>",
+        bound(deserialize = "D: Dimension<Elem = usize> + Deserialize<'de>")
+    )
+)]
 pub struct Layout<D> {
     /// Array shape.
     ///
@@ -1291,6 +1331,49 @@ where
             stride: strides[dim.0],
             count: extents[dim.0],
         })
+    }
+}
+
+/// Raw layout without invariants as an intermediate for deserialization.
+#[cfg(feature = "serde")]
+#[derive(Deserialize)]
+struct RawLayout<D> {
+    /// Array shape.
+    ///
+    /// A `&mut Shape<D>` must *never* escape to anywhere. Otherwise, all
+    /// established invariants may be broken.
+    shape: Shape<D>,
+    /// Array strides.
+    strides: Strides<D>,
+    /// Offset from the start of the buffer.
+    offset: usize,
+}
+
+#[cfg(feature = "serde")]
+impl<D> TryFrom<RawLayout<D>> for Layout<D>
+where
+    D: Dimension<Elem = usize>,
+{
+    type Error = &'static str;
+
+    fn try_from(value: RawLayout<D>) -> Result<Self, Self::Error> {
+        let RawLayout {
+            shape,
+            strides,
+            offset,
+        } = value;
+
+        if shape.rank() != strides.rank() {
+            return Err("rank mismatch between shape and strides");
+        }
+
+        match shape.product_checked() {
+            Some(0) => return Err("some extent(s) in the shape are 0"),
+            None => return Err("computing layout size overflowed"),
+            _ => {}
+        }
+
+        Self::new(shape, strides, offset).ok_or("computing max offset overflowed")
     }
 }
 
@@ -2433,5 +2516,48 @@ mod tests {
         assert_eq!((lane.offset(), lane.stride(), lane.len()), (1, 0, 3));
         assert!(!lane.is_injective());
         assert!(lane.fits_within(2));
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn serialization_round_trip() {
+        for order in [&[][..], &[0][..], &[0, 1][..], &[0, 1, 2][..]] {
+            let order = DimOrder::new(DynDim::from_slice(order)).expect("hand verified");
+            let ser = serde_json5::to_string(&order).unwrap();
+            let de = serde_json5::from_str::<DimOrder<DynDim<usize>>>(&ser).unwrap();
+
+            assert_eq!(order, de);
+        }
+
+        let static_dim =
+            DimOrder::new(StaticDim::from_array([0, 4, 1, 3, 2])).expect("hand verified");
+        let dyn_dim = static_dim.to_dyn();
+        let ser = serde_json5::to_string(&static_dim).unwrap();
+        let cross = serde_json5::from_str::<DimOrder<DynDim<usize>>>(&ser).unwrap();
+
+        assert_eq!(dyn_dim, cross);
+
+        for (extents, strides, _) in CONTIGUOUS {
+            let shape = Shape::new(DynDim::from_slice(extents));
+            let strides = Strides::new(DynDim::from_slice(strides));
+
+            for offset in [0, 7, 1000] {
+                let layout =
+                    Layout::new(shape.clone(), strides.clone(), offset).expect("hand verified");
+                let ser = serde_json5::to_string(&layout).unwrap();
+                let de = serde_json5::from_str::<Layout<DynDim<usize>>>(&ser).unwrap();
+
+                assert_eq!(layout, de);
+            }
+        }
+
+        let shape = Shape::new(StaticDim::from_array([2, 5, 2, 5]));
+        let strides = shape.row_major_strides().expect("hand verified");
+        let static_layout = Layout::new(shape, strides, 1000).expect("hand verified");
+        let dyn_layout = static_layout.to_dyn();
+        let ser = serde_json5::to_string(&static_layout).unwrap();
+        let cross = serde_json5::from_str::<Layout<DynDim<usize>>>(&ser).unwrap();
+
+        assert_eq!(dyn_layout, cross);
     }
 }
