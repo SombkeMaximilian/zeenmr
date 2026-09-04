@@ -216,24 +216,6 @@ pub type ShiftRange<T> = Range<T, Shift>;
 pub type RelativeRange<T> = Range<T, Relative>;
 
 /// Generic range type over a domain.
-///
-/// # Serialization with [Serde]
-///
-/// [Serde]: https://serde.rs/
-///
-/// With the `serde` feature enabled, `Range` can be serialized using `serde`.
-/// The two directions have different requirements:
-///
-/// - [`Serialize`] needs only `T: Serialize`. The domain is irrelevant, since a
-///   `Range` that exists is already valid.
-/// - [`Deserialize`] needs `T: Float + Deserialize<'de>` and `D: Domain`, so
-///   that the bounds can be checked against the domain.
-///
-/// [`Serialize`]: https://docs.rs/serde/latest/serde/trait.Serialize.html
-/// [`Deserialize`]: https://docs.rs/serde/latest/serde/trait.Deserialize.html
-///
-/// Deserialization goes through [`Range::new`] and fails if the bounds are
-/// invalid for `D`.
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),

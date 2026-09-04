@@ -62,13 +62,6 @@ use serde::{Deserialize, Serialize};
 /// For a `Gaussian` to represent a peak shape, `amp` must be positive and
 /// `exp2_scale` must be negative. This is not enforced at construction to
 /// avoid unnecessary overhead.
-///
-/// # Serialization with [Serde]
-///
-/// [Serde]: https://serde.rs/
-///
-/// When the `serde` feature is enabled, `Gaussian` can be serialized and
-/// deserialized using `serde`.
 #[derive(Copy, Clone, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Gaussian<T> {

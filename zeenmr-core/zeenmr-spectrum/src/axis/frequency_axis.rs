@@ -16,24 +16,6 @@ use serde::{Deserialize, Serialize};
 /// # Invariants
 ///
 /// The contained value must not be zero, `NaN`, or one of the infinities.
-///
-/// # Serialization with [Serde]
-///
-/// [Serde]: https://serde.rs/
-///
-/// With the `serde` feature enabled, `Larmor` can be serialized using `serde`.
-/// The two directions have different requirements:
-///
-/// - [`Serialize`] needs only `T: Serialize`. A `Larmor` that exists is already
-///   valid.
-/// - [`Deserialize`] needs `T: Float + Deserialize<'de>`, so that the values
-///   can be checked against the invariants.
-///
-/// [`Serialize`]: https://docs.rs/serde/latest/serde/trait.Serialize.html
-/// [`Deserialize`]: https://docs.rs/serde/latest/serde/trait.Deserialize.html
-///
-/// Deserialization goes through [`Larmor::new`] and fails if the value is
-/// invalid according to the invariants.
 #[derive(Copy, Clone, PartialEq, PartialOrd, Debug)]
 #[cfg_attr(
     feature = "serde",
@@ -86,6 +68,8 @@ where
     }
 }
 
+/// Raw larmor frequency without invariants as an intermediate for
+/// deserialization.
 #[cfg(feature = "serde")]
 #[derive(Deserialize)]
 struct RawLarmor<T>(T);
@@ -109,24 +93,6 @@ where
 ///
 /// Neither value may be `NaN` nor one of the infinities, and the frequency must
 /// not be negative.
-///
-/// # Serialization with [Serde]
-///
-/// [Serde]: https://serde.rs/
-///
-/// With the `serde` feature enabled, `ShiftReference` can be serialized using
-/// `serde`. The two directions have different requirements:
-///
-/// - [`Serialize`] needs only `T: Serialize`. A `ShiftReference` that exists is
-///   already valid.
-/// - [`Deserialize`] needs `T: Float + Deserialize<'de>`, so that the values
-///   can be checked against the invariants.
-///
-/// [`Serialize`]: https://docs.rs/serde/latest/serde/trait.Serialize.html
-/// [`Deserialize`]: https://docs.rs/serde/latest/serde/trait.Deserialize.html
-///
-/// Deserialization goes through [`ShiftReference::new`] and fails if the values
-/// are invalid according to the invariants.
 #[derive(Copy, Clone, PartialEq, PartialOrd, Debug)]
 #[cfg_attr(
     feature = "serde",
@@ -289,23 +255,6 @@ where
 /// chemical shift reference is compatible with its larmor frequency, and that
 /// every frequency value within its range maps to a finite chemical shift
 /// value. The latter always holds as long as it holds at the boundaries.
-///
-/// # Serialization with [Serde]
-///
-/// [Serde]: https://serde.rs/
-///
-/// With the `serde` feature enabled, `FrequencyAxis` can be serialized using
-/// `serde`. The two directions have different requirements:
-///
-/// - [`Serialize`] needs only `T: Serialize`.
-/// - [`Deserialize`] needs `T: Float + Deserialize<'de>` so that the values can
-///   be checked against the invariants.
-///
-/// [`Serialize`]: https://docs.rs/serde/latest/serde/trait.Serialize.html
-/// [`Deserialize`]: https://docs.rs/serde/latest/serde/trait.Deserialize.html
-///
-/// Deserialization goes through [`FrequencyAxis::new`] and fails if the values
-/// are invalid according to the invariants.
 #[derive(Copy, Clone, PartialEq, Debug)]
 #[cfg_attr(
     feature = "serde",

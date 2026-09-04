@@ -63,13 +63,6 @@ use serde::{Deserialize, Serialize};
 ///
 /// For a `Lorentzian` to represent a peak shape, its `amp` and `scale` must
 /// be positive. This is not enforced to avoid unnecessary overhead.
-///
-/// # Serialization with [Serde]
-///
-/// [Serde]: https://serde.rs/
-///
-/// When the `serde` feature is enabled, `Lorentzian` can be serialized and
-/// deserialized using `serde`.
 #[derive(Copy, Clone, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Lorentzian<T> {

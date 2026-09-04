@@ -16,23 +16,6 @@ use serde::{Deserialize, Serialize};
 /// # Invariants
 ///
 /// The dwell must be finite, non-zero and positive.
-///
-/// # Serialization with [Serde]
-///
-/// [Serde]: https://serde.rs/
-///
-/// With the `serde` feature enabled, `TimeAxis` can be serialized using
-/// `serde`. The two directions have different requirements:
-///
-/// - [`Serialize`] needs only `T: Serialize`.
-/// - [`Deserialize`] needs `T: Float + Deserialize<'de>` so that the dwell can
-///   be checked against the invariants.
-///
-/// [`Serialize`]: https://docs.rs/serde/latest/serde/trait.Serialize.html
-/// [`Deserialize`]: https://docs.rs/serde/latest/serde/trait.Deserialize.html
-///
-/// Deserialization goes through [`TimeAxis::new`] and fails if the dwell is
-/// invalid according to the invariants.
 #[derive(Copy, Clone, PartialEq, Debug)]
 #[cfg_attr(
     feature = "serde",

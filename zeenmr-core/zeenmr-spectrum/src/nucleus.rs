@@ -79,18 +79,6 @@ macro_rules! mag_mom {
 /// assert_eq!(fluorine19.to_string(), "19F");
 /// assert_eq!(deuterium.to_string(), "2H");
 /// ```
-///
-/// # Serialization with [Serde]
-///
-/// [Serde]: https://serde.rs/
-///
-/// If the `serde` feature is enabled, `Nucleus` implements [`Serialize`] and
-/// [`Deserialize`]. Serialization always uses the IUPAC atomic element (AE)
-/// notation, while deserialization accepts the full name as well (e.g., Proton,
-/// Deuterium, Carbon-13).
-///
-/// [`Serialize`]: serde::Serialize
-/// [`Deserialize`]: serde::Deserialize
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 #[cfg_attr(test, derive(EnumIter))]
 #[cfg_attr(

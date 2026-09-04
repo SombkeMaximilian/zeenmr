@@ -8,15 +8,6 @@ use serde::{Deserialize, Serialize};
 /// A `Deconvolution` contains the deconvoluted signals as peak shapes, the
 /// settings used for deconvolution, and the mean squared error of between the
 /// original spectrum and the superposition of peak shapes.
-///
-/// # Serialization with [Serde]
-///
-/// [Serde]: https://serde.rs/
-///
-/// When the `serde` feature is enabled, `Deconvolution` implements the
-/// [`Serialize`] and [`Deserialize`] traits provided that the contained
-/// types also implement them. This is guaranteed for any types provided by
-/// this crate.
 #[derive(Clone, PartialEq, Debug)]
 #[cfg_attr(
     feature = "serde",
