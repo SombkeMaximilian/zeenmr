@@ -76,7 +76,7 @@ where
     T: Clone,
 {
     fn split_at(self, index: usize) -> (Self, Self) {
-        let mid = (self.front + index).max(self.back);
+        let mid = (self.front + index).min(self.back);
         let left = Self {
             start: self.start.clone(),
             step: self.step.clone(),

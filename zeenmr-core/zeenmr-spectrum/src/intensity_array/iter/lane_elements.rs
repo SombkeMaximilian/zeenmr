@@ -56,7 +56,7 @@ impl FusedIterator for LaneOffsets {}
 // `SplitAt`.
 unsafe impl SplitAt for LaneOffsets {
     fn split_at(self, index: usize) -> (Self, Self) {
-        let mid = (self.front + index).max(self.back);
+        let mid = (self.front + index).min(self.back);
         let left = Self {
             geometry: self.geometry,
             front: self.front,
