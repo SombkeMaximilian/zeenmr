@@ -37,7 +37,7 @@ where
 }
 
 /// Axes of a spectrum or FID.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub struct Axes<A>(A);
 

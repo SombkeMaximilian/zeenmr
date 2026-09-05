@@ -24,7 +24,7 @@ pub type StaticDimOrder<const N: usize> = DimOrder<StaticDim<usize, N>>;
 /// An order is always a permutation of `0..rank`, so no dimension is visited
 /// twice or skipped, and indexing a slice of that rank by any entry is
 /// infallible.
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
@@ -186,7 +186,7 @@ pub type DynArrayIndex = ArrayIndex<DynDim<usize>>;
 pub type StaticArrayIndex<const N: usize> = ArrayIndex<StaticDim<usize, N>>;
 
 /// Multidimensional index into an array.
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ArrayIndex<D>(D);
 
@@ -356,7 +356,7 @@ pub type StaticShape<const N: usize> = Shape<StaticDim<usize, N>>;
 /// Shape of an array.
 ///
 /// The entries represent the extent of the array along each dimension.
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub struct Shape<D>(D);
 
@@ -548,7 +548,7 @@ pub type StaticStrides<const N: usize> = Strides<StaticDim<usize, N>>;
 ///
 /// The entries represent how far apart elements along a dimension are in the
 /// contiguous buffer.
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub struct Strides<D>(D);
 
@@ -633,7 +633,7 @@ pub type DynLayout = Layout<DynDim<usize>>;
 pub type StaticLayout<const N: usize> = Layout<StaticDim<usize, N>>;
 
 /// Layout of an array.
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),

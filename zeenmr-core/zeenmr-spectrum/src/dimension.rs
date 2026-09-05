@@ -196,7 +196,7 @@ where
 }
 
 /// Multidimensional quantity with a size determined at compile-time.
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
