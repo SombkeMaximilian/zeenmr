@@ -1186,6 +1186,33 @@ impl Layout<DynDim<usize>> {
         // contribute to none of them.
         self
     }
+
+    /// Permutes the layout into `order` with adjacent conforming dimensions
+    /// collapsed.
+    ///
+    /// Dimension `i` of the intermediate is dimension `order[i]` of `self`,
+    /// as in [`Layout::permuted`], filtering out any of extent 1. A trailing
+    /// sequence of dimensions is collapsed whenever the stride of the dimension
+    /// earlier in the order equals the product of the extent and stride of the
+    /// later one.
+    ///
+    /// The result always has a rank of at least 1. Its last dimension is always
+    /// a valid lane dimension. That dimension is the longest sequence `order`
+    /// admits, and its lanes are contiguous exactly when the fastest non-unit
+    /// dimension of `self` under `order` has stride 1.
+    ///
+    /// Note that any `DimIndex` created prior to this method call potentially
+    /// becomes meaningless.
+    ///
+    /// Returns `None` if `order` has a different rank than `self`.
+    pub fn collapse_compatible<D>(&mut self, order: &DimOrder<D>) -> Option<&mut Self>
+    where
+        D: Dimension<Elem = usize>,
+    {
+        *self = self.compatible_collapsed(order)?;
+
+        Some(self)
+    }
 }
 
 impl<D1> Layout<D1>
@@ -1267,6 +1294,73 @@ where
         // can't make it overflow if the original didn't overflow (which
         // all other constructors guarantee) and does not change it
         Some(self)
+    }
+
+    /// Returns the layout permuted into `order` with adjacent conforming
+    /// dimensions collapsed.
+    ///
+    /// Dimension `i` of the intermediate is dimension `order[i]` of `self`,
+    /// as in [`Layout::permuted`], filtering out any of extent 1. A trailing
+    /// sequence of dimensions is collapsed whenever the stride of the dimension
+    /// earlier in the order equals the product of the extent and stride of the
+    /// later one.
+    ///
+    /// The result always has a rank of at least 1. Its last dimension is always
+    /// a valid lane dimension. That dimension is the longest sequence `order`
+    /// admits, and its lanes are contiguous exactly when the fastest non-unit
+    /// dimension of `self` under `order` has stride 1.
+    ///
+    /// Note that any `DimIndex` created prior to this method call potentially
+    /// becomes meaningless.
+    ///
+    /// Returns `None` if `order` has a different rank than `self`.
+    pub fn compatible_collapsed<D2>(&self, order: &DimOrder<D2>) -> Option<Layout<DynDim<usize>>>
+    where
+        D2: Dimension<Elem = usize>,
+    {
+        const { assert_rank_compatible::<D1, D2>() };
+        if order.rank() != self.rank() {
+            return None;
+        }
+
+        let extents = self.shape.as_slice();
+        let strides = self.strides.as_slice();
+
+        let non_unit = order.iter().filter(|d| extents[d.0] > 1).collect::<Vec<DimIndex>>();
+        let Some((&fast, rest)) = non_unit.split_last() else {
+            return Layout::new(
+                Shape::new(DynDim::from_array([1])),
+                Strides::new(DynDim::from_array([1])),
+                self.offset
+            );
+        };
+
+        let base = strides[fast.0];
+        let mut run = extents[fast.0];
+        let mut kept = rest.len();
+        for dim in rest.iter().rev() {
+            if base.checked_mul(run) != Some(strides[dim.0]) {
+                break;
+            }
+            run *= extents[dim.0];
+            kept -= 1;
+        }
+
+        let mut new_extents = Vec::with_capacity(kept + 1);
+        let mut new_strides = Vec::with_capacity(kept + 1);
+        for dim in rest[..kept].iter() {
+            new_extents.push(extents[dim.0]);
+            new_strides.push(strides[dim.0]);
+        }
+        new_extents.push(run);
+        new_strides.push(base);
+
+        // never returns `None`.
+        Layout::new(
+            Shape::new(DynDim::from_vec(new_extents)),
+            Strides::new(DynDim::from_vec(new_strides)),
+            self.offset,
+        )
     }
 
     /// Returns the linear buffer offset of `index`.
@@ -2189,6 +2283,51 @@ mod tests {
 
         assert_eq!(permuted, permuted_in_place);
         assert_eq!(restored, restored_in_place);
+    }
+
+    #[test]
+    fn collapsed_layout() {
+        let shape = Shape::new(DynDim::from_array([4, 3, 5]));
+        let row_major = Layout::row_major(shape, 0).expect("hand verified");
+        let order = DynDimOrder::lexicographic(row_major.rank()).expect("DynDim can represent any rank");
+
+        let collapsed = row_major
+            .clone()
+            .compatible_collapsed(&order)
+            .expect("should not overflow");
+
+        assert_eq!(collapsed.shape().as_slice(), &[60]);
+        assert_eq!(collapsed.strides().as_slice(), &[1]);
+        assert_eq!(collapsed.offset(), row_major.offset());
+        assert_eq!(collapsed.max_offset(), row_major.max_offset());
+        assert_eq!(collapsed.len(), row_major.len());
+
+        let mut collapsed_in_place = row_major.clone();
+        collapsed_in_place
+            .collapse_compatible(&order)
+            .expect("should not overflow");
+
+        assert_eq!(collapsed, collapsed_in_place);
+
+        let uncollapsible = row_major
+            .clone()
+            .crop(DimIndex(2), 0..3)
+            .and_then(|layout| layout.compatible_collapsed(&order))
+            .expect("should not overflow");
+
+        assert_eq!(uncollapsible.shape().as_slice(), &[4, 3, 3]);
+        assert_eq!(uncollapsible.strides().as_slice(), &[15, 5, 1]);
+        assert_eq!(uncollapsible.offset(), row_major.offset());
+        assert_eq!(uncollapsible.max_offset(), 57);
+        assert_eq!(uncollapsible.len(), 36);
+
+        let mut uncollapsible_in_place = row_major.clone();
+        uncollapsible_in_place
+            .crop(DimIndex(2), 0..3)
+            .and_then(|layout| layout.collapse_compatible(&order))
+            .expect("should not overflow");
+
+        assert_eq!(uncollapsible, uncollapsible_in_place);
     }
 
     #[test]
