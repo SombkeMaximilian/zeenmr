@@ -482,17 +482,13 @@ where
             return None;
         }
 
-        let mut strides = D::from_fn(self.rank(), |_| 1).expect("D can always represent its own rank");
+        let mut strides =
+            D::from_fn(self.rank(), |_| 1).expect("D can always represent its own rank");
         if self.rank() != 0 {
             let strides = strides.as_mut_slice();
             let extents = self.as_slice();
             let mut product = 1_usize;
-            for (stride_dim, extent_dim) in order
-                .iter()
-                .rev()
-                .skip(1)
-                .zip(order.iter().rev())
-            {
+            for (stride_dim, extent_dim) in order.iter().rev().skip(1).zip(order.iter().rev()) {
                 product = product.checked_mul(extents[extent_dim.0])?;
                 strides[stride_dim.0] = product;
             }
@@ -1326,12 +1322,15 @@ where
         let extents = self.shape.as_slice();
         let strides = self.strides.as_slice();
 
-        let non_unit = order.iter().filter(|d| extents[d.0] > 1).collect::<Vec<DimIndex>>();
+        let non_unit = order
+            .iter()
+            .filter(|d| extents[d.0] > 1)
+            .collect::<Vec<DimIndex>>();
         let Some((&fast, rest)) = non_unit.split_last() else {
             return Layout::new(
                 Shape::new(DynDim::from_array([1])),
                 Strides::new(DynDim::from_array([1])),
-                self.offset
+                self.offset,
             );
         };
 
@@ -1983,9 +1982,13 @@ mod tests {
     #[test]
     fn strides_by_order() {
         let shape = Shape::new(DynDim::from_array([2, 3, 4]));
-        let row_major = shape.strides(DimOrder::lexicographic(shape.rank()).expect("DynDim can represent any rank"));
-        let column_major = shape.strides(DimOrder::colexicographic(shape.rank()).expect("DynDim can represent any rank"));
-        let arbitrary = shape.strides(DimOrder::new(DynDim::from_array([2, 0, 1])).expect("hand verified"));
+        let row_major = shape
+            .strides(DimOrder::lexicographic(shape.rank()).expect("DynDim can represent any rank"));
+        let column_major = shape.strides(
+            DimOrder::colexicographic(shape.rank()).expect("DynDim can represent any rank"),
+        );
+        let arbitrary =
+            shape.strides(DimOrder::new(DynDim::from_array([2, 0, 1])).expect("hand verified"));
 
         assert_eq!(shape.row_major_strides(), row_major);
         assert_eq!(shape.column_major_strides(), column_major);
@@ -2289,7 +2292,8 @@ mod tests {
     fn collapsed_layout() {
         let shape = Shape::new(DynDim::from_array([4, 3, 5]));
         let row_major = Layout::row_major(shape, 0).expect("hand verified");
-        let order = DynDimOrder::lexicographic(row_major.rank()).expect("DynDim can represent any rank");
+        let order =
+            DynDimOrder::lexicographic(row_major.rank()).expect("DynDim can represent any rank");
 
         let collapsed = row_major
             .clone()
