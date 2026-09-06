@@ -203,7 +203,7 @@ unsafe impl<T> SplitAt for LaneElemStrided<'_, T> {
     }
 }
 
-/// Strided iterator over mutable references of the elements of a buffer.
+/// Strided iterator over mutable references to the elements of a buffer.
 #[derive(Debug)]
 pub struct LaneElemStridedMut<'s, T> {
     /// Access pointer of the storage.

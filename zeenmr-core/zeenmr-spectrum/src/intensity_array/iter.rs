@@ -7,7 +7,7 @@ mod indices;
 pub use indices::Indices;
 
 mod array_elements;
-pub use array_elements::ArrayElemContiguous;
+pub use array_elements::{ArrayElemContiguous, ArrayElemContiguousMut};
 
 mod lane_elements;
 pub use lane_elements::{LaneElemStrided, LaneElemStridedMut, LaneOffsets};
