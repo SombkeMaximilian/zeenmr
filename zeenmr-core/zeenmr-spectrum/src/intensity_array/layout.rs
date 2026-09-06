@@ -1539,37 +1539,37 @@ impl LaneGeometry {
 
     /// Returns the offset of the first element in the lane.
     #[inline]
-    pub fn offset(&self) -> usize {
+    pub fn offset(self) -> usize {
         self.offset
     }
 
     /// Returns the stride between lane elements.
     #[inline]
-    pub fn stride(&self) -> usize {
+    pub fn stride(self) -> usize {
         self.stride
     }
 
     /// Returns the number of lane elements.
     #[inline]
-    pub fn len(&self) -> usize {
+    pub fn len(self) -> usize {
         self.count
     }
 
     /// Returns `true` if the lane geometry addresses no elements.
     #[inline]
-    pub fn is_empty(&self) -> bool {
+    pub fn is_empty(self) -> bool {
         self.len() == 0
     }
 
     /// Returns true if traversing the geometry only yields unique offsets.
     #[inline]
-    pub fn is_injective(&self) -> bool {
+    pub fn is_injective(self) -> bool {
         self.stride > 0 || self.count <= 1
     }
 
     /// Returns `true` if the lane's elements are adjacent in the buffer.
     #[inline]
-    pub fn is_contiguous(&self) -> bool {
+    pub fn is_contiguous(self) -> bool {
         self.stride == 1 || self.count <= 1
     }
 
@@ -1582,7 +1582,7 @@ impl LaneGeometry {
     /// case, [`LaneGeometry::fits_within`] will return `false` for any `len`
     /// regardless, however.
     #[inline]
-    pub fn contiguous_range(&self) -> Option<std::ops::Range<usize>> {
+    pub fn contiguous_range(self) -> Option<std::ops::Range<usize>> {
         if self.is_contiguous() {
             Some(self.offset..self.offset.checked_add(self.count)?)
         } else {
@@ -1595,7 +1595,7 @@ impl LaneGeometry {
     /// Returns `None` if the lane is empty, and therefore addresses nothing, or
     /// if the computation overflows.
     #[inline]
-    pub fn max_offset(&self) -> Option<usize> {
+    pub fn max_offset(self) -> Option<usize> {
         let last = self.count.checked_sub(1)?;
 
         self.offset
@@ -1606,7 +1606,7 @@ impl LaneGeometry {
     ///
     /// An empty lane always fits. A lane whose offsets overflow never does.
     #[inline]
-    pub fn fits_within(&self, len: usize) -> bool {
+    pub fn fits_within(self, len: usize) -> bool {
         if self.count == 0 {
             true
         } else {
@@ -1619,7 +1619,7 @@ impl LaneGeometry {
     /// Returns `None` if `index` is out of bounds or if the computation
     /// overflows.
     #[inline]
-    pub fn offset_of(&self, index: usize) -> Option<usize> {
+    pub fn offset_of(self, index: usize) -> Option<usize> {
         if index < self.count {
             self.offset
                 .checked_add(index.checked_mul(self.stride)?)
@@ -1632,7 +1632,7 @@ impl LaneGeometry {
     ///
     /// `index` must be addressable by the lane.
     #[inline]
-    pub fn offset_of_unvalidated(&self, index: usize) -> usize {
+    pub fn offset_of_unvalidated(self, index: usize) -> usize {
         debug_assert!(index < self.count);
 
         self.offset + index * self.stride
