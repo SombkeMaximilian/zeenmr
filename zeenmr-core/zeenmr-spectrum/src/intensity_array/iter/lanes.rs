@@ -208,7 +208,9 @@ where
     ///
     /// Lane views are numbered according to `order` over the other dimensions.
     ///
-    /// Returns `None` in the same situations that [`LaneGeometries::new`] does.
+    /// Returns `None` in the same situations that [`LaneGeometries::new`] does,
+    /// or if [`Layout::max_offset`] is not less than the number of elements in
+    /// `base`.
     ///
     /// Prefer the `lanes_*` methods on [`Array`].
     ///
@@ -320,7 +322,8 @@ where
     /// Lane views are numbered according to `order` over the other dimensions.
     ///
     /// Returns `None` in the same situations that [`LaneGeometries::new`] does,
-    /// and if `layout` is self-overlapping.
+    /// or if `layout` is self-overlapping, or if [`Layout::max_offset`] is not
+    /// less than the number of elements in `base`.
     ///
     /// Prefer the `lanes_*` methods on [`Array`].
     ///
@@ -347,7 +350,7 @@ where
     /// Lane views are numbered according to `order` over the other dimensions.
     ///
     /// Returns `None` in the same situations that [`LaneGeometries::new`] does,
-    /// and if `layout` is self-overlapping.
+    /// or if `layout` is self-overlapping.
     ///
     /// Prefer the `lanes_*` methods on [`Array`].
     ///

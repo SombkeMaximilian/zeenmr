@@ -1057,11 +1057,18 @@ where
             .map(|extent| self.len / extent)
     }
 
-    /// Returns `true` if the lanes along `dim` in memory order are consecutive,
-    /// contiguous chunks of the underlying storage.
+    /// Returns `true` if the lanes along `dim` are contiguous and without gaps.
     ///
     /// Always returns `false` if `dim` is out of range.
     pub fn lanes_are_chunks(&self, dim: DimIndex) -> bool {
+        self.lanes_are_contiguous(dim) && self.is_packed()
+    }
+
+    /// Returns `true` if each lane along `dim` is a contiguous chunk of the
+    /// underlying storage.
+    ///
+    /// Always returns `false` if `dim` is out of range.
+    pub fn lanes_are_contiguous(&self, dim: DimIndex) -> bool {
         let Some(extent) = self.shape.get(dim) else {
             return false;
         };
@@ -1069,7 +1076,7 @@ where
             return false;
         };
 
-        (extent == 1 || stride == 1) && self.is_packed()
+        extent == 1 || stride == 1
     }
 
     /// Returns the geometry of the `lane`-th lane along `dim`.
