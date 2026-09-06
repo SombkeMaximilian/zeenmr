@@ -265,7 +265,7 @@ impl<'s, T> IntoIterator for LaneMut<'s, T> {
                 // SAFETY: this lane's invariants are exactly the ones
                 // `LaneElemStridedMut::from_raw` requires, and consuming `self`
                 // transfers the exclusive borrow to the iterator.
-                unsafe { LaneElemStridedMut::from_raw(access, geometry) },
+                unsafe { LaneElemStridedMut::from_access(access, geometry) },
             ),
         }
     }
@@ -288,7 +288,7 @@ where
                 // SAFETY: this lane's invariants are exactly the ones
                 // `ParLaneElemStridedMut::from_raw` requires, and consuming
                 // `self` transfers the exclusive borrow to the iterator.
-                unsafe { Par::new(LaneElemStridedMut::from_raw(access, geometry)) },
+                unsafe { Par::new(LaneElemStridedMut::from_access(access, geometry)) },
             ),
         }
     }
@@ -511,7 +511,7 @@ impl<'s, T> LaneMut<'s, T> {
                 // SAFETY: this lane's invariants are exactly the ones
                 // `LaneElemStridedMut::from_raw` requires, and the `&mut self`
                 // borrow  keeps the returned references unique.
-                unsafe { LaneElemStridedMut::from_raw(access.reborrow(), *geometry) },
+                unsafe { LaneElemStridedMut::from_access(access.reborrow(), *geometry) },
             ),
         }
     }
@@ -554,7 +554,7 @@ where
                 // SAFETY: this lane's invariants are exactly the ones
                 // `ParLaneElemStridedMut::from_raw` requires, and the
                 // `&mut self` borrow  keeps the returned references unique.
-                unsafe { Par::new(LaneElemStridedMut::from_raw(access.reborrow(), *geometry)) },
+                unsafe { Par::new(LaneElemStridedMut::from_access(access.reborrow(), *geometry)) },
             ),
         }
     }

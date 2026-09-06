@@ -300,7 +300,7 @@ impl<'s, T> LaneElemStridedMut<'s, T> {
     /// allocation `access` points to, those elements must be borrowed mutably
     /// for `'s`. No other live reference to them must exist, and `geometry`
     /// must be injective so no offset is yielded twice.
-    pub(crate) unsafe fn from_raw(access: RawAccessMut<'s, T>, geometry: LaneGeometry) -> Self {
+    pub(crate) unsafe fn from_access(access: RawAccessMut<'s, T>, geometry: LaneGeometry) -> Self {
         debug_assert!(geometry.is_injective());
 
         Self {
