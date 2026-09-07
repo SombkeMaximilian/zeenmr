@@ -2,8 +2,8 @@ use crate::dimension::{DimIndex, Dimension, DynDim, StaticDim, assert_rank_compa
 use crate::intensity_array::iter::{Lanes, LanesMut};
 use crate::intensity_array::storage::{RawAccess, RawAccessMut};
 use crate::intensity_array::{
-    ArrayIndex, DimOrder, Lane, LaneMut, Layout, RawStorage, RawStorageMut, Shape, Storage,
-    StorageMut, StorageOwned,
+    Access, AccessMut, ArrayIndex, DimOrder, Lane, LaneMut, Layout, RawStorage, RawStorageMut,
+    Shape, Storage, StorageMut, StorageOwned,
 };
 use std::borrow::Cow;
 use std::ops::{Index, IndexMut, RangeBounds};
@@ -272,7 +272,9 @@ where
     }
 
     /// Returns an immutable view of the entire array.
-    pub fn view(&self) -> ArrayView<'_, S::Elem, D> {
+    ///
+    /// Unlike [`Array::view`], this preserves that `S` is `Storage`.
+    pub fn slice_view(&self) -> ArrayView<'_, S::Elem, D> {
         Array {
             storage: self.storage.as_slice(),
             layout: self.layout.clone(),
@@ -286,7 +288,9 @@ where
     D: Dimension<Elem = usize>,
 {
     /// Returns a mutable view of the entire array.
-    pub fn view_mut(&mut self) -> ArrayViewMut<'_, S::Elem, D> {
+    ///
+    /// Unlike [`Array::view_mut`], this preserves that `S` is `StorageMut`.
+    pub fn slice_view_mut(&mut self) -> ArrayViewMut<'_, S::Elem, D> {
         let layout = self.layout.clone();
 
         Array {
@@ -369,6 +373,18 @@ where
                 layout,
             }),
             None => Err(self),
+        }
+    }
+
+    /// Returns an immutable view of the entire array.
+    pub fn view(&self) -> Array<Access<'_, S::Elem>, D> {
+        // SAFETY: the safety requirements of `RawStorage` are exactly the
+        // contract of `Access`.
+        let access = unsafe { Access::from_raw(self.storage.as_ptr()) };
+
+        Array {
+            storage: access,
+            layout: self.layout.clone(),
         }
     }
 
@@ -615,6 +631,18 @@ where
     S: RawStorageMut,
     D: Dimension<Elem = usize>,
 {
+    /// Returns an immutable view of the entire array.
+    pub fn view_mut(&mut self) -> Array<AccessMut<'_, S::Elem>, D> {
+        // SAFETY: the safety requirements of `RawStorageMut` are exactly the
+        // contract of `AccessMut`.
+        let access = unsafe { AccessMut::from_raw(self.storage.as_mut_ptr()) };
+
+        Array {
+            storage: access,
+            layout: self.layout.clone(),
+        }
+    }
+
     /// Returns the dimension along which lanes are contiguous, together with
     /// an iterator over those mutable lanes in memory order.
     ///
