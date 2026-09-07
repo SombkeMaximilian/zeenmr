@@ -1,4 +1,4 @@
-use crate::dimension::{DimIndex, Dimension};
+use crate::dimension::Dimension;
 use crate::intensity_array::iter::{
     LaneElemContiguous, LaneElemContiguousMut, LaneElemStrided, LaneElemStridedMut, LaneGeometries,
 };
@@ -191,22 +191,26 @@ where
     /// Creates an iterator over the elements addressed by `layout` within
     /// `base`.
     ///
-    /// Elements are yielded along `dim` and according to `order`.
+    /// Elements are yielded according to `order`.
     ///
-    /// Returns `None` in the same situations that [`LaneGeometries::new`] does,
-    /// or if [`Layout::max_offset`] is not less than the number of elements in
-    /// `base`, or if elements along `dim` are not contiguous in the layout.
+    /// Returns `None` if
+    /// - [`LaneGeometries::new`] does,
+    /// - [`Layout::max_offset`] is not less than the number of elements in
+    ///   `base`,
+    /// - `layout` and `order` have different ranks, or
+    /// - elements along the last dimension of `order` are not contiguous in the
+    ///   layout.
     ///
     /// Prefer the `elem_*` methods on [`Array`].
     ///
     /// [`Array`]: crate::intensity_array::Array
-    pub fn new(
-        base: &'s [T],
-        layout: Layout<D>,
-        dim: DimIndex,
-        order: DimOrder<D>,
-    ) -> Option<Self> {
-        if layout.max_offset() >= base.len() || !layout.lanes_are_contiguous(dim) {
+    pub fn new(base: &'s [T], layout: Layout<D>, order: DimOrder<D>) -> Option<Self> {
+        let dim = order.last()?;
+
+        if layout.rank() != order.rank()
+            || layout.max_offset() >= base.len()
+            || !layout.lanes_are_contiguous(dim)
+        {
             return None;
         }
 
@@ -225,10 +229,13 @@ where
     /// Creates an iterator over the elements addressed by `layout` within the
     /// allocation `access` points to.
     ///
-    /// Elements are yielded along `dim` and according to `order`.
+    /// Elements are yielded according to `order`.
     ///
-    /// Returns `None` in the same situations that [`LaneGeometries::new`] does,
-    /// or if elements along `dim` are not contiguous in the layout.
+    /// Returns `None` if
+    /// - [`LaneGeometries::new`] does,
+    /// - `layout` and `order` have different ranks, or
+    /// - elements along the last dimension of `order` are not contiguous in the
+    ///   layout.
     ///
     /// Prefer the `elem_*` methods on [`Array`].
     ///
@@ -242,9 +249,10 @@ where
     pub(crate) unsafe fn from_access(
         access: RawAccess<'s, T>,
         layout: Layout<D>,
-        dim: DimIndex,
         order: DimOrder<D>,
     ) -> Option<Self> {
+        let dim = order.last()?;
+
         if !layout.lanes_are_contiguous(dim) {
             return None;
         }
@@ -478,23 +486,25 @@ where
     /// Creates an iterator over mutable references to elements addressed by
     /// `layout` within `base`.
     ///
-    /// Elements are yielded along `dim` and according to `order`.
+    /// Elements are yielded according to `order`.
     ///
-    /// Returns `None` in the same situations that [`LaneGeometries::new`] does,
-    /// or if [`Layout::max_offset`] is not less than the number of elements in
-    /// `base`, or if elements along `dim` are not contiguous in the layout, or
-    /// if the layout is not non-overlapping.
+    /// Returns `None` if
+    /// - [`LaneGeometries::new`] does,
+    /// - [`Layout::max_offset`] is not less than the number of elements in
+    ///   `base`,
+    /// - the layout is not non-overlapping,
+    /// - `layout` and `order` have different ranks, or
+    /// - elements along the last dimension of `order` are not contiguous in the
+    ///   layout.
     ///
     /// Prefer the `elem_*` methods on [`Array`].
     ///
     /// [`Array`]: crate::intensity_array::Array
-    pub fn new(
-        base: &'s mut [T],
-        layout: Layout<D>,
-        dim: DimIndex,
-        order: DimOrder<D>,
-    ) -> Option<Self> {
-        if layout.max_offset() >= base.len()
+    pub fn new(base: &'s mut [T], layout: Layout<D>, order: DimOrder<D>) -> Option<Self> {
+        let dim = order.last()?;
+
+        if layout.rank() != order.rank()
+            || layout.max_offset() >= base.len()
             || !layout.lanes_are_contiguous(dim)
             || !layout.is_non_overlapping()
         {
@@ -516,11 +526,14 @@ where
     /// Creates an iterator over mutable references to elements addressed by
     /// `layout` within the allocation `access` points to.
     ///
-    /// Elements are yielded along `dim` and according to `order`.
+    /// Elements are yielded according to `order`.
     ///
-    /// Returns `None` in the same situations that [`LaneGeometries::new`] does,
-    /// or if elements along `dim` are not contiguous in the layout, or if the
-    /// layout is not non-overlapping.
+    /// Returns `None` if
+    /// - [`LaneGeometries::new`] does,
+    /// - the layout is not non-overlapping,
+    /// - `layout` and `order` have different ranks, or
+    /// - elements along the last dimension of `order` are not contiguous in the
+    ///   layout.
     ///
     /// Prefer the `elem_*` methods on [`Array`].
     ///
@@ -534,10 +547,14 @@ where
     pub(crate) unsafe fn from_access(
         access: RawAccessMut<'s, T>,
         layout: Layout<D>,
-        dim: DimIndex,
         order: DimOrder<D>,
     ) -> Option<Self> {
-        if !layout.lanes_are_contiguous(dim) || !layout.is_non_overlapping() {
+        let dim = order.last()?;
+
+        if layout.rank() != order.rank()
+            || !layout.lanes_are_contiguous(dim)
+            || !layout.is_non_overlapping()
+        {
             return None;
         }
 
@@ -781,22 +798,21 @@ where
     /// Creates an iterator over the elements addressed by `layout` within
     /// `base`.
     ///
-    /// Elements are yielded along `dim` and according to `order`.
+    /// Elements are yielded according to `order`.
     ///
-    /// Returns `None` in the same situations that [`LaneGeometries::new`] does,
-    /// or if [`Layout::max_offset`] is not less than the number of elements in
-    /// `base`.
+    /// Returns `None` if
+    /// - [`LaneGeometries::new`] does,
+    /// - [`Layout::max_offset`] is not less than the number of elements in
+    ///   `base`,
+    /// - `layout` and `order` have different ranks.
     ///
     /// Prefer the `elem_*` methods on [`Array`].
     ///
     /// [`Array`]: crate::intensity_array::Array
-    pub fn new(
-        base: &'s [T],
-        layout: Layout<D>,
-        dim: DimIndex,
-        order: DimOrder<D>,
-    ) -> Option<Self> {
-        if layout.max_offset() >= base.len() {
+    pub fn new(base: &'s [T], layout: Layout<D>, order: DimOrder<D>) -> Option<Self> {
+        let dim = order.last()?;
+
+        if layout.rank() != order.rank() || layout.max_offset() >= base.len() {
             return None;
         }
 
@@ -815,9 +831,10 @@ where
     /// Creates an iterator over the elements addressed by `layout` within the
     /// allocation `access` points to.
     ///
-    /// Elements are yielded along `dim` and according to `order`.
+    /// Elements are yielded according to `order`.
     ///
-    /// Returns `None` in the same situations that [`LaneGeometries::new`] does.
+    /// Returns `None` in the same situations that [`LaneGeometries::new`] does,
+    /// or if `layout` and `order` have different ranks.
     ///
     /// Prefer the `elem_*` methods on [`Array`].
     ///
@@ -831,9 +848,9 @@ where
     pub(crate) unsafe fn from_access(
         access: RawAccess<'s, T>,
         layout: Layout<D>,
-        dim: DimIndex,
         order: DimOrder<D>,
     ) -> Option<Self> {
+        let dim = order.last()?;
         let lane_len = layout.shape().get(dim)?;
         let geometries = LaneGeometries::new(layout, dim, order)?;
 
@@ -1033,22 +1050,25 @@ where
     /// Creates an iterator over mutable references to elements addressed by
     /// `layout` within `base`.
     ///
-    /// Elements are yielded along `dim` and according to `order`.
+    /// Elements are yielded according to `order`.
     ///
-    /// Returns `None` in the same situations that [`LaneGeometries::new`] does,
-    /// or if [`Layout::max_offset`] is not less than the number of elements in
-    /// `base`, or if the layout is not non-overlapping.
+    /// Returns `None` if
+    /// - [`LaneGeometries::new`] does,
+    /// - [`Layout::max_offset`] is not less than the number of elements in
+    ///   `base`,
+    /// - the layout is not non-overlapping, or
+    /// - `layout` and `order` have different ranks.
     ///
     /// Prefer the `elem_*` methods on [`Array`].
     ///
     /// [`Array`]: crate::intensity_array::Array
-    pub fn new(
-        base: &'s mut [T],
-        layout: Layout<D>,
-        dim: DimIndex,
-        order: DimOrder<D>,
-    ) -> Option<Self> {
-        if layout.max_offset() >= base.len() || !layout.is_non_overlapping() {
+    pub fn new(base: &'s mut [T], layout: Layout<D>, order: DimOrder<D>) -> Option<Self> {
+        let dim = order.last()?;
+
+        if layout.rank() != order.rank()
+            || layout.max_offset() >= base.len()
+            || !layout.is_non_overlapping()
+        {
             return None;
         }
 
@@ -1067,10 +1087,11 @@ where
     /// Creates an iterator over mutable references to elements addressed by
     /// `layout` within the allocation `access` points to.
     ///
-    /// Elements are yielded along `dim` and according to `order`.
+    /// Elements are yielded according to `order`.
     ///
     /// Returns `None` in the same situations that [`LaneGeometries::new`] does,
-    /// or if the layout is not non-overlapping.
+    /// or if the layout is not non-overlapping, or if `layout` and `order` have
+    /// different ranks.
     ///
     /// Prefer the `elem_*` methods on [`Array`].
     ///
@@ -1084,10 +1105,11 @@ where
     pub(crate) unsafe fn from_access(
         access: RawAccessMut<'s, T>,
         layout: Layout<D>,
-        dim: DimIndex,
         order: DimOrder<D>,
     ) -> Option<Self> {
-        if !layout.is_non_overlapping() {
+        let dim = order.last()?;
+
+        if layout.rank() != order.rank() || !layout.is_non_overlapping() {
             return None;
         }
 

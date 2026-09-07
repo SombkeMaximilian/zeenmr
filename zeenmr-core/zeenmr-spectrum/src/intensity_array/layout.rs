@@ -116,6 +116,16 @@ where
             .map(|&dim| DimIndex(dim))
     }
 
+    /// Returns the first dimension, or `None` if the rank of `self` is 0.
+    pub fn first(&self) -> Option<DimIndex> {
+        self.0.as_slice().first().copied().map(DimIndex)
+    }
+
+    /// Returns the last dimension, or `None` if the rank of `self` is 0.
+    pub fn last(&self) -> Option<DimIndex> {
+        self.0.as_slice().last().copied().map(DimIndex)
+    }
+
     /// Returns an iterator over the dimensions from slowest to fastest
     /// varying.
     pub fn iter(&self) -> impl DoubleEndedIterator<Item = DimIndex> + ExactSizeIterator {
