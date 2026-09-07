@@ -83,20 +83,23 @@ where
     // TODO: replace this with fastest lane iteration
     fn eq(&self, other: &Array<S2, D2>) -> bool {
         const { assert_rank_compatible::<D1, D2>() };
-
-        if self.shape().as_slice() != other.shape().as_slice() {
+        if self.rank() != other.rank() || self.shape().as_slice() != other.shape().as_slice() {
             return false;
         }
 
-        self.shape()
-            .indices_lexicographic()
-            .expect("should be validated at construction")
-            .all(|index| {
-                matches!(
-                    (self.get(&index), other.get(&index)),
-                    (Some(a), Some(b)) if a == b
-                )
-            })
+        let self_order = self.layout.memory_order();
+        let other_order = self_order
+            .to_dimension::<D2>()
+            .expect("rank comparison passed");
+
+        self.elem_with_order(&self_order)
+            .expect("memory order has the rank of self")
+            .zip(
+                other
+                    .elem_with_order(&other_order)
+                    .expect("rank comparison passed"),
+            )
+            .all(|(a, b)| *a == *b)
     }
 }
 
