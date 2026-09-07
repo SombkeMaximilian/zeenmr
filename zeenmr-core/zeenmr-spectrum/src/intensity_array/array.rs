@@ -145,7 +145,7 @@ where
         // SAFETY: `Layout::linear` returned `Some`, so every component of
         // `index` is less than its extent and the offset is at most
         // `max_offset`.
-        unsafe { self.elem_unchecked(linear) }
+        unsafe { self.get_from_linear_unchecked(linear) }
     }
 }
 
@@ -197,7 +197,7 @@ where
         // SAFETY: `Layout::linear` returned `Some`, so every component of
         // `index` is less than its extent and the offset is at most
         // `max_offset`.
-        unsafe { self.elem_unchecked_mut(linear) }
+        unsafe { self.get_from_linear_unchecked_mut(linear) }
     }
 }
 
@@ -1051,7 +1051,7 @@ where
         // SAFETY: `Layout::linear` returned `Some`, so every component of
         // `index` is less than its extent and the offset is at most
         // `max_offset`.
-        Some(unsafe { self.elem_unchecked(linear) })
+        Some(unsafe { self.get_from_linear_unchecked(linear) })
     }
 
     /// Returns a reference to the element at `index`, eliding any checks.
@@ -1068,7 +1068,7 @@ where
 
         // SAFETY: the caller guarantees that `index` is in bounds, so the
         // offset is at most `max_offset`.
-        unsafe { self.elem_unchecked(self.layout.linear_unvalidated(index)) }
+        unsafe { self.get_from_linear_unchecked(self.layout.linear_unvalidated(index)) }
     }
 
     /// Returns the lane along `dim` that passes through `index`.
@@ -1098,7 +1098,7 @@ where
     /// # Safety
     ///
     /// `linear` must not exceed [`Layout::max_offset`] of `self.layout`.
-    unsafe fn elem_unchecked(&self, linear: usize) -> &S::Elem {
+    unsafe fn get_from_linear_unchecked(&self, linear: usize) -> &S::Elem {
         debug_assert!(linear <= self.layout.max_offset());
 
         // SAFETY: the type invariant establishes that `max_offset` is a valid
@@ -1130,7 +1130,7 @@ where
         // SAFETY: `Layout::linear` returned `Some`, so every component of
         // `index` is less than its extent and the offset is at most
         // `max_offset`.
-        Some(unsafe { self.elem_unchecked_mut(linear) })
+        Some(unsafe { self.get_from_linear_unchecked_mut(linear) })
     }
 
     /// Returns a mutable reference to the element at `index`, eliding any
@@ -1148,7 +1148,7 @@ where
 
         // SAFETY: the caller guarantees that `index` is in bounds, so the
         // offset is at most `max_offset`.
-        unsafe { self.elem_unchecked_mut(self.layout.linear_unvalidated(index)) }
+        unsafe { self.get_from_linear_unchecked_mut(self.layout.linear_unvalidated(index)) }
     }
 
     /// Returns the mutable lane along `dim` that passes through `index`.
@@ -1185,7 +1185,7 @@ where
     /// # Safety
     ///
     /// `linear` must not exceed [`Layout::max_offset`] of `self.layout`.
-    unsafe fn elem_unchecked_mut(&mut self, linear: usize) -> &mut S::Elem {
+    unsafe fn get_from_linear_unchecked_mut(&mut self, linear: usize) -> &mut S::Elem {
         debug_assert!(linear <= self.layout.max_offset());
 
         // SAFETY: the type invariant establishes that `max_offset` is a valid
@@ -1573,7 +1573,8 @@ mod tests {
     fn collapsed_layout() {
         let shape = Shape::new(DynDim::from_array([4, 3, 5]));
         let array = ArrayOwned::from_linear_fn(shape, |i| i as i32).expect("hand verified");
-        let order = DynDimOrder::lexicographic(array.rank()).expect("DynDim can represent any rank");
+        let order =
+            DynDimOrder::lexicographic(array.rank()).expect("DynDim can represent any rank");
 
         let collapsed = array
             .view()
@@ -1582,15 +1583,14 @@ mod tests {
 
         assert_eq!(
             collapsed,
-            ArrayOwned::new(
-                (0..60).collect(),
-                Shape::new(DynDim::from_array([60])),
-            )
-            .expect("hand verified")
+            ArrayOwned::new((0..60).collect(), Shape::new(DynDim::from_array([60])),)
+                .expect("hand verified")
         );
 
         let mut collapsed_in_place = array.view();
-        collapsed_in_place.collapse_layout(&order).expect("should not overflow");
+        collapsed_in_place
+            .collapse_layout(&order)
+            .expect("should not overflow");
 
         assert_eq!(collapsed, collapsed_in_place);
     }
