@@ -152,8 +152,8 @@
 mod array;
 
 pub use array::{
-    Array, Array1D, Array2D, Array3D, ArrayArc, ArrayCow, ArrayDyn, ArrayOwned, ArrayRc, ArrayView,
-    ArrayViewMut,
+    Array, Array1D, Array2D, Array3D, ArrayArc, ArrayCow, ArrayDyn, ArrayOwned, ArrayRc,
+    ArraySliceView, ArraySliceViewMut, ArrayView, ArrayViewMut,
 };
 
 mod storage;

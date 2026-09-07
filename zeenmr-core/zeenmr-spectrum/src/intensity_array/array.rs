@@ -1,5 +1,8 @@
 use crate::dimension::{DimIndex, Dimension, DynDim, StaticDim, assert_rank_compatible};
-use crate::intensity_array::iter::{Lanes, LanesMut};
+use crate::intensity_array::iter::{
+    ArrayElem, ArrayElemContiguous, ArrayElemContiguousMut, ArrayElemMut, ArrayElemStrided,
+    ArrayElemStridedMut, Lanes, LanesMut,
+};
 use crate::intensity_array::storage::{RawAccess, RawAccessMut};
 use crate::intensity_array::{
     Access, AccessMut, ArrayIndex, DimOrder, Lane, LaneMut, Layout, RawStorage, RawStorageMut,
@@ -11,15 +14,21 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 #[cfg(feature = "rayon")]
-use crate::intensity_array::iter::{ParLanes, ParLanesMut};
+use crate::intensity_array::iter::{ParArrayElem, ParArrayElemMut, ParLanes, ParLanesMut};
 #[cfg(feature = "rayon")]
 use crate::iter::Par;
 
 /// Array borrowing its storage immutably.
-pub type ArrayView<'s, T, D> = Array<&'s [T], D>;
+pub type ArrayView<'s, T, D> = Array<Access<'s, T>, D>;
 
 /// Array borrowing its storage mutably.
-pub type ArrayViewMut<'s, T, D> = Array<&'s mut [T], D>;
+pub type ArrayViewMut<'s, T, D> = Array<AccessMut<'s, T>, D>;
+
+/// Array borrowing its storage as an immutable slice.
+pub type ArraySliceView<'s, T, D> = Array<&'s [T], D>;
+
+/// Array borrowing its storage as a mutable slice.
+pub type ArraySliceViewMut<'s, T, D> = Array<&'s mut [T], D>;
 
 /// Array owning its storage.
 pub type ArrayOwned<T, D> = Array<Box<[T]>, D>;
@@ -274,7 +283,7 @@ where
     /// Returns an immutable view of the entire array.
     ///
     /// Unlike [`Array::view`], this preserves that `S` is `Storage`.
-    pub fn slice_view(&self) -> ArrayView<'_, S::Elem, D> {
+    pub fn slice_view(&self) -> ArraySliceView<'_, S::Elem, D> {
         Array {
             storage: self.storage.as_slice(),
             layout: self.layout.clone(),
@@ -290,7 +299,7 @@ where
     /// Returns a mutable view of the entire array.
     ///
     /// Unlike [`Array::view_mut`], this preserves that `S` is `StorageMut`.
-    pub fn slice_view_mut(&mut self) -> ArrayViewMut<'_, S::Elem, D> {
+    pub fn slice_view_mut(&mut self) -> ArraySliceViewMut<'_, S::Elem, D> {
         let layout = self.layout.clone();
 
         Array {
@@ -377,7 +386,9 @@ where
     }
 
     /// Returns an immutable view of the entire array.
-    pub fn view(&self) -> Array<Access<'_, S::Elem>, D> {
+    ///
+    /// Prefer [`Array::slice_view`] for types that can yield a slice.
+    pub fn view(&self) -> ArrayView<'_, S::Elem, D> {
         // SAFETY: the safety requirements of `RawStorage` are exactly the
         // contract of `Access`.
         let access = unsafe { Access::from_raw(self.storage.as_ptr()) };
@@ -410,6 +421,43 @@ where
         self.layout.crop(dim, range)?;
 
         Some(self)
+    }
+
+    /// Returns an iterator over the elements of the array in arbitrary order.
+    ///
+    /// This is generally the most performant option.
+    pub fn elem(&self) -> ArrayElem<'_, S::Elem, DynDim<usize>> {
+        self.elem_with_order(&self.layout.memory_order())
+            .expect("memory order has the rank of self")
+    }
+
+    /// Returns an iterator over the elements of the array according to `order`.
+    ///
+    /// Returns `None` if `order` has a different rank than `self`.
+    pub fn elem_with_order(
+        &self,
+        order: &DimOrder<D>,
+    ) -> Option<ArrayElem<'_, S::Elem, DynDim<usize>>> {
+        let layout = self.layout.compatible_collapsed(order)?;
+        let order = layout.lexicographic_order();
+        let dim = order.last()?;
+
+        // SAFETY: `RawStorage` guarantees the base pointer is non-null and
+        // aligned, and the type invariant guarantees every offset `self.layout`
+        // addresses is valid — collapsing preserves that set exactly. The
+        // returned elements borrow `self`, so they stay borrowed for as long as
+        // the access pointer exists.
+        let access = unsafe { RawAccess::from_raw(self.storage.as_ptr()) };
+
+        if layout.lanes_are_contiguous(dim) {
+            // SAFETY: see above.
+            unsafe {
+                ArrayElemContiguous::from_access(access, layout, order).map(ArrayElem::Contiguous)
+            }
+        } else {
+            // SAFETY: see above.
+            unsafe { ArrayElemStrided::from_access(access, layout, order).map(ArrayElem::Strided) }
+        }
     }
 
     /// Returns the dimension along which lanes are contiguous, together with
@@ -471,7 +519,7 @@ where
 {
     /// Drops dimensions of extent 1 from the array.
     ///
-    /// The rank of the array reduces by the number of dropped dimensionas.
+    /// The rank of the array reduces by the number of dropped dimensions.
     /// Every other property of the array remains unchanged.
     ///
     /// Note that any `DimIndex` created prior to this method call potentially
@@ -504,7 +552,7 @@ where
     where
         D: Dimension<Elem = usize>,
     {
-        self.layout.collapse_compatible(&order)?;
+        self.layout.collapse_compatible(order)?;
 
         Some(self)
     }
@@ -521,8 +569,9 @@ where
     /// For owned storage, this clones the entire buffer. Converting the array
     /// to a dynamic one with [`Array::into_dyn`], and then calling
     /// [`Array::drop_unit_extents`] on the result will avoid the clone.
-    /// Alternatively, acquiring a view via [`Array::view`] and calling this
-    /// method on the result preserves the static array.
+    /// Alternatively, acquiring a view via [`Array::view`] or
+    /// [`Array::slice_view`] and calling this method on the result also avoids
+    /// the clone.
     ///
     /// [`Array::drop_unit_extents`]: ArrayDyn::drop_unit_extents
     ///
@@ -542,9 +591,9 @@ where
     /// `index`.
     ///
     /// For owned storage, this clones the entire buffer. Acquiring a view via
-    /// [`Array::view`] and calling this method on the result avoids the clone.
-    /// This operation can also be performed in place through
-    /// [`Array::restrict`].
+    /// [`Array::view`] or [`Array::slice_view`] and calling this method on the
+    /// result avoids the clone. This operation can also be performed in place
+    /// through [`Array::restrict`].
     ///
     /// Returns `None` if `dim` is out of range, or if `index` is not less
     /// than the extent along `dim`.
@@ -558,8 +607,9 @@ where
     /// Returns the array with its extent along `dim` restricted to `range`.
     ///
     /// For owned storage, this clones the entire buffer. Acquiring a view via
-    /// [`Array::view`] and calling this method on the result avoids the clone.
-    /// This operation can also be performed in place with [`Array::crop`].
+    /// [`Array::view`] or [`Array::slice_view`] and calling this method on the
+    /// result avoids the clone. This operation can also be performed in place
+    /// with [`Array::crop`].
     ///
     /// Returns `None` if `dim` is out of range, or if `range` is empty or not
     /// contained in `0..extent`.
@@ -583,8 +633,9 @@ where
     /// Returns the array with its dimensions reordered according to `order`.
     ///
     /// For owned storage, this clones the entire buffer. Acquiring a view via
-    /// [`Array::view`] and calling this method on the result avoids the clone.
-    /// This operation can also be performed in place with [`Array::permute`].
+    /// [`Array::view`] or [`Array::slice_view`] and calling this method on the
+    /// result avoids the clone. This operation can also be performed in place
+    /// with [`Array::permute`].
     ///
     /// Dimension `i` of the result is dimension `order[i]` of `self`, for both
     /// extents and strides. Permuting by [`Layout::memory_order`] yields the
@@ -605,10 +656,10 @@ where
     /// conforming dimensions collapsed.
     ///
     /// For owned storage, this clones the entire buffer. Acquiring a view via
-    /// [`Array::view`] and calling this method on the result avoids the clone.
-    /// This operation can also be performed in place with
-    /// [`Array::collapse_layout`] by first converting `self` to a dynamic rank
-    /// with [`Array::into_dyn`].
+    /// [`Array::view`] or [`Array::slice_view`] and calling this method on the
+    /// result avoids the clone. This operation can also be performed in place
+    /// with [`Array::collapse_layout`] by first converting `self` to a dynamic
+    /// rank with [`Array::into_dyn`].
     ///
     /// [`Array::collapse_layout`]: ArrayDyn::collapse_layout
     ///
@@ -645,6 +696,51 @@ where
     S::Elem: Sync,
     D: Dimension<Elem = usize>,
 {
+    /// Returns a parallel iterator over the elements of the array in arbitrary
+    /// order.
+    ///
+    /// This is generally the most performant option.
+    pub fn par_elem(&self) -> ParArrayElem<'_, S::Elem, DynDim<usize>> {
+        self.par_elem_with_order(&self.layout.memory_order())
+            .expect("memory order has the rank of self")
+    }
+
+    /// Returns a parallel iterator over the elements of the array according to
+    /// `order`.
+    ///
+    /// Returns `None` if `order` has a different rank than `self`.
+    pub fn par_elem_with_order(
+        &self,
+        order: &DimOrder<D>,
+    ) -> Option<ParArrayElem<'_, S::Elem, DynDim<usize>>> {
+        let layout = self.layout.compatible_collapsed(order)?;
+        let order = layout.lexicographic_order();
+        let dim = order.last()?;
+
+        // SAFETY: `RawStorage` guarantees the base pointer is non-null and
+        // aligned, and the type invariant guarantees every offset `self.layout`
+        // addresses is valid — collapsing preserves that set exactly. The
+        // returned elements borrow `self`, so they stay borrowed for as long as
+        // the access pointer exists.
+        let access = unsafe { RawAccess::from_raw(self.storage.as_ptr()) };
+
+        if layout.lanes_are_contiguous(dim) {
+            // SAFETY: see above.
+            unsafe {
+                ArrayElemContiguous::from_access(access, layout, order)
+                    .map(Par::new)
+                    .map(ParArrayElem::Contiguous)
+            }
+        } else {
+            // SAFETY: see above.
+            unsafe {
+                ArrayElemStrided::from_access(access, layout, order)
+                    .map(Par::new)
+                    .map(ParArrayElem::Strided)
+            }
+        }
+    }
+
     /// Returns the dimension along which lanes are contiguous, together with
     /// a parallel iterator over those lanes in memory order.
     ///
@@ -694,8 +790,11 @@ where
     S: RawStorageMut,
     D: Dimension<Elem = usize>,
 {
-    /// Returns an immutable view of the entire array.
-    pub fn view_mut(&mut self) -> Array<AccessMut<'_, S::Elem>, D> {
+    /// Returns a mutable view of the entire array.
+    ///
+    /// Prefer [`Array::slice_view_mut`] for types that can yield a mutable
+    /// slice.
+    pub fn view_mut(&mut self) -> ArrayViewMut<'_, S::Elem, D> {
         // SAFETY: the safety requirements of `RawStorageMut` are exactly the
         // contract of `AccessMut`.
         let access = unsafe { AccessMut::from_raw(self.storage.as_mut_ptr()) };
@@ -703,6 +802,49 @@ where
         Array {
             storage: access,
             layout: self.layout.clone(),
+        }
+    }
+
+    /// Returns an iterator over mutable references to the elements of the array
+    /// in arbitrary order.
+    ///
+    /// This is generally the most performant option.
+    ///
+    /// Returns `None` if the layout of `self` is not non-overlapping.
+    pub fn elem_mut(&mut self) -> Option<ArrayElemMut<'_, S::Elem, DynDim<usize>>> {
+        self.elem_with_order_mut(&self.layout.memory_order())
+    }
+
+    /// Returns an iterator over mutable references to the elements of the array
+    /// according to `order`.
+    ///
+    /// Returns `None` if `order` has a different rank than `self`, or if the
+    /// layout of `self` is not non-overlapping.
+    pub fn elem_with_order_mut(
+        &mut self,
+        order: &DimOrder<D>,
+    ) -> Option<ArrayElemMut<'_, S::Elem, DynDim<usize>>> {
+        let layout = self.layout.compatible_collapsed(order)?;
+        let order = layout.lexicographic_order();
+        let dim = order.last()?;
+
+        // SAFETY: `RawStorage` guarantees the base pointer is non-null and
+        // aligned, and the type invariant guarantees every offset the layout
+        // addresses is valid. The returned elements borrow `self`, so the
+        // elements stay borrowed for as long as the access pointer exists.
+        let access = unsafe { RawAccessMut::from_raw(self.storage.as_mut_ptr()) };
+
+        if layout.lanes_are_contiguous(dim) {
+            // SAFETY: see above.
+            unsafe {
+                ArrayElemContiguousMut::from_access(access, layout, order)
+                    .map(ArrayElemMut::Contiguous)
+            }
+        } else {
+            // SAFETY: see above.
+            unsafe {
+                ArrayElemStridedMut::from_access(access, layout, order).map(ArrayElemMut::Strided)
+            }
         }
     }
 
@@ -771,6 +913,52 @@ where
     S::Elem: Send,
     D: Dimension<Elem = usize>,
 {
+    /// Returns a parallel iterator over mutable references to the elements of
+    /// the array in arbitrary order.
+    ///
+    /// This is generally the most performant option.
+    ///
+    /// Returns `None` if the layout of `self` is not non-overlapping.
+    pub fn par_elem_mut(&mut self) -> Option<ParArrayElemMut<'_, S::Elem, DynDim<usize>>> {
+        self.par_elem_with_order_mut(&self.layout.memory_order())
+    }
+
+    /// Returns a parallel iterator over mutable references to the elements of
+    /// the array according to `order`.
+    ///
+    /// Returns `None` if `order` has a different rank than `self`, or if the
+    /// layout of `self` is not non-overlapping.
+    pub fn par_elem_with_order_mut(
+        &mut self,
+        order: &DimOrder<D>,
+    ) -> Option<ParArrayElemMut<'_, S::Elem, DynDim<usize>>> {
+        let layout = self.layout.compatible_collapsed(order)?;
+        let order = layout.lexicographic_order();
+        let dim = order.last()?;
+
+        // SAFETY: `RawStorage` guarantees the base pointer is non-null and
+        // aligned, and the type invariant guarantees every offset the layout
+        // addresses is valid. The returned elements borrow `self`, so the
+        // elements stay borrowed for as long as the access pointer exists.
+        let access = unsafe { RawAccessMut::from_raw(self.storage.as_mut_ptr()) };
+
+        if layout.lanes_are_contiguous(dim) {
+            // SAFETY: see above.
+            unsafe {
+                ArrayElemContiguousMut::from_access(access, layout, order)
+                    .map(Par::new)
+                    .map(ParArrayElemMut::Contiguous)
+            }
+        } else {
+            // SAFETY: see above.
+            unsafe {
+                ArrayElemStridedMut::from_access(access, layout, order)
+                    .map(Par::new)
+                    .map(ParArrayElemMut::Strided)
+            }
+        }
+    }
+
     /// Returns the dimension along which lanes are contiguous, together with
     /// a parallel iterator over those mutable lanes in memory order.
     ///
@@ -831,7 +1019,7 @@ where
     S: RawStorage,
     D1: Dimension<Elem = usize>,
 {
-    /// Reorders the dimensions accroding to `order`.
+    /// Reorders the dimensions according to `order`.
     ///
     /// Dimension `i` of the result is dimension `order[i]` of `self`, for both
     /// extents and strides. Permuting by [`Layout::memory_order`] yields the
@@ -1029,15 +1217,15 @@ fn index_rank_mismatch(index_rank: usize, array_rank: usize) -> ! {
 mod tests {
     use super::*;
     use crate::intensity_array::iter::{LaneElemStrided, LaneElemStridedMut};
-    use crate::intensity_array::{AccessMut, Strides};
+    use crate::intensity_array::{DynDimOrder, Strides};
     use static_assertions::assert_not_impl_any;
 
     #[test]
     fn mutable_borrows_not_clone() {
         assert_not_impl_any!(ArrayViewMut<'_, u8, StaticDim<usize, 1>>: Copy, Clone);
         assert_not_impl_any!(ArrayViewMut<'_, u8, DynDim<usize>>: Copy, Clone);
-        assert_not_impl_any!(Array<AccessMut<'_, u8>, StaticDim<usize, 1>>: Copy, Clone);
-        assert_not_impl_any!(Array<AccessMut<'_, u8>, DynDim<usize>>: Copy, Clone);
+        assert_not_impl_any!(ArraySliceViewMut<'_, u8, StaticDim<usize, 1>>: Copy, Clone);
+        assert_not_impl_any!(ArraySliceViewMut<'_, u8, DynDim<usize>>: Copy, Clone);
     }
 
     #[test]
@@ -1379,6 +1567,32 @@ mod tests {
 
         assert_eq!(permuted, permuted_in_place);
         assert_eq!(restored, restored_in_place);
+    }
+
+    #[test]
+    fn collapsed_layout() {
+        let shape = Shape::new(DynDim::from_array([4, 3, 5]));
+        let array = ArrayOwned::from_linear_fn(shape, |i| i as i32).expect("hand verified");
+        let order = DynDimOrder::lexicographic(array.rank()).expect("DynDim can represent any rank");
+
+        let collapsed = array
+            .view()
+            .layout_collapsed(&order)
+            .expect("should not overflow");
+
+        assert_eq!(
+            collapsed,
+            ArrayOwned::new(
+                (0..60).collect(),
+                Shape::new(DynDim::from_array([60])),
+            )
+            .expect("hand verified")
+        );
+
+        let mut collapsed_in_place = array.view();
+        collapsed_in_place.collapse_layout(&order).expect("should not overflow");
+
+        assert_eq!(collapsed, collapsed_in_place);
     }
 
     #[test]

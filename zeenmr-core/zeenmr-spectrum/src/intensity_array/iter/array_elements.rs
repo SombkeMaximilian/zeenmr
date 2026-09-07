@@ -326,8 +326,8 @@ pub struct ArrayElemContiguousMut<'s, T, D> {
     ///
     /// All lanes returned by this iterator must
     /// - only address valid offsets into the allocation `access` points to,
-    /// - collectively be injective, s.t. no two lanes collectively ever
-    ///   address the same offset more than once, and
+    /// - collectively be injective, s.t. no two lanes collectively ever address
+    ///   the same offset more than once, and
     /// - be contiguous.
     geometries: LaneGeometries<D>,
     /// Element iterator at the front.

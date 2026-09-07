@@ -1,4 +1,7 @@
-use crate::intensity_array::iter::{LaneElemStrided, LaneElemStridedMut, StridedIterKind};
+use crate::intensity_array::iter::{
+    ArrayElemContiguous, ArrayElemContiguousMut, ArrayElemStrided, ArrayElemStridedMut,
+    LaneElemStrided, LaneElemStridedMut, StridedIterKind,
+};
 
 #[cfg(feature = "rayon")]
 use crate::intensity_array::iter::{Indices, LaneGeometries, LaneOffsets, Lanes, LanesMut};
@@ -10,6 +13,42 @@ use crate::iter::Par;
 /// Yields indices in lexicographic order: the last dimension varies fastest.
 #[cfg(feature = "rayon")]
 pub type ParIndices<D> = Par<Indices<D>>;
+
+/// Parallel, contiguous iterator over the elements of an array.
+#[cfg(feature = "rayon")]
+pub type ParArrayElemContiguous<'s, T, D> = Par<ArrayElemContiguous<'s, T, D>>;
+
+/// Parallel, contiguous iterator over mutable references to the elements of an
+/// array.
+#[cfg(feature = "rayon")]
+pub type ParArrayElemContiguousMut<'s, T, D> = Par<ArrayElemContiguousMut<'s, T, D>>;
+
+/// Parallel, strided iterator over the elements of an array.
+#[cfg(feature = "rayon")]
+pub type ParArrayElemStrided<'s, T, D> = Par<ArrayElemStrided<'s, T, D>>;
+
+/// Parallel, strided iterator over mutable references to the elements of an
+/// array.
+#[cfg(feature = "rayon")]
+pub type ParArrayElemStridedMut<'s, T, D> = Par<ArrayElemStridedMut<'s, T, D>>;
+
+/// Iterator over the elements of an array.
+pub type ArrayElem<'s, T, D> =
+    StridedIterKind<ArrayElemContiguous<'s, T, D>, ArrayElemStrided<'s, T, D>>;
+
+/// Parallel iterator over the elements of an array.
+#[cfg(feature = "rayon")]
+pub type ParArrayElem<'s, T, D> =
+    StridedIterKind<ParArrayElemContiguous<'s, T, D>, ParArrayElemStrided<'s, T, D>>;
+
+/// Iterator over mutable reference to the elements of an array.
+pub type ArrayElemMut<'s, T, D> =
+    StridedIterKind<ArrayElemContiguousMut<'s, T, D>, ArrayElemStridedMut<'s, T, D>>;
+
+/// Parallel iterator over mutable reference to the elements of an array.
+#[cfg(feature = "rayon")]
+pub type ParArrayElemMut<'s, T, D> =
+    StridedIterKind<ParArrayElemContiguousMut<'s, T, D>, ParArrayElemStridedMut<'s, T, D>>;
 
 /// Parallel iterator over the buffer offsets of a lane along one dimension.
 #[cfg(feature = "rayon")]
