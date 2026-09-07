@@ -327,7 +327,7 @@ pub struct ArrayElemContiguousMut<'s, T, D> {
     /// All lanes returned by this iterator must
     /// - only address valid offsets into the allocation `access` points to,
     /// - collectively be injective, s.t. no two lanes collectively ever
-    ///   address, the same offset more than once, and
+    ///   address the same offset more than once, and
     /// - be contiguous.
     geometries: LaneGeometries<D>,
     /// Element iterator at the front.
@@ -598,8 +598,8 @@ where
     ///
     /// # Panics
     ///
-    /// Panics if [`LaneGeometry::is_injective`] returns `false`, or if
-    /// [`LaneGeometry::contiguous_range`] returns `None`, for `geometry`.
+    /// Panics if [`LaneGeometry::contiguous_range`] returns `None` for
+    /// `geometry`.
     ///
     /// # Safety
     ///
@@ -803,7 +803,7 @@ where
     /// Returns `None` if
     /// - [`LaneGeometries::new`] does,
     /// - [`Layout::max_offset`] is not less than the number of elements in
-    ///   `base`,
+    ///   `base`, or
     /// - `layout` and `order` have different ranks.
     ///
     /// Prefer the `elem_*` methods on [`Array`].
@@ -851,6 +851,11 @@ where
         order: DimOrder<D>,
     ) -> Option<Self> {
         let dim = order.last()?;
+
+        if layout.rank() != order.rank() {
+            return None;
+        }
+
         let lane_len = layout.shape().get(dim)?;
         let geometries = LaneGeometries::new(layout, dim, order)?;
 
