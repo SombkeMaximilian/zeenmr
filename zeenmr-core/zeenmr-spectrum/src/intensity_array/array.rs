@@ -481,6 +481,33 @@ where
 
         self
     }
+
+    /// Permutes the array's layout into `order` with adjacent conforming
+    /// dimensions collapsed.
+    ///
+    /// Dimension `i` of the intermediate is dimension `order[i]` of `self`,
+    /// as in [`Layout::permuted`], filtering out any of extent 1. A trailing
+    /// sequence of dimensions is collapsed whenever the stride of the dimension
+    /// earlier in the order equals the product of the extent and stride of the
+    /// later one.
+    ///
+    /// The result always has a rank of at least 1. Its last dimension is always
+    /// a valid lane dimension. That dimension is the longest sequence `order`
+    /// admits, and its lanes are contiguous exactly when the fastest non-unit
+    /// dimension of `self` under `order` has stride 1.
+    ///
+    /// Note that any `DimIndex` created prior to this method call potentially
+    /// becomes meaningless.
+    ///
+    /// Returns `None` if `order` has a different rank than `self`.
+    pub fn collapse_layout<D>(&mut self, order: &DimOrder<D>) -> Option<&mut Self>
+    where
+        D: Dimension<Elem = usize>,
+    {
+        self.layout.collapse_compatible(&order)?;
+
+        Some(self)
+    }
 }
 
 impl<S, D> Array<S, D>
@@ -570,6 +597,42 @@ where
     {
         let mut array = self.clone();
         array.permute(order)?;
+
+        Some(array)
+    }
+
+    /// Returns the array with its layout permuted into `order` with adjacent
+    /// conforming dimensions collapsed.
+    ///
+    /// For owned storage, this clones the entire buffer. Acquiring a view via
+    /// [`Array::view`] and calling this method on the result avoids the clone.
+    /// This operation can also be performed in place with
+    /// [`Array::collapse_layout`] by first converting `self` to a dynamic rank
+    /// with [`Array::into_dyn`].
+    ///
+    /// [`Array::collapse_layout`]: ArrayDyn::collapse_layout
+    ///
+    /// Dimension `i` of the intermediate is dimension `order[i]` of `self`,
+    /// as in [`Layout::permuted`], filtering out any of extent 1. A trailing
+    /// sequence of dimensions is collapsed whenever the stride of the dimension
+    /// earlier in the order equals the product of the extent and stride of the
+    /// later one.
+    ///
+    /// The result always has a rank of at least 1. Its last dimension is always
+    /// a valid lane dimension. That dimension is the longest sequence `order`
+    /// admits, and its lanes are contiguous exactly when the fastest non-unit
+    /// dimension of `self` under `order` has stride 1.
+    ///
+    /// Note that any `DimIndex` created prior to this method call potentially
+    /// becomes meaningless.
+    ///
+    /// Returns `None` if `order` has a different rank than `self`.
+    pub fn layout_collapsed<D2>(&self, order: &DimOrder<D2>) -> Option<Array<S, DynDim<usize>>>
+    where
+        D2: Dimension<Elem = usize>,
+    {
+        let mut array = self.clone().into_dyn();
+        array.collapse_layout(order)?;
 
         Some(array)
     }
