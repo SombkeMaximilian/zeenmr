@@ -554,7 +554,12 @@ where
                 // SAFETY: this lane's invariants are exactly the ones
                 // `ParLaneElemStridedMut::from_raw` requires, and the
                 // `&mut self` borrow  keeps the returned references unique.
-                unsafe { Par::new(LaneElemStridedMut::from_access(access.reborrow(), *geometry)) },
+                unsafe {
+                    Par::new(LaneElemStridedMut::from_access(
+                        access.reborrow(),
+                        *geometry,
+                    ))
+                },
             ),
         }
     }
