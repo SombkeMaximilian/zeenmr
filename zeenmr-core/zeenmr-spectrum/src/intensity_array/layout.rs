@@ -489,7 +489,10 @@ where
     }
 
     /// Computes the contiguous strides in `order` from the array shape.
-    pub fn strides(&self, order: DimOrder<D>) -> Option<Strides<D>> {
+    ///
+    /// Returns `None` if `order` has a different rank than `self`, or if
+    /// computing the strides overflows.
+    pub fn strides(&self, order: &DimOrder<D>) -> Option<Strides<D>> {
         if self.rank() != order.rank() {
             return None;
         }
@@ -1157,6 +1160,12 @@ where
     /// `self`.
     pub fn lexicographic_order(&self) -> DimOrder<D> {
         DimOrder::lexicographic(self.rank()).expect("D can always represent its own rank")
+    }
+
+    /// Returns the colexicographic dimension order for `D` with the same rank
+    /// as `self`.
+    pub fn colexicographic_order(&self) -> DimOrder<D> {
+        DimOrder::colexicographic(self.rank()).expect("D can always represent its own rank")
     }
 
     /// Returns the dimension indices ordered from largest to smallest stride.
@@ -1972,13 +1981,14 @@ mod tests {
     #[test]
     fn strides_by_order() {
         let shape = Shape::new(DynDim::from_array([2, 3, 4]));
-        let row_major = shape
-            .strides(DimOrder::lexicographic(shape.rank()).expect("DynDim can represent any rank"));
+        let row_major = shape.strides(
+            &DimOrder::lexicographic(shape.rank()).expect("DynDim can represent any rank"),
+        );
         let column_major = shape.strides(
-            DimOrder::colexicographic(shape.rank()).expect("DynDim can represent any rank"),
+            &DimOrder::colexicographic(shape.rank()).expect("DynDim can represent any rank"),
         );
         let arbitrary =
-            shape.strides(DimOrder::new(DynDim::from_array([2, 0, 1])).expect("hand verified"));
+            shape.strides(&DimOrder::new(DynDim::from_array([2, 0, 1])).expect("hand verified"));
 
         assert_eq!(shape.row_major_strides(), row_major);
         assert_eq!(shape.column_major_strides(), column_major);

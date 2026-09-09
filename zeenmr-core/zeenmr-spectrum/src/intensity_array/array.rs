@@ -351,14 +351,14 @@ where
 
         let mut index =
             ArrayIndex::new(D::from_fn(rank, |_| 0).expect("D can always represent its own rank"));
-        let mut data = Vec::with_capacity(layout.len());
+        let mut storage = Vec::with_capacity(layout.len());
 
         for _ in 0..layout.len() {
-            data.push(f(&index));
+            storage.push(f(&index));
             index.increment_lexicographic(layout.shape().as_slice());
         }
 
-        Self::from_parts(S::from_vec(data), layout)
+        Self::from_parts(S::from_vec(storage), layout)
     }
 }
 
@@ -386,6 +386,84 @@ where
             }),
             None => Err(self),
         }
+    }
+
+    /// Returns an owned copy of the array that is contiguous in its own memory
+    /// order.
+    pub fn to_owned_storage<S2>(&self) -> Array<S2, D>
+    where
+        S2: StorageOwned<Elem = S::Elem>,
+        S::Elem: Clone,
+    {
+        self.to_contiguous::<S2>(&self.layout.memory_order())
+            .expect("memory order has the rank of self")
+    }
+
+    /// Returns an owned copy of the array in row-major memory order.
+    pub fn to_row_major<S2>(&self) -> Array<S2, D>
+    where
+        S2: StorageOwned<Elem = S::Elem>,
+        S::Elem: Clone,
+    {
+        self.to_contiguous::<S2>(&self.layout.lexicographic_order())
+            .expect("lexicographic order has the rank of self")
+    }
+
+    /// Returns an owned copy of the array in column-major memory order.
+    pub fn to_column_major<S2>(&self) -> Array<S2, D>
+    where
+        S2: StorageOwned<Elem = S::Elem>,
+        S::Elem: Clone,
+    {
+        self.to_contiguous::<S2>(&self.layout.colexicographic_order())
+            .expect("colexicographic order has the rank of self")
+    }
+
+    /// Returns an owned copy of the array that is contiguous in `order`.
+    ///
+    /// The result has the same shape as `self` and no unaddressed elements in
+    /// its storage.
+    ///
+    /// Returns `None` if `order` has a different rank than `self`.
+    pub fn to_contiguous<S2>(&self, order: &DimOrder<D>) -> Option<Array<S2, D>>
+    where
+        S2: StorageOwned<Elem = S::Elem>,
+        S::Elem: Clone,
+    {
+        let strides = self.shape().strides(order)?;
+        let layout = Layout::new(self.shape().clone(), strides, 0)
+            .expect("reordering the strides of a valid layout is valid");
+
+        let collapsed = self
+            .layout
+            .compatible_collapsed(order)
+            .expect("rank check passed above");
+        let lane_order = collapsed.lexicographic_order();
+        let dim = lane_order.last().expect("layout collapse always normalizes to 1");
+        let mut storage = Vec::with_capacity(self.len());
+
+        // SAFETY: the safety requirements of `RawStorage` are exactly the
+        // contract of `RawAccess`. The type invariant guarantees that every
+        // offset `self.layout` addresses is valid, and collapsing it preserves
+        // this quality.
+        let lanes = unsafe {
+            Lanes::from_access(
+                RawAccess::from_raw(self.storage.as_ptr()),
+                collapsed,
+                dim,
+                lane_order,
+            )
+            .expect("cannot be out of range as it was derived from the layout")
+        };
+        for lane in lanes {
+            match lane.as_slice() {
+                Some(slice) => storage.extend_from_slice(slice),
+                None => storage.extend(lane.iter().cloned()),
+            }
+        }
+
+        Some(Array::from_parts(S2::from_vec(storage), layout)
+            .expect("storage was constructed to be compatible with layout"))
     }
 
     /// Returns an immutable view of the entire array.
@@ -1386,6 +1464,51 @@ mod tests {
         assert_eq!(array.get(&ArrayIndex::new(DynDim::from_array([0]))), None);
         assert!(array.contiguous_lanes().is_none());
         assert!(array.lanes_memory_order(DimIndex(0)).is_none());
+    }
+
+    #[test]
+    fn copying() {
+        let shape = Shape::new(DynDim::from_array([2, 3, 4]));
+        let array = ArrayOwned::from_linear_fn(shape, |i| i as i32).expect("hand verified");
+        let copied = array.to_owned_storage::<Box<[i32]>>();
+
+        assert_eq!(array, copied);
+    }
+
+    #[test]
+    fn make_contiguous() {
+        let shape = Shape::new(DynDim::from_array([2, 3, 2]));
+        let array = ArrayOwned::from_linear_fn(shape, |i| i as i32)
+            .and_then(|array| array.cropped(DimIndex(1), ..2))
+            .expect("hand verified");
+        let row_major = array.to_row_major::<Box<[i32]>>();
+        let column_major = array.to_column_major::<Box<[i32]>>();
+        let order = DimOrder::new(DynDim::from_array([2, 0, 1])).expect("hand verified");
+        let custom = array
+            .to_contiguous::<Box<[i32]>>(&order)
+            .expect("hand verified");
+
+        assert_eq!(array, row_major);
+        assert_eq!(array, column_major);
+        assert_eq!(array, custom);
+
+        assert_eq!(row_major.shape().as_slice(), &[2, 2, 2]);
+        assert_eq!(row_major.layout.strides().as_slice(), &[4, 2, 1]);
+        assert_eq!(row_major.layout.offset(), 0);
+        assert_eq!(row_major.layout.max_offset(), 7);
+        assert_eq!(row_major.storage.as_slice(), &[0, 1, 2, 3, 6, 7, 8, 9]);
+
+        assert_eq!(column_major.shape().as_slice(), &[2, 2, 2]);
+        assert_eq!(column_major.layout.strides().as_slice(), &[1, 2, 4]);
+        assert_eq!(column_major.layout.offset(), 0);
+        assert_eq!(column_major.layout.max_offset(), 7);
+        assert_eq!(column_major.storage.as_slice(), &[0, 6, 2, 8, 1, 7, 3, 9]);
+
+        assert_eq!(custom.shape().as_slice(), &[2, 2, 2]);
+        assert_eq!(custom.layout.strides().as_slice(), &[2, 1, 4]);
+        assert_eq!(custom.layout.offset(), 0);
+        assert_eq!(custom.layout.max_offset(), 7);
+        assert_eq!(custom.storage.as_slice(), &[0, 2, 6, 8, 1, 3, 7, 9]);
     }
 
     #[test]
