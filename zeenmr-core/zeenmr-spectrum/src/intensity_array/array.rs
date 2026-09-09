@@ -439,7 +439,9 @@ where
             .compatible_collapsed(order)
             .expect("rank check passed above");
         let lane_order = collapsed.lexicographic_order();
-        let dim = lane_order.last().expect("layout collapse always normalizes to 1");
+        let dim = lane_order
+            .last()
+            .expect("layout collapse always normalizes to 1");
         let mut storage = Vec::with_capacity(self.len());
 
         // SAFETY: the safety requirements of `RawStorage` are exactly the
@@ -462,8 +464,7 @@ where
             }
         }
 
-        Some(Array::from_parts(S2::from_vec(storage), layout)
-            .expect("storage was constructed to be compatible with layout"))
+        Array::from_parts(S2::from_vec(storage), layout)
     }
 
     /// Returns an immutable view of the entire array.
