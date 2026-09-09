@@ -163,7 +163,7 @@ where
     fn index(&self, index: [usize; N]) -> &Self::Output {
         let index = ArrayIndex::<StaticDim<usize, N>>::from(index);
 
-        &self[&index]
+        &self[index]
     }
 }
 
@@ -213,7 +213,7 @@ where
     fn index_mut(&mut self, index: [usize; N]) -> &mut Self::Output {
         let index = ArrayIndex::<StaticDim<usize, N>>::from(index);
 
-        &mut self[&index]
+        &mut self[index]
     }
 }
 
@@ -426,6 +426,80 @@ where
         Some(self)
     }
 
+    /// Reorders the dimensions according to `order`.
+    ///
+    /// Dimension `i` of the result is dimension `order[i]` of `self`, for both
+    /// extents and strides. Permuting by [`Layout::memory_order`] yields the
+    /// layout whose lexicographic traversal is the most sequential one.
+    ///
+    /// Returns `None` if `order` has a different rank than `self`, in which
+    /// case `self` remains unmodified.
+    pub fn permute<D2>(&mut self, order: &DimOrder<D2>) -> Option<&mut Self>
+    where
+        D2: Dimension<Elem = usize>,
+    {
+        self.layout.permute(order)?;
+
+        Some(self)
+    }
+
+    /// Returns a reference to the element at `index`.
+    ///
+    /// Returns `None` if `index` has a different rank than the array, or if
+    /// any component is out of bounds.
+    pub fn get<D2>(&self, index: &ArrayIndex<D2>) -> Option<&S::Elem>
+    where
+        D2: Dimension<Elem = usize>,
+    {
+        const { assert_rank_compatible::<D, D2>() };
+
+        let linear = self.layout.linear(index)?;
+
+        // SAFETY: `Layout::linear` returned `Some`, so every component of
+        // `index` is less than its extent and the offset is at most
+        // `max_offset`.
+        Some(unsafe { self.get_from_linear_unchecked(linear) })
+    }
+
+    /// Returns a reference to the element at `index`, eliding any checks.
+    ///
+    /// # Safety
+    ///
+    /// `index` must have the same rank as the array, and every component must
+    /// be less than the corresponding extent.
+    pub unsafe fn get_unchecked<D2>(&self, index: &ArrayIndex<D2>) -> &S::Elem
+    where
+        D2: Dimension<Elem = usize>,
+    {
+        const { assert_rank_compatible::<D, D2>() };
+
+        // SAFETY: the caller guarantees that `index` is in bounds, so the
+        // offset is at most `max_offset`.
+        unsafe { self.get_from_linear_unchecked(self.layout.linear_unvalidated(index)) }
+    }
+
+    /// Returns the lane along `dim` that passes through `index`.
+    ///
+    /// The component of `index` at `dim` is ignored, so an index anywhere on
+    /// the lane selects it.
+    ///
+    /// This method is a convenience wrapper and returns `None` in the same
+    /// situations that [`Layout::lane_at`] does.
+    pub fn lane_at<D2>(&self, dim: DimIndex, index: &ArrayIndex<D2>) -> Option<Lane<'_, S::Elem>>
+    where
+        D2: Dimension<Elem = usize>,
+    {
+        const { assert_rank_compatible::<D, D2>() };
+
+        let geometry = self.layout.lane_at(dim, index)?;
+
+        // SAFETY: `RawStorage` guarantees the base pointer is non-null and
+        // aligned, and the type invariant guarantees every offset the layout
+        // addresses is valid. The returned lanes borrow `self`, so the elements
+        // stay borrowed for as long as the access pointer exists.
+        Some(unsafe { Lane::from_access(RawAccess::from_raw(self.storage.as_ptr()), geometry) })
+    }
+
     /// Returns an iterator over the elements of the array in arbitrary order.
     ///
     /// This is generally the most performant option.
@@ -513,6 +587,22 @@ where
                 order,
             )
         }
+    }
+
+    /// Returns a reference to the element at the given buffer offset.
+    ///
+    /// # Safety
+    ///
+    /// `linear` must not exceed [`Layout::max_offset`] of `self.layout`.
+    unsafe fn get_from_linear_unchecked(&self, linear: usize) -> &S::Elem {
+        debug_assert!(linear <= self.layout.max_offset());
+
+        // SAFETY: the type invariant establishes that `max_offset` is a valid
+        // index into the storage allocation, and the caller guarantees
+        // `linear <= max_offset`. `RawStorage` guarantees the base pointer is
+        // non-null and aligned, so the offset pointer is dereferenceable, and
+        // the `&self` borrow keeps the reference valid.
+        unsafe { &*self.storage.as_ptr().add(linear) }
     }
 }
 
@@ -625,14 +715,7 @@ where
 
         Some(array)
     }
-}
 
-impl<S, D1> Array<S, D1>
-where
-    S: RawStorage,
-    D1: Dimension<Elem = usize>,
-    Array<S, D1>: Clone,
-{
     /// Returns the array with its dimensions reordered according to `order`.
     ///
     /// For owned storage, this clones the entire buffer. Acquiring a view via
@@ -806,6 +889,87 @@ where
             storage: access,
             layout: self.layout.clone(),
         }
+    }
+
+    /// Returns a mutable reference to the element at `index`.
+    ///
+    /// Returns `None` if `index` has a different rank than the array, or if
+    /// any component is out of bounds.
+    pub fn get_mut<D2>(&mut self, index: &ArrayIndex<D2>) -> Option<&mut S::Elem>
+    where
+        D2: Dimension<Elem = usize>,
+    {
+        const { assert_rank_compatible::<D, D2>() };
+
+        let linear = self.layout.linear(index)?;
+
+        // SAFETY: `Layout::linear` returned `Some`, so every component of
+        // `index` is less than its extent and the offset is at most
+        // `max_offset`.
+        Some(unsafe { self.get_from_linear_unchecked_mut(linear) })
+    }
+
+    /// Returns a mutable reference to the element at `index`, eliding any
+    /// checks.
+    ///
+    /// # Safety
+    ///
+    /// `index` must have the same rank as the array, and every component must
+    /// be less than the corresponding extent.
+    pub unsafe fn get_unchecked_mut<D2>(&mut self, index: &ArrayIndex<D2>) -> &mut S::Elem
+    where
+        D2: Dimension<Elem = usize>,
+    {
+        const { assert_rank_compatible::<D, D2>() };
+
+        // SAFETY: the caller guarantees that `index` is in bounds, so the
+        // offset is at most `max_offset`.
+        unsafe { self.get_from_linear_unchecked_mut(self.layout.linear_unvalidated(index)) }
+    }
+
+    /// Returns the mutable lane along `dim` that passes through `index`.
+    ///
+    /// The component of `index` at `dim` is ignored, so an index anywhere on
+    /// the lane selects it.
+    ///
+    /// This method is a convenience wrapper and returns `None` in the same
+    /// situations that [`Layout::lane_at`] does, or if the geometry returned
+    /// by layout of `self` is non-injective for that lane.
+    pub fn lane_at_mut<D2>(
+        &mut self,
+        dim: DimIndex,
+        index: &ArrayIndex<D2>,
+    ) -> Option<LaneMut<'_, S::Elem>>
+    where
+        D2: Dimension<Elem = usize>,
+    {
+        const { assert_rank_compatible::<D, D2>() };
+
+        let geometry = self.layout.lane_at(dim, index)?;
+
+        // SAFETY: `RawStorageMut` guarantees the base pointer is non-null and
+        // aligned, and the type invariant guarantees every offset the layout
+        // addresses is valid. The returned lane borrows `self` mutably, so no
+        // other reference to the storage can exist while they do.
+        Some(unsafe {
+            LaneMut::from_access(RawAccessMut::from_raw(self.storage.as_mut_ptr()), geometry)
+        })
+    }
+
+    /// Returns a mutable reference to the element at the given buffer offset.
+    ///
+    /// # Safety
+    ///
+    /// `linear` must not exceed [`Layout::max_offset`] of `self.layout`.
+    unsafe fn get_from_linear_unchecked_mut(&mut self, linear: usize) -> &mut S::Elem {
+        debug_assert!(linear <= self.layout.max_offset());
+
+        // SAFETY: the type invariant establishes that `max_offset` is a valid
+        // index into the storage allocation, and the caller guarantees
+        // `linear <= max_offset`. `RawStorage` guarantees the base pointer is
+        // non-null and aligned, so the offset pointer is dereferenceable, and
+        // the `&mut self` borrow keeps the reference valid.
+        unsafe { &mut *self.storage.as_mut_ptr().add(linear) }
     }
 
     /// Returns an iterator over mutable references to the elements of the array
@@ -1014,189 +1178,6 @@ where
     ) -> Option<ParLanesMut<'_, S::Elem, D>> {
         self.lanes_with_order_mut(dim, order)
             .map(Par::new)
-    }
-}
-
-impl<S, D1> Array<S, D1>
-where
-    S: RawStorage,
-    D1: Dimension<Elem = usize>,
-{
-    /// Reorders the dimensions according to `order`.
-    ///
-    /// Dimension `i` of the result is dimension `order[i]` of `self`, for both
-    /// extents and strides. Permuting by [`Layout::memory_order`] yields the
-    /// layout whose lexicographic traversal is the most sequential one.
-    ///
-    /// Returns `None` if `order` has a different rank than `self`, in which
-    /// case `self` remains unmodified.
-    pub fn permute<D2>(&mut self, order: &DimOrder<D2>) -> Option<&mut Self>
-    where
-        D2: Dimension<Elem = usize>,
-    {
-        self.layout.permute(order)?;
-
-        Some(self)
-    }
-
-    /// Returns a reference to the element at `index`.
-    ///
-    /// Returns `None` if `index` has a different rank than the array, or if
-    /// any component is out of bounds.
-    pub fn get<D2>(&self, index: &ArrayIndex<D2>) -> Option<&S::Elem>
-    where
-        D2: Dimension<Elem = usize>,
-    {
-        const { assert_rank_compatible::<D1, D2>() };
-
-        let linear = self.layout.linear(index)?;
-
-        // SAFETY: `Layout::linear` returned `Some`, so every component of
-        // `index` is less than its extent and the offset is at most
-        // `max_offset`.
-        Some(unsafe { self.get_from_linear_unchecked(linear) })
-    }
-
-    /// Returns a reference to the element at `index`, eliding any checks.
-    ///
-    /// # Safety
-    ///
-    /// `index` must have the same rank as the array, and every component must
-    /// be less than the corresponding extent.
-    pub unsafe fn get_unchecked<D2>(&self, index: &ArrayIndex<D2>) -> &S::Elem
-    where
-        D2: Dimension<Elem = usize>,
-    {
-        const { assert_rank_compatible::<D1, D2>() };
-
-        // SAFETY: the caller guarantees that `index` is in bounds, so the
-        // offset is at most `max_offset`.
-        unsafe { self.get_from_linear_unchecked(self.layout.linear_unvalidated(index)) }
-    }
-
-    /// Returns the lane along `dim` that passes through `index`.
-    ///
-    /// The component of `index` at `dim` is ignored, so an index anywhere on
-    /// the lane selects it.
-    ///
-    /// This method is a convenience wrapper and returns `None` in the same
-    /// situations that [`Layout::lane_at`] does.
-    pub fn lane_at<D2>(&self, dim: DimIndex, index: &ArrayIndex<D2>) -> Option<Lane<'_, S::Elem>>
-    where
-        D2: Dimension<Elem = usize>,
-    {
-        const { assert_rank_compatible::<D1, D2>() };
-
-        let geometry = self.layout.lane_at(dim, index)?;
-
-        // SAFETY: `RawStorage` guarantees the base pointer is non-null and
-        // aligned, and the type invariant guarantees every offset the layout
-        // addresses is valid. The returned lanes borrow `self`, so the elements
-        // stay borrowed for as long as the access pointer exists.
-        Some(unsafe { Lane::from_access(RawAccess::from_raw(self.storage.as_ptr()), geometry) })
-    }
-
-    /// Returns a reference to the element at the given buffer offset.
-    ///
-    /// # Safety
-    ///
-    /// `linear` must not exceed [`Layout::max_offset`] of `self.layout`.
-    unsafe fn get_from_linear_unchecked(&self, linear: usize) -> &S::Elem {
-        debug_assert!(linear <= self.layout.max_offset());
-
-        // SAFETY: the type invariant establishes that `max_offset` is a valid
-        // index into the storage allocation, and the caller guarantees
-        // `linear <= max_offset`. `RawStorage` guarantees the base pointer is
-        // non-null and aligned, so the offset pointer is dereferenceable, and
-        // the `&self` borrow keeps the reference valid.
-        unsafe { &*self.storage.as_ptr().add(linear) }
-    }
-}
-
-impl<S, D1> Array<S, D1>
-where
-    S: RawStorageMut,
-    D1: Dimension<Elem = usize>,
-{
-    /// Returns a mutable reference to the element at `index`.
-    ///
-    /// Returns `None` if `index` has a different rank than the array, or if
-    /// any component is out of bounds.
-    pub fn get_mut<D2>(&mut self, index: &ArrayIndex<D2>) -> Option<&mut S::Elem>
-    where
-        D2: Dimension<Elem = usize>,
-    {
-        const { assert_rank_compatible::<D1, D2>() };
-
-        let linear = self.layout.linear(index)?;
-
-        // SAFETY: `Layout::linear` returned `Some`, so every component of
-        // `index` is less than its extent and the offset is at most
-        // `max_offset`.
-        Some(unsafe { self.get_from_linear_unchecked_mut(linear) })
-    }
-
-    /// Returns a mutable reference to the element at `index`, eliding any
-    /// checks.
-    ///
-    /// # Safety
-    ///
-    /// `index` must have the same rank as the array, and every component must
-    /// be less than the corresponding extent.
-    pub unsafe fn get_unchecked_mut<D2>(&mut self, index: &ArrayIndex<D2>) -> &mut S::Elem
-    where
-        D2: Dimension<Elem = usize>,
-    {
-        const { assert_rank_compatible::<D1, D2>() };
-
-        // SAFETY: the caller guarantees that `index` is in bounds, so the
-        // offset is at most `max_offset`.
-        unsafe { self.get_from_linear_unchecked_mut(self.layout.linear_unvalidated(index)) }
-    }
-
-    /// Returns the mutable lane along `dim` that passes through `index`.
-    ///
-    /// The component of `index` at `dim` is ignored, so an index anywhere on
-    /// the lane selects it.
-    ///
-    /// This method is a convenience wrapper and returns `None` in the same
-    /// situations that [`Layout::lane_at`] does, or if the geometry returned
-    /// by layout of `self` is non-injective for that lane.
-    pub fn lane_at_mut<D2>(
-        &mut self,
-        dim: DimIndex,
-        index: &ArrayIndex<D2>,
-    ) -> Option<LaneMut<'_, S::Elem>>
-    where
-        D2: Dimension<Elem = usize>,
-    {
-        const { assert_rank_compatible::<D1, D2>() };
-
-        let geometry = self.layout.lane_at(dim, index)?;
-
-        // SAFETY: `RawStorageMut` guarantees the base pointer is non-null and
-        // aligned, and the type invariant guarantees every offset the layout
-        // addresses is valid. The returned lane borrows `self` mutably, so no
-        // other reference to the storage can exist while they do.
-        Some(unsafe {
-            LaneMut::from_access(RawAccessMut::from_raw(self.storage.as_mut_ptr()), geometry)
-        })
-    }
-
-    /// Returns a mutable reference to the element at the given buffer offset.
-    ///
-    /// # Safety
-    ///
-    /// `linear` must not exceed [`Layout::max_offset`] of `self.layout`.
-    unsafe fn get_from_linear_unchecked_mut(&mut self, linear: usize) -> &mut S::Elem {
-        debug_assert!(linear <= self.layout.max_offset());
-
-        // SAFETY: the type invariant establishes that `max_offset` is a valid
-        // index into the storage allocation, and the caller guarantees
-        // `linear <= max_offset`. `RawStorage` guarantees the base pointer is
-        // non-null and aligned, so the offset pointer is dereferenceable, and
-        // the `&mut self` borrow keeps the reference valid.
-        unsafe { &mut *self.storage.as_mut_ptr().add(linear) }
     }
 }
 

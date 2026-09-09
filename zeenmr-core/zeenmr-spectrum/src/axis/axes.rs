@@ -63,6 +63,18 @@ where
         self.to_dimension()
     }
 
+    /// Returns the equivalent axis collection over `D2`.
+    ///
+    /// Returns `None` if `D2` cannot represent the rank of `self`.
+    pub fn to_dimension<A2>(&self) -> Option<Axes<A2>>
+    where
+        A2: Dimension<Elem = A::Elem>,
+    {
+        const { assert_rank_compatible::<A, A2>() };
+
+        Some(Axes(A2::from_dimension(&self.0)?))
+    }
+
     /// Returns the rank of `self`.
     pub fn rank(&self) -> usize {
         self.0.rank()
@@ -86,22 +98,5 @@ where
     /// Returns a mutable slice containing all axes.
     pub fn as_mut_slice(&mut self) -> &mut [A::Elem] {
         self.0.as_mut_slice()
-    }
-}
-
-impl<A1> Axes<A1>
-where
-    A1: Dimension,
-{
-    /// Returns the equivalent axis collection over `D2`.
-    ///
-    /// Returns `None` if `D2` cannot represent the rank of `self`.
-    pub fn to_dimension<A2>(&self) -> Option<Axes<A2>>
-    where
-        A2: Dimension<Elem = A1::Elem>,
-    {
-        const { assert_rank_compatible::<A1, A2>() };
-
-        Some(Axes(A2::from_dimension(&self.0)?))
     }
 }

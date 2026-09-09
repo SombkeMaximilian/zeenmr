@@ -100,6 +100,18 @@ where
         self.to_dimension()
     }
 
+    /// Returns the equivalent order over `D2`.
+    ///
+    /// Returns `None` if `D2` cannot represent the rank of `self`.
+    pub fn to_dimension<D2>(&self) -> Option<DimOrder<D2>>
+    where
+        D2: Dimension<Elem = usize>,
+    {
+        const { assert_rank_compatible::<D, D2>() };
+
+        Some(DimOrder(D2::from_dimension(&self.0)?))
+    }
+
     /// Returns the rank of `self`.
     pub fn rank(&self) -> usize {
         self.0.rank()
@@ -151,23 +163,6 @@ where
         K: Ord,
     {
         self.0.as_mut_slice().sort_by_key(f);
-    }
-}
-
-impl<D1> DimOrder<D1>
-where
-    D1: Dimension<Elem = usize>,
-{
-    /// Returns the equivalent order over `D2`.
-    ///
-    /// Returns `None` if `D2` cannot represent the rank of `self`.
-    pub fn to_dimension<D2>(&self) -> Option<DimOrder<D2>>
-    where
-        D2: Dimension<Elem = usize>,
-    {
-        const { assert_rank_compatible::<D1, D2>() };
-
-        Some(DimOrder(D2::from_dimension(&self.0)?))
     }
 }
 
@@ -238,6 +233,18 @@ where
     /// Returns `None` if `self` does not have rank `N`.
     pub fn try_to_static<const N: usize>(&self) -> Option<ArrayIndex<StaticDim<usize, N>>> {
         self.to_dimension()
+    }
+
+    /// Returns the equivalent index over `D2`.
+    ///
+    /// Returns `None` if `D2` cannot represent the rank of `self`.
+    pub fn to_dimension<D2>(&self) -> Option<ArrayIndex<D2>>
+    where
+        D2: Dimension<Elem = usize>,
+    {
+        const { assert_rank_compatible::<D, D2>() };
+
+        Some(ArrayIndex(D2::from_dimension(&self.0)?))
     }
 
     /// Returns the `linear`-th index of `shape` in lexicographic order.
@@ -340,23 +347,6 @@ where
     }
 }
 
-impl<D1> ArrayIndex<D1>
-where
-    D1: Dimension<Elem = usize>,
-{
-    /// Returns the equivalent index over `D2`.
-    ///
-    /// Returns `None` if `D2` cannot represent the rank of `self`.
-    pub fn to_dimension<D2>(&self) -> Option<ArrayIndex<D2>>
-    where
-        D2: Dimension<Elem = usize>,
-    {
-        const { assert_rank_compatible::<D1, D2>() }
-
-        Some(ArrayIndex(D2::from_dimension(&self.0)?))
-    }
-}
-
 /// Shape of an array with a rank determined at runtime.
 pub type DynShape = Shape<DynDim<usize>>;
 
@@ -408,6 +398,18 @@ where
     /// Returns `None` if `self` does not have rank `N`.
     pub fn try_to_static<const N: usize>(&self) -> Option<Shape<StaticDim<usize, N>>> {
         self.to_dimension()
+    }
+
+    /// Returns the equivalent shape over `D2`.
+    ///
+    /// Returns `None` if `D2` cannot represent the rank of `self`.
+    pub fn to_dimension<D2>(&self) -> Option<Shape<D2>>
+    where
+        D2: Dimension<Elem = usize>,
+    {
+        const { assert_rank_compatible::<D, D2>() };
+
+        Some(Shape(D2::from_dimension(&self.0)?))
     }
 
     /// Returns the rank of `self`.
@@ -527,23 +529,6 @@ where
     }
 }
 
-impl<D1> Shape<D1>
-where
-    D1: Dimension<Elem = usize>,
-{
-    /// Returns the equivalent shape over `D2`.
-    ///
-    /// Returns `None` if `D2` cannot represent the rank of `self`.
-    pub fn to_dimension<D2>(&self) -> Option<Shape<D2>>
-    where
-        D2: Dimension<Elem = usize>,
-    {
-        const { assert_rank_compatible::<D1, D2>() };
-
-        Some(Shape(D2::from_dimension(&self.0)?))
-    }
-}
-
 /// Strides of an array with a rank determined at runtime.
 pub type DynStrides = Strides<DynDim<usize>>;
 
@@ -589,6 +574,18 @@ where
         self.to_dimension()
     }
 
+    /// Returns the equivalent strides over `D2`.
+    ///
+    /// Returns `None` if `D2` cannot represent the rank of `self`.
+    pub fn to_dimension<D2>(&self) -> Option<Strides<D2>>
+    where
+        D2: Dimension<Elem = usize>,
+    {
+        const { assert_rank_compatible::<D, D2>() };
+
+        Some(Strides(D2::from_dimension(&self.0)?))
+    }
+
     /// Returns the rank of `self`.
     pub fn rank(&self) -> usize {
         self.0.rank()
@@ -612,23 +609,6 @@ where
     /// Returns a mutable slice containing all array element strides.
     pub fn as_mut_slice(&mut self) -> &mut [usize] {
         self.0.as_mut_slice()
-    }
-}
-
-impl<D1> Strides<D1>
-where
-    D1: Dimension<Elem = usize>,
-{
-    /// Returns the equivalent strides over `D2`.
-    ///
-    /// Returns `None` if `D2` cannot represent the rank of `self`.
-    pub fn to_dimension<D2>(&self) -> Option<Strides<D2>>
-    where
-        D2: Dimension<Elem = usize>,
-    {
-        const { assert_rank_compatible::<D1, D2>() };
-
-        Some(Strides(D2::from_dimension(&self.0)?))
     }
 }
 
@@ -731,32 +711,22 @@ where
         self.to_dimension()
     }
 
-    /// Returns the layout with dimensions of extent 1 dropped.
+    /// Returns the equivalent layout over `D2`.
     ///
-    /// The rank of the layout reduces by the number of dropped dimensions.
-    /// Every other property of the layout remains unchanged.
-    ///
-    /// Note that any `DimIndex` created prior to this method call potentially
-    /// becomes meaningless.
-    pub fn unit_extents_dropped(&self) -> Layout<DynDim<usize>> {
-        let (extents, strides) = self
-            .shape
-            .as_slice()
-            .iter()
-            .zip(self.strides.as_slice())
-            .filter(|&(&extent, _)| extent != 1)
-            .map(|(&extent, &stride)| (extent, stride))
-            .unzip::<usize, usize, Vec<usize>, Vec<usize>>();
+    /// Returns `None` if `D2` cannot represent the rank of `self`.
+    pub fn to_dimension<D2>(&self) -> Option<Layout<D2>>
+    where
+        D2: Dimension<Elem = usize>,
+    {
+        const { assert_rank_compatible::<D, D2>() };
 
-        Layout {
-            shape: Shape(DynDim::from_vec(extents)),
-            strides: Strides(DynDim::from_vec(strides)),
-            // the other fields carry over as is since dimensions of extent 1
-            // contribute to none of them.
+        Some(Layout {
+            shape: Shape(D2::from_dimension(&self.shape.0)?),
+            strides: Strides(D2::from_dimension(&self.strides.0)?),
             offset: self.offset,
             max_offset: self.max_offset,
             len: self.len,
-        }
+        })
     }
 
     /// Returns the layout with its extent along `dim` restricted to 1 at
@@ -851,6 +821,163 @@ where
         Some(self)
     }
 
+    /// Returns the layout with its dimensions reordered according to `order`.
+    ///
+    /// Dimension `i` of the result is dimension `order[i]` of `self`, for both
+    /// extents and strides. Permuting by [`Layout::memory_order`] yields the
+    /// layout whose lexicographic traversal is the most sequential one.
+    ///
+    /// Returns `None` if `order` has a different rank than `self`.
+    pub fn permuted<D2>(&self, order: &DimOrder<D2>) -> Option<Self>
+    where
+        D2: Dimension<Elem = usize>,
+    {
+        const { assert_rank_compatible::<D, D2>() };
+
+        let mut layout = self.clone();
+        layout.permute(order)?;
+
+        Some(layout)
+    }
+
+    /// Reorders the dimensions according to `order`.
+    ///
+    /// Dimension `i` of the result is dimension `order[i]` of `self`, for both
+    /// extents and strides. Permuting by [`Layout::memory_order`] yields the
+    /// layout whose lexicographic traversal is the most sequential one.
+    ///
+    /// Returns `None` if `order` has a different rank than `self`, in which
+    /// case `self` remains unmodified.
+    pub fn permute<D2>(&mut self, order: &DimOrder<D2>) -> Option<&mut Self>
+    where
+        D2: Dimension<Elem = usize>,
+    {
+        const { assert_rank_compatible::<D, D2>() };
+        if order.rank() != self.rank() {
+            return None;
+        }
+
+        let order = order.as_slice();
+        let old = self.shape.as_slice();
+        self.shape = D::from_fn(self.rank(), |dim| old[order[dim].0])
+            .map(Shape)
+            .expect("D can always represent its own rank");
+        let old = self.strides.as_slice();
+        self.strides = D::from_fn(self.rank(), |dim| old[order[dim].0])
+            .map(Strides)
+            .expect("D can always represent its own rank");
+
+        debug_assert_eq!(
+            Self::max_offset_of(&self.shape, &self.strides, self.offset),
+            Some(self.max_offset)
+        );
+        debug_assert_eq!(self.shape.product_checked(), Some(self.len));
+
+        // the other fields carry over as is (pinky promise) because reordering
+        // the exclusively finite, non-negative terms of a finite sum/product
+        // can't make it overflow if the original didn't overflow (which
+        // all other constructors guarantee) and does not change it
+        Some(self)
+    }
+
+    /// Returns the layout with dimensions of extent 1 dropped.
+    ///
+    /// The rank of the layout reduces by the number of dropped dimensions.
+    /// Every other property of the layout remains unchanged.
+    ///
+    /// Note that any `DimIndex` created prior to this method call potentially
+    /// becomes meaningless.
+    pub fn unit_extents_dropped(&self) -> Layout<DynDim<usize>> {
+        let (extents, strides) = self
+            .shape
+            .as_slice()
+            .iter()
+            .zip(self.strides.as_slice())
+            .filter(|&(&extent, _)| extent != 1)
+            .map(|(&extent, &stride)| (extent, stride))
+            .unzip::<usize, usize, Vec<usize>, Vec<usize>>();
+
+        Layout {
+            shape: Shape(DynDim::from_vec(extents)),
+            strides: Strides(DynDim::from_vec(strides)),
+            // the other fields carry over as is since dimensions of extent 1
+            // contribute to none of them.
+            offset: self.offset,
+            max_offset: self.max_offset,
+            len: self.len,
+        }
+    }
+
+    /// Returns the layout permuted into `order` with adjacent conforming
+    /// dimensions collapsed.
+    ///
+    /// Dimension `i` of the intermediate is dimension `order[i]` of `self`,
+    /// as in [`Layout::permuted`], filtering out any of extent 1. A trailing
+    /// sequence of dimensions is collapsed whenever the stride of the dimension
+    /// earlier in the order equals the product of the extent and stride of the
+    /// later one.
+    ///
+    /// The result always has a rank of at least 1. Its last dimension is always
+    /// a valid lane dimension. That dimension is the longest sequence `order`
+    /// admits, and its lanes are contiguous exactly when the fastest non-unit
+    /// dimension of `self` under `order` has stride 1.
+    ///
+    /// Note that any `DimIndex` created prior to this method call potentially
+    /// becomes meaningless.
+    ///
+    /// Returns `None` if `order` has a different rank than `self`.
+    pub fn compatible_collapsed<D2>(&self, order: &DimOrder<D2>) -> Option<Layout<DynDim<usize>>>
+    where
+        D2: Dimension<Elem = usize>,
+    {
+        const { assert_rank_compatible::<D, D2>() };
+        if order.rank() != self.rank() {
+            return None;
+        }
+
+        let extents = self.shape.as_slice();
+        let strides = self.strides.as_slice();
+
+        let non_unit = order
+            .iter()
+            .filter(|d| extents[d.0] > 1)
+            .collect::<Vec<DimIndex>>();
+        let Some((&fast, rest)) = non_unit.split_last() else {
+            return Layout::new(
+                Shape::new(DynDim::from_array([1])),
+                Strides::new(DynDim::from_array([1])),
+                self.offset,
+            );
+        };
+
+        let base = strides[fast.0];
+        let mut run = extents[fast.0];
+        let mut kept = rest.len();
+        for dim in rest.iter().rev() {
+            if base.checked_mul(run) != Some(strides[dim.0]) {
+                break;
+            }
+            run *= extents[dim.0];
+            kept -= 1;
+        }
+
+        let mut new_extents = Vec::with_capacity(kept + 1);
+        let mut new_strides = Vec::with_capacity(kept + 1);
+        for dim in rest[..kept].iter() {
+            new_extents.push(extents[dim.0]);
+            new_strides.push(strides[dim.0]);
+        }
+        new_extents.push(run);
+        new_strides.push(base);
+
+        // never returns `None`.
+        Layout::new(
+            Shape::new(DynDim::from_vec(new_extents)),
+            Strides::new(DynDim::from_vec(new_strides)),
+            self.offset,
+        )
+    }
+
     /// Returns the rank of `self`.
     pub fn rank(&self) -> usize {
         self.shape.rank()
@@ -941,6 +1068,54 @@ where
         true
     }
 
+    /// Returns the linear buffer offset of `index`.
+    ///
+    /// Returns `None` if `index` has a different rank than the layout, or if
+    /// any component is out of bounds.
+    pub fn linear<D2>(&self, index: &ArrayIndex<D2>) -> Option<usize>
+    where
+        D2: Dimension<Elem = usize>,
+    {
+        const { assert_rank_compatible::<D, D2>() };
+        if index.rank() != self.shape.rank() {
+            return None;
+        }
+
+        index
+            .as_slice()
+            .iter()
+            .zip(self.shape.as_slice())
+            .zip(self.strides.as_slice())
+            .try_fold(self.offset, |acc, ((&index, &extent), &stride)| {
+                if index >= extent {
+                    return None;
+                }
+
+                acc.checked_add(index.checked_mul(stride)?)
+            })
+    }
+
+    /// Returns the linear buffer offset of `index`, eliding any checks.
+    ///
+    /// In particular, it must hold that `index` and layout have the same rank,
+    /// and none of the components of `index` is out of bounds. If any of these
+    /// conditions do not hold, the result is meaningless.
+    pub fn linear_unvalidated<D2>(&self, index: &ArrayIndex<D2>) -> usize
+    where
+        D2: Dimension<Elem = usize>,
+    {
+        const { assert_rank_compatible::<D, D2>() };
+        debug_assert_eq!(self.rank(), index.rank());
+
+        index
+            .as_slice()
+            .iter()
+            .zip(self.strides.as_slice())
+            .fold(self.offset, |acc, (&index, &stride)| {
+                acc.wrapping_add(index.wrapping_mul(stride))
+            })
+    }
+
     /// Returns the last dimension with the smallest stride.
     ///
     /// Useful for choosing a processing dimension when none is specified, since
@@ -996,6 +1171,45 @@ where
         order.sort_by_key(|&dim| std::cmp::Reverse(strides[dim]));
 
         order
+    }
+
+    /// Returns the lane along `dim` that passes through `index`.
+    ///
+    /// The component of `index` at `dim` is ignored, so an index anywhere on
+    /// the lane selects it. Unlike the numbering used by the `lanes_*`
+    /// iterators, this identifies a lane absolutely and needs no order.
+    ///
+    /// Returns `None` if `dim` is out of range, if `index` has a different
+    /// rank than the layout, or if any other component is out of bounds.
+    pub fn lane_at<D2>(&self, dim: DimIndex, index: &ArrayIndex<D2>) -> Option<LaneGeometry>
+    where
+        D2: Dimension<Elem = usize>,
+    {
+        const { assert_rank_compatible::<D, D2>() };
+        if index.rank() != self.rank() || dim.0 >= self.rank() {
+            return None;
+        }
+
+        let (extents, strides) = (self.shape.as_slice(), self.strides.as_slice());
+        let offset = index
+            .as_slice()
+            .iter()
+            .zip(extents)
+            .zip(strides)
+            .enumerate()
+            .filter(|&(component, _)| component != dim.0)
+            .try_fold(self.offset, |acc, (_, ((&index, &extent), &stride))| {
+                (index < extent).then(|| acc + index * stride)
+            })?;
+
+        // upholds the invariant because every offset in a lane geometry is
+        // bounded from above by `Layout::max_offset`, which doesn't overflow
+        // by this type's invariants.
+        Some(LaneGeometry {
+            offset,
+            stride: strides[dim.0],
+            count: extents[dim.0],
+        })
     }
 
     /// Returns an iterator over the lanes in memory order.
@@ -1225,247 +1439,6 @@ impl Layout<DynDim<usize>> {
         *self = self.compatible_collapsed(order)?;
 
         Some(self)
-    }
-}
-
-impl<D1> Layout<D1>
-where
-    D1: Dimension<Elem = usize>,
-{
-    /// Returns the equivalent layout over `D2`.
-    ///
-    /// Returns `None` if `D2` cannot represent the rank of `self`.
-    pub fn to_dimension<D2>(&self) -> Option<Layout<D2>>
-    where
-        D2: Dimension<Elem = usize>,
-    {
-        const { assert_rank_compatible::<D1, D2>() };
-
-        Some(Layout {
-            shape: Shape(D2::from_dimension(&self.shape.0)?),
-            strides: Strides(D2::from_dimension(&self.strides.0)?),
-            offset: self.offset,
-            max_offset: self.max_offset,
-            len: self.len,
-        })
-    }
-
-    /// Returns the layout with its dimensions reordered according to `order`.
-    ///
-    /// Dimension `i` of the result is dimension `order[i]` of `self`, for both
-    /// extents and strides. Permuting by [`Layout::memory_order`] yields the
-    /// layout whose lexicographic traversal is the most sequential one.
-    ///
-    /// Returns `None` if `order` has a different rank than `self`.
-    pub fn permuted<D2>(&self, order: &DimOrder<D2>) -> Option<Self>
-    where
-        D2: Dimension<Elem = usize>,
-    {
-        const { assert_rank_compatible::<D1, D2>() };
-
-        let mut layout = self.clone();
-        layout.permute(order)?;
-
-        Some(layout)
-    }
-
-    /// Reorders the dimensions according to `order`.
-    ///
-    /// Dimension `i` of the result is dimension `order[i]` of `self`, for both
-    /// extents and strides. Permuting by [`Layout::memory_order`] yields the
-    /// layout whose lexicographic traversal is the most sequential one.
-    ///
-    /// Returns `None` if `order` has a different rank than `self`, in which
-    /// case `self` remains unmodified.
-    pub fn permute<D2>(&mut self, order: &DimOrder<D2>) -> Option<&mut Self>
-    where
-        D2: Dimension<Elem = usize>,
-    {
-        const { assert_rank_compatible::<D1, D2>() };
-        if order.rank() != self.rank() {
-            return None;
-        }
-
-        let order = order.as_slice();
-        let old = self.shape.as_slice();
-        self.shape = D1::from_fn(self.rank(), |dim| old[order[dim].0])
-            .map(Shape)
-            .expect("D can always represent its own rank");
-        let old = self.strides.as_slice();
-        self.strides = D1::from_fn(self.rank(), |dim| old[order[dim].0])
-            .map(Strides)
-            .expect("D can always represent its own rank");
-
-        debug_assert_eq!(
-            Self::max_offset_of(&self.shape, &self.strides, self.offset),
-            Some(self.max_offset)
-        );
-        debug_assert_eq!(self.shape.product_checked(), Some(self.len));
-
-        // the other fields carry over as is (pinky promise) because reordering
-        // the exclusively finite, non-negative terms of a finite sum/product
-        // can't make it overflow if the original didn't overflow (which
-        // all other constructors guarantee) and does not change it
-        Some(self)
-    }
-
-    /// Returns the layout permuted into `order` with adjacent conforming
-    /// dimensions collapsed.
-    ///
-    /// Dimension `i` of the intermediate is dimension `order[i]` of `self`,
-    /// as in [`Layout::permuted`], filtering out any of extent 1. A trailing
-    /// sequence of dimensions is collapsed whenever the stride of the dimension
-    /// earlier in the order equals the product of the extent and stride of the
-    /// later one.
-    ///
-    /// The result always has a rank of at least 1. Its last dimension is always
-    /// a valid lane dimension. That dimension is the longest sequence `order`
-    /// admits, and its lanes are contiguous exactly when the fastest non-unit
-    /// dimension of `self` under `order` has stride 1.
-    ///
-    /// Note that any `DimIndex` created prior to this method call potentially
-    /// becomes meaningless.
-    ///
-    /// Returns `None` if `order` has a different rank than `self`.
-    pub fn compatible_collapsed<D2>(&self, order: &DimOrder<D2>) -> Option<Layout<DynDim<usize>>>
-    where
-        D2: Dimension<Elem = usize>,
-    {
-        const { assert_rank_compatible::<D1, D2>() };
-        if order.rank() != self.rank() {
-            return None;
-        }
-
-        let extents = self.shape.as_slice();
-        let strides = self.strides.as_slice();
-
-        let non_unit = order
-            .iter()
-            .filter(|d| extents[d.0] > 1)
-            .collect::<Vec<DimIndex>>();
-        let Some((&fast, rest)) = non_unit.split_last() else {
-            return Layout::new(
-                Shape::new(DynDim::from_array([1])),
-                Strides::new(DynDim::from_array([1])),
-                self.offset,
-            );
-        };
-
-        let base = strides[fast.0];
-        let mut run = extents[fast.0];
-        let mut kept = rest.len();
-        for dim in rest.iter().rev() {
-            if base.checked_mul(run) != Some(strides[dim.0]) {
-                break;
-            }
-            run *= extents[dim.0];
-            kept -= 1;
-        }
-
-        let mut new_extents = Vec::with_capacity(kept + 1);
-        let mut new_strides = Vec::with_capacity(kept + 1);
-        for dim in rest[..kept].iter() {
-            new_extents.push(extents[dim.0]);
-            new_strides.push(strides[dim.0]);
-        }
-        new_extents.push(run);
-        new_strides.push(base);
-
-        // never returns `None`.
-        Layout::new(
-            Shape::new(DynDim::from_vec(new_extents)),
-            Strides::new(DynDim::from_vec(new_strides)),
-            self.offset,
-        )
-    }
-
-    /// Returns the linear buffer offset of `index`.
-    ///
-    /// Returns `None` if `index` has a different rank than the layout, or if
-    /// any component is out of bounds.
-    pub fn linear<D2>(&self, index: &ArrayIndex<D2>) -> Option<usize>
-    where
-        D2: Dimension<Elem = usize>,
-    {
-        const { assert_rank_compatible::<D1, D2>() };
-
-        if index.rank() != self.shape.rank() {
-            return None;
-        }
-
-        index
-            .as_slice()
-            .iter()
-            .zip(self.shape.as_slice())
-            .zip(self.strides.as_slice())
-            .try_fold(self.offset, |acc, ((&index, &extent), &stride)| {
-                if index >= extent {
-                    return None;
-                }
-
-                acc.checked_add(index.checked_mul(stride)?)
-            })
-    }
-
-    /// Returns the linear buffer offset of `index`, eliding any checks.
-    ///
-    /// In particular, it must hold that `index` and layout have the same rank,
-    /// and none of the components of `index` is out of bounds. If any of these
-    /// conditions do not hold, the result is meaningless.
-    pub fn linear_unvalidated<D2>(&self, index: &ArrayIndex<D2>) -> usize
-    where
-        D2: Dimension<Elem = usize>,
-    {
-        const { assert_rank_compatible::<D1, D2>() };
-        debug_assert_eq!(self.rank(), index.rank());
-
-        index
-            .as_slice()
-            .iter()
-            .zip(self.strides.as_slice())
-            .fold(self.offset, |acc, (&index, &stride)| {
-                acc.wrapping_add(index.wrapping_mul(stride))
-            })
-    }
-
-    /// Returns the lane along `dim` that passes through `index`.
-    ///
-    /// The component of `index` at `dim` is ignored, so an index anywhere on
-    /// the lane selects it. Unlike the numbering used by the `lanes_*`
-    /// iterators, this identifies a lane absolutely and needs no order.
-    ///
-    /// Returns `None` if `dim` is out of range, if `index` has a different
-    /// rank than the layout, or if any other component is out of bounds.
-    pub fn lane_at<D2>(&self, dim: DimIndex, index: &ArrayIndex<D2>) -> Option<LaneGeometry>
-    where
-        D2: Dimension<Elem = usize>,
-    {
-        const { assert_rank_compatible::<D1, D2>() };
-
-        if index.rank() != self.rank() || dim.0 >= self.rank() {
-            return None;
-        }
-
-        let (extents, strides) = (self.shape.as_slice(), self.strides.as_slice());
-        let offset = index
-            .as_slice()
-            .iter()
-            .zip(extents)
-            .zip(strides)
-            .enumerate()
-            .filter(|&(component, _)| component != dim.0)
-            .try_fold(self.offset, |acc, (_, ((&index, &extent), &stride))| {
-                (index < extent).then(|| acc + index * stride)
-            })?;
-
-        // upholds the invariant because every offset in a lane geometry is
-        // bounded from above by `Layout::max_offset`, which doesn't overflow
-        // by this type's invariants.
-        Some(LaneGeometry {
-            offset,
-            stride: strides[dim.0],
-            count: extents[dim.0],
-        })
     }
 }
 
