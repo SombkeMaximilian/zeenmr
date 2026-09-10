@@ -1456,9 +1456,6 @@ impl Layout<DynDim<usize>> {
 #[derive(Deserialize)]
 struct RawLayout<D> {
     /// Array shape.
-    ///
-    /// A `&mut Shape<D>` must *never* escape to anywhere. Otherwise, all
-    /// established invariants may be broken.
     shape: Shape<D>,
     /// Array strides.
     strides: Strides<D>,

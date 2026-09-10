@@ -18,6 +18,15 @@ use crate::intensity_array::iter::{ParArrayElem, ParArrayElemMut, ParLanes, ParL
 #[cfg(feature = "rayon")]
 use crate::iter::Par;
 
+#[cfg(feature = "serde")]
+use crate::intensity_array::iter::StridedIterKind;
+#[cfg(feature = "serde")]
+use serde::de::Error;
+#[cfg(feature = "serde")]
+use serde::ser::SerializeStruct;
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
 /// Array borrowing its storage immutably.
 pub type ArrayView<'s, T, D> = Array<Access<'s, T>, D>;
 
@@ -1257,6 +1266,111 @@ where
     ) -> Option<ParLanesMut<'_, S::Elem, D>> {
         self.lanes_with_order_mut(dim, order)
             .map(Par::new)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<S, D> Serialize for Array<S, D>
+where
+    S: RawStorage,
+    S::Elem: Serialize,
+    D: Dimension<Elem = usize> + Serialize,
+{
+    fn serialize<Ser>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
+    where
+        Ser: Serializer,
+    {
+        struct SerializeIter<I>(std::cell::Cell<Option<I>>);
+
+        impl<I> Serialize for SerializeIter<I>
+        where
+            I: IntoIterator,
+            I::Item: Serialize,
+        {
+            fn serialize<Ser>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
+            where
+                Ser: Serializer,
+            {
+                serializer.collect_seq(self.0.take().expect("serde only calls this once"))
+            }
+        }
+
+        impl<I> SerializeIter<I> {
+            fn new(iter: I) -> Self {
+                Self(std::cell::Cell::new(Some(iter)))
+            }
+        }
+
+        let order = self.layout.memory_order();
+
+        let mut array = serializer.serialize_struct("Array", 3)?;
+        array.serialize_field("shape", self.shape())?;
+        array.serialize_field("order", &order)?;
+        match self
+            .elem_with_order(&order)
+            .expect("memory order has the rank of self")
+        {
+            StridedIterKind::Strided(iter) => {
+                array.serialize_field("data", &SerializeIter::new(iter))?;
+            }
+            StridedIterKind::Contiguous(iter) => {
+                array.serialize_field("data", &SerializeIter::new(iter))?;
+            }
+        }
+
+        array.end()
+    }
+}
+
+/// Raw array without invariants as an intermediate for deserialization.
+#[cfg(feature = "serde")]
+#[derive(Deserialize)]
+#[serde(bound(deserialize = "T: Deserialize<'de>, D: Dimension<Elem = usize> + Deserialize<'de>"))]
+struct RawArray<T, D> {
+    /// Array shape.
+    shape: Shape<D>,
+    /// Ordering of the array strides.
+    order: DimOrder<D>,
+    /// Raw array data.
+    data: Vec<T>,
+}
+
+#[cfg(feature = "serde")]
+impl<'de, S, D> Deserialize<'de> for Array<S, D>
+where
+    S: StorageOwned,
+    S::Elem: Deserialize<'de>,
+    D: Dimension<Elem = usize> + Deserialize<'de>,
+{
+    fn deserialize<De>(deserializer: De) -> Result<Self, De::Error>
+    where
+        De: Deserializer<'de>,
+    {
+        let RawArray { shape, order, data } = RawArray::<S::Elem, D>::deserialize(deserializer)?;
+
+        if shape.rank() != order.rank() {
+            return Err(De::Error::custom("rank mismatch between shape and order"));
+        }
+
+        match shape.product_checked() {
+            Some(0) => return Err(De::Error::custom("some extent(s) in the shape are 0")),
+            Some(len) if len != data.len() => {
+                return Err(De::Error::custom("shape and data length mismatch"));
+            }
+            None => return Err(De::Error::custom("computing layout size overflowed")),
+            _ => {}
+        }
+
+        let strides = shape
+            .strides(&order)
+            .expect("any ordering of strides of shape with a finite product is valid");
+        let layout = Layout::new(shape, strides, 0)
+            .expect("max offset cannot overflow for shape a with finite product");
+
+        Ok(
+            Array::from_parts(S::from_vec(data), layout)
+                .expect("failure modes should be exhausted"),
+        )
     }
 }
 
