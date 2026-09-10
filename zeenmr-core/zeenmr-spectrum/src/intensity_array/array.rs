@@ -1348,6 +1348,9 @@ where
     {
         let RawArray { shape, order, data } = RawArray::<S::Elem, D>::deserialize(deserializer)?;
 
+        if data.is_empty() {
+            return Err(De::Error::custom("empty data"));
+        }
         if shape.rank() != order.rank() {
             return Err(De::Error::custom("rank mismatch between shape and order"));
         }
@@ -1566,7 +1569,8 @@ mod tests {
     fn rank_zero_array() {
         let zero = DynDim::from_array([]);
         let shape = Shape::new(zero);
-        let array = Array::new(vec![0].into_boxed_slice(), shape.clone()).expect("hand verified");
+        let mut array =
+            Array::new(vec![0].into_boxed_slice(), shape.clone()).expect("hand verified");
 
         assert_eq!(array.rank(), 0);
         assert_eq!(array.len(), 1);
@@ -1579,6 +1583,14 @@ mod tests {
         assert_eq!(array.get(&ArrayIndex::new(DynDim::from_array([0]))), None);
         assert!(array.contiguous_lanes().is_none());
         assert!(array.lanes_memory_order(DimIndex(0)).is_none());
+        assert_eq!(array.elem().count(), 1);
+        assert!(array.elem_mut().is_some());
+        assert_eq!(array.elem_mut().expect("hand verified").count(), 1);
+        assert_eq!(array.elem().next(), Some(&0));
+        assert_eq!(
+            array.elem_mut().expect("hand verified").next(),
+            Some(&mut 0)
+        );
     }
 
     #[test]
@@ -1818,7 +1830,7 @@ mod tests {
     }
 
     #[test]
-    fn element_access_is_complete() {
+    fn index_element_access_is_complete() {
         let shape = Shape::new(DynDim::from_array([2, 3, 4]));
         let mut array = ArrayOwned::from_linear_fn(shape, |i| i as i32).expect("hand verified");
 
@@ -1839,7 +1851,7 @@ mod tests {
     }
 
     #[test]
-    fn element_mutation_is_complete() {
+    fn index_element_mutation_is_complete() {
         let shape = Shape::new(DynDim::from_array([2, 3, 4]));
         let mut array = ArrayOwned::from_linear_fn(shape, |i| i as i32).expect("hand verified");
         let indices = array
@@ -1863,6 +1875,49 @@ mod tests {
             let offset = array.layout().linear_unvalidated(index) as i32;
 
             assert_eq!(array[index], offset + 111);
+        }
+    }
+
+    #[test]
+    fn iterator_element_is_complete() {
+        let shape = Shape::new(DynDim::from_array([2, 3, 4]));
+        let mut array = ArrayOwned::from_linear_fn(shape, |i| i as i32).expect("hand verified");
+
+        for (expected, element) in array
+            .elem()
+            .copied()
+            .enumerate()
+            .map(|(expected, element)| (expected as i32, element))
+        {
+            assert_eq!(expected, element);
+        }
+        assert_eq!(array.elem().count(), 24);
+
+        for (expected, element) in array
+            .elem_mut()
+            .expect("hand verified")
+            .enumerate()
+            .map(|(expected, element)| (expected as i32, element))
+        {
+            assert_eq!(expected, *element);
+        }
+        assert_eq!(array.elem_mut().expect("hand verified").count(), 24);
+    }
+
+    #[test]
+    fn iterator_element_mutation_is_complete() {
+        let shape = Shape::new(DynDim::from_array([2, 3, 4]));
+        let mut array = ArrayOwned::from_linear_fn(shape, |i| i as i32).expect("hand verified");
+
+        for elem in array.elem_mut().expect("hand verified") {
+            *elem += 100;
+        }
+        for (expected, element) in array
+            .elem()
+            .enumerate()
+            .map(|(i, element)| (i as i32 + 100, element))
+        {
+            assert_eq!(expected, *element);
         }
     }
 
@@ -2383,6 +2438,79 @@ mod tests {
                 // to be within bounds.
                 assert_eq!(unsafe { array.get_unchecked(&index) }, &());
             }
+        }
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn serialization_round_trip() {
+        let shape = Shape::new(DynDim::from_array([2, 3, 4]));
+        let array = ArrayOwned::from_linear_fn(shape, |i| i as i32).expect("hand verified");
+        let ser = serde_json5::to_string(&array).unwrap();
+        let de = serde_json5::from_str::<ArrayOwned<i32, DynDim<usize>>>(&ser).unwrap();
+
+        assert_eq!(array, de);
+
+        let cross = serde_json5::from_str::<ArrayOwned<i32, StaticDim<usize, 3>>>(&ser).unwrap();
+
+        assert_eq!(array, cross);
+
+        let shape = Shape::new(DynDim::from_array([]));
+        let rank_zero = Array::new(vec![0], shape.clone()).expect("hand verified");
+        let ser = serde_json5::to_string(&rank_zero).unwrap();
+        let de = serde_json5::from_str::<ArrayOwned<i32, DynDim<usize>>>(&ser).unwrap();
+
+        assert_eq!(rank_zero, de);
+
+        let cropped = array
+            .cropped(DimIndex(2), 1..3)
+            .expect("hand verified");
+        let ser = serde_json5::to_string(&cropped).unwrap();
+        let de = serde_json5::from_str::<ArrayOwned<i32, DynDim<usize>>>(&ser).unwrap();
+
+        assert_eq!(cropped, de);
+        assert_eq!(
+            de.storage.as_slice(),
+            &[1, 2, 5, 6, 9, 10, 13, 14, 17, 18, 21, 22]
+        );
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn deserialization_invariants() {
+        let bad_arrays = [
+            "{\"shape\":[], \"order\":[], \"data\":[]}",
+            "{\"shape\":[2, 2], \"order\":[0], \"data\":[0, 1, 2, 3]}",
+            "{\"shape\":[2, 2], \"order\":[0, 1, 2], \"data\":[0, 1, 2, 3]}",
+            "{\"shape\":[4, 0], \"order\":[0, 1], \"data\":[0, 1, 2, 3]}",
+            "{\"shape\":[0, 4], \"order\":[0, 1], \"data\":[0, 1, 2, 3]}",
+            "{\"shape\":[0, 0], \"order\":[0, 1], \"data\":[0, 1, 2, 3]}",
+            "{\"shape\":[2, 3], \"order\":[0, 1], \"data\":[0, 1, 2, 3]}",
+            "{\"shape\":[3, 2], \"order\":[0, 1], \"data\":[0, 1, 2, 3]}",
+            "{\"shape\":[1, 2], \"order\":[0, 1], \"data\":[0, 1, 2, 3]}",
+            "{\"shape\":[2, 1], \"order\":[0, 1], \"data\":[0, 1, 2, 3]}",
+            "{\"shape\":[5000000000, 5000000000], \"order\":[0, 1], \"data\":[0]}",
+        ];
+        let expected = [
+            "empty data",
+            "rank mismatch between shape and order",
+            "rank mismatch between shape and order",
+            "some extent(s) in the shape are 0",
+            "some extent(s) in the shape are 0",
+            "some extent(s) in the shape are 0",
+            "shape and data length mismatch",
+            "shape and data length mismatch",
+            "shape and data length mismatch",
+            "shape and data length mismatch",
+            "computing layout size overflowed",
+        ];
+
+        for (ser, expected) in bad_arrays.into_iter().zip(expected) {
+            let err = serde_json5::from_str::<ArrayOwned<i32, DynDim<usize>>>(ser)
+                .map_err(|e| e.to_string())
+                .unwrap_err();
+
+            assert_eq!(expected, err);
         }
     }
 }
