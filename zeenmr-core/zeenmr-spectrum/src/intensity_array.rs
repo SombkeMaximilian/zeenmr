@@ -127,15 +127,109 @@
 //!
 //! # Layout
 //!
-//! WIP
+//! The second component of the array type is the information necessary for
+//! properly interpreting the storage described above: its [`Layout`]. It
+//! consists of a [`Shape`], the [`Strides`], and an offset.
+//!
+//! The layout's shape specifies how far the array extends in each dimension.
+//! The 2 x 2 matrix above has shape the `[2, 2]`. Each row has two elements,
+//! and so does each column. The product of the extents is the number of
+//! elements the layout addresses; for a shape of `[2, 2]`, this would be four.
+//! Should any extent be `0`, it would leave the layout with nothing to address
+//! irrespective of its other extents. This is almost always not something we
+//! want, and any attempt to create such a layout results in a `None` value.
+//!
+//! The strides describe the distance in the storage between adjacent elements
+//! along a given dimension. Moving from one column to the other in the matrix
+//! above means moving one element along in memory in the corresponding
+//! direction. Moving from one row to the other requires skipping one element,
+//! i.e., moving in steps of two. Its strides are therefore `[2, 1]`. A layout
+//! whose rows are contiguous chunks of memory like this are commonly called
+//! "row-major" or "C order", with its last dimension varying fastest.
+//! Reversing the roles, `[1, 2]` would make the columns contiguous instead,
+//! which is "column-major" or "FORTRAN order", with the first dimension varying
+//! fastest.
+//!
+//! Using the shape, we can map the elements using multidimensional indices
+//! ([`ArrayIndex`]), where each component must be less than the corresponding
+//! extent. The position of an element in the array storage is the sum of
+//! component-wise index-stride product. The element at the index `(1, 0)` of
+//! our 2 x 2 matrix can therefore be found at `1 * 2 + 0 * 1 = 2`, or `0x02`.
+//!
+//! Finally, the offset completes the picture by marking where the layout
+//! begins. It is added to every linear offset, which lets a layout map any
+//! region that starts partway through the storage. For example, we could map
+//! only the second row of the 2 x 2 matrix, using a shape of `[1, 2]`, the
+//! same strides as before, and an offset of `2`. The resulting layout addresses
+//! only `0x02` and `0x03` without reallocating, moving, or copying.
 //!
 //! # Lanes
 //!
-//! WIP
+//! Element access by index, as described above, is straightforward but
+//! potentially expensive. For an array with `n` dimensions (rank `n`),
+//! reaching a single element means naming an index along every dimension and
+//! computing a sum of `n` products. This is a lot of work for what is
+//! ultimately one read or write, and constructing the index is not free either.
+//! While this may be acceptable for individual reads and writes, it scales
+//! very poorly for bulk access.
 //!
-//! # Restrict & Crop
+//! The access pattern NMR data processing actually calls for is iteration
+//! along a dimension, most often the direct one. Instead of asking for the
+//! element at `(x, y, z)`, fix every dimension but one and traverse everything
+//! along the one that remains: a [`Lane`]. This is familiar one-dimensional
+//! iteration, and because the stride along a dimension is fixed, consecutive
+//! elements of a lane are a constant distance apart. In the contiguous case,
+//! they are directly adjacent, and the lane is a plain slice. Stepping to the
+//! next lane costs work proportional to `n` once per lane, rather than per
+//! element.
 //!
-//! WIP
+//! Fixing all dimensions but `dim` leaves an index over the others, and that
+//! index is what names a lane. Enumerating the lanes therefore means counting
+//! through those remaining dimensions, and the [`DimOrder`] decides their
+//! ordering. For an array of shape `[2, 3, 4]` with lanes along dimension `2`,
+//! the remaining dimensions are `0` and `1`, yielding 6 lanes of length 4.
+//! Ordering them `[0, 1, 2]` makes dimension `1` vary the fastest, so the
+//! lanes are yielded in the order:
+//!
+//! ```text
+//! L(0) = (0, 0, ·)
+//! L(1) = (0, 1, ·)
+//! L(2) = (0, 2, ·)
+//! L(3) = (1, 0, ·)
+//! L(4) = (1, 1, ·)
+//! L(5) = (1, 2, ·)
+//! ```
+//!
+//! while the ordering `[1, 0, 2]` makes dimension `0` vary the fastest:
+//!
+//! ```text
+//! L(0) = (0, 0, ·)
+//! L(1) = (1, 0, ·)
+//! L(2) = (0, 1, ·)
+//! L(3) = (1, 1, ·)
+//! L(4) = (0, 2, ·)
+//! L(5) = (1, 2, ·)
+//! ```
+//!
+//! Note that `dim` still needs to be part of the dimension ordering to make it
+//! a valid permutation, though its position in the permutation has no effect
+//! on the result. `[0, 1, 2]`, `[0, 2, 1]`, and `[2, 0, 1]` all produce the
+//! same lane ordering along dimension `2`.
+//!
+//! The following table provides an overview of the `lanes_*` methods of the
+//! array type. Each method also has a mutable and a parallel counterpart.
+//!
+//! | Method                  | Returns the array's lanes along...                        |
+//! |-------------------------|-----------------------------------------------------------|
+//! | [`contiguous_lanes`]    | a dimension with stride `1`, or `None` if there is none   |
+//! | [`lanes_memory_order`]  | `dim`, traversing the storage as sequentially as possible |
+//! | [`lanes_lexicographic`] | `dim`, with the last dimension counting fastest           |
+//! | [`lanes_with_order`]    | `dim`, in the provided `order`                            |
+//!
+//! [`lanes_with_order`]: Array::lanes_with_order
+//! [`lanes_memory_order`]: Array::lanes_memory_order
+//! [`lanes_lexicographic`]: Array::lanes_lexicographic
+//! [`contiguous_lanes`]: Array::contiguous_lanes
 //!
 //! # NumPy Acknowledgement
 //!
@@ -150,7 +244,6 @@
 //! [NumPy]: https://numpy.org/
 
 mod array;
-
 pub use array::{
     Array, Array1D, Array2D, Array3D, ArrayArc, ArrayCow, ArrayDyn, ArrayOwned, ArrayRc,
     ArraySliceView, ArraySliceViewMut, ArrayView, ArrayViewMut,
