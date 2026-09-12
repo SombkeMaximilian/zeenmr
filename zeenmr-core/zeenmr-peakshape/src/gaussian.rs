@@ -161,7 +161,7 @@ where
     pub fn from_untransformed(amp: T, scale: T, center: T) -> Self {
         Self {
             amp,
-            exp2_scale: -T::LOG2_E() / (T::one() + T::one() * scale.powi(2)),
+            exp2_scale: -T::LOG2_E() / ((T::one() + T::one()) * scale.powi(2)),
             center,
         }
     }
