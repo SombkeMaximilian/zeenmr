@@ -3,6 +3,9 @@ use crate::dimension::{
     DimIndex, Dimension, DynDim, IntoDimension, StaticDim, assert_rank_compatible,
 };
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 /// Trait for NMR spectrum or FID axis types.
 pub trait Axis {
     /// 1D grid type of the axis with a length attached.
@@ -19,9 +22,6 @@ pub trait Axis {
     /// (e.g., `len > 2^24` for `f32`) in the downstream methods.
     fn grid(&self, len: usize) -> Self::Grid<'_>;
 }
-
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
 
 /// Frequency axes with a rank determined at runtime.
 pub type DynFrequencyAxes<T> = Axes<DynDim<FrequencyAxis<T>>>;
