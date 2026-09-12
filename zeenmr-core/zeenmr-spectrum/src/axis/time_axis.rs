@@ -1,3 +1,4 @@
+use crate::axis::Axis;
 use crate::axis::iter::AxisValues;
 use num_traits::Float;
 
@@ -32,6 +33,20 @@ pub struct TimeAxis<T> {
     dwell: T,
 }
 
+impl<T> Axis for TimeAxis<T>
+where
+    T: Float,
+{
+    type Grid<'a>
+        = TimeGrid<'a, T>
+    where
+        Self: 'a;
+
+    fn grid(&self, len: usize) -> Self::Grid<'_> {
+        TimeGrid { axis: self, len }
+    }
+}
+
 impl<T> TimeAxis<T>
 where
     T: Float,
@@ -45,17 +60,6 @@ where
         } else {
             None
         }
-    }
-
-    /// Attaches a length to the axis, producing a grid.
-    ///
-    /// # Precision
-    ///
-    /// Due to floating point errors when adding and multiplying, passing a
-    /// `len` that cannot be represented by `T` may lead to significant errors
-    /// (e.g., `len > 2^24` for `f32`) in the downstream methods.
-    pub fn grid(&self, len: usize) -> TimeGrid<'_, T> {
-        TimeGrid { axis: self, len }
     }
 
     /// Returns the time step, also known as dwell.

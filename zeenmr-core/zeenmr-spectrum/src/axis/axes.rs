@@ -3,6 +3,23 @@ use crate::dimension::{
     DimIndex, Dimension, DynDim, IntoDimension, StaticDim, assert_rank_compatible,
 };
 
+/// Trait for NMR spectrum or FID axis types.
+pub trait Axis {
+    /// 1D grid type of the axis with a length attached.
+    type Grid<'a>
+    where
+        Self: 'a;
+
+    /// Attaches a length to the axis, producing a 1D grid.
+    ///
+    /// # Precision
+    ///
+    /// Due to floating point errors when adding and multiplying, passing a
+    /// `len` that cannot be represented by `T` may lead to significant errors
+    /// (e.g., `len > 2^24` for `f32`) in the downstream methods.
+    fn grid(&self, len: usize) -> Self::Grid<'_>;
+}
+
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -44,6 +61,7 @@ pub struct Axes<A>(A);
 impl<A> Axes<A>
 where
     A: Dimension,
+    A::Elem: Axis,
 {
     /// Creates a new collection of axes.
     pub fn new(axes: A) -> Self {

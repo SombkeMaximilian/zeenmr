@@ -1,3 +1,4 @@
+use crate::axis::Axis;
 use crate::axis::iter::AxisValues;
 use crate::axis::range::{FiniteBounds, FrequencyRange, ShiftRange, SpectralRange};
 use num_traits::Float;
@@ -279,6 +280,20 @@ pub struct FrequencyAxis<T> {
     reference: ShiftReference<T>,
 }
 
+impl<T> Axis for FrequencyAxis<T>
+where
+    T: Float,
+{
+    type Grid<'a>
+        = FrequencyGrid<'a, T>
+    where
+        Self: 'a;
+
+    fn grid(&self, len: usize) -> Self::Grid<'_> {
+        FrequencyGrid { axis: self, len }
+    }
+}
+
 impl<T> FrequencyAxis<T>
 where
     T: Float,
@@ -312,17 +327,6 @@ where
     /// Returns `None` under the same conditions as [`FrequencyAxis::new`].
     pub fn with_reference(self, reference: ShiftReference<T>) -> Option<Self> {
         Self::new(self.range, self.larmor, reference)
-    }
-
-    /// Attaches a length to the axis, producing a grid.
-    ///
-    /// # Precision
-    ///
-    /// Passing a `len` that cannot be represented by `T` may lead to
-    /// significant errors (e.g., `len > 2^24` for `f32`) in the downstream
-    /// methods.
-    pub fn grid(&self, len: usize) -> FrequencyGrid<'_, T> {
-        FrequencyGrid { axis: self, len }
     }
 
     /// Returns the larmor frequency.
