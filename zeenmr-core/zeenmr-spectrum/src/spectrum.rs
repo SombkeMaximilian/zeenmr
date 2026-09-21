@@ -1,4 +1,4 @@
-use crate::axis::{Axes, Axis, FrequencyAxis, GridAxes};
+use crate::axis::{Axes, FrequencyAxis, FrequencyGrid, GridAxes};
 use crate::dimension::{Dimension, DynDim, StaticDim, assert_rank_compatible};
 use crate::intensity_array::{Access, Array, ArrayView, RawStorage, StorageOwned};
 use num_traits::Float;
@@ -94,7 +94,7 @@ where
     pub fn axes<'a, G>(&'a self) -> GridAxes<G>
     where
         T: 'a,
-        G: Dimension<Elem = <A::Elem as Axis>::Grid<'a>>,
+        G: Dimension<Elem = FrequencyGrid<'a, T>>,
     {
         debug_assert_eq!(self.axes.rank(), self.intensities.rank());
 
