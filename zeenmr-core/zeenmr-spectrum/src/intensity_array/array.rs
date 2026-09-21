@@ -1325,8 +1325,11 @@ where
 /// Raw array without invariants as an intermediate for deserialization.
 #[cfg(feature = "serde")]
 #[derive(Deserialize)]
-#[serde(bound(deserialize = "T: Deserialize<'de>, D: Dimension<Elem = usize> + Deserialize<'de>"))]
-struct RawArray<T, D> {
+#[serde(bound(deserialize = "T: Deserialize<'de>, D: Deserialize<'de>"))]
+struct RawArray<T, D>
+where
+    D: Dimension<Elem = usize>,
+{
     /// Array shape.
     shape: Shape<D>,
     /// Ordering of the array strides.
