@@ -17,10 +17,7 @@ mod nucleus;
 pub use nucleus::Nucleus;
 
 mod spectrum;
-pub use spectrum::{Spectrum1D, SpectrumView1D};
-
-pub mod builder_1d {
-    //! Builder pattern for spectra.
-
-    pub use crate::spectrum::{Builder1D, NeedsAxis, NeedsRange};
-}
+pub use spectrum::{
+    Spectrum, Spectrum1, Spectrum2, Spectrum3, SpectrumArc, SpectrumCow, SpectrumDyn,
+    SpectrumOwned, SpectrumRc, SpectrumSliceView, SpectrumView,
+};

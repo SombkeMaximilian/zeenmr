@@ -33,10 +33,7 @@ pub struct TimeAxis<T> {
     dwell: T,
 }
 
-impl<T> Axis for TimeAxis<T>
-where
-    T: Float,
-{
+impl<T> Axis for TimeAxis<T> {
     type Grid<'a>
         = TimeGrid<'a, T>
     where
@@ -108,16 +105,16 @@ where
 ///
 /// An instance of this type can be obtained from [`TimeAxis::grid`].
 #[derive(Copy, Clone, PartialEq, Debug)]
-pub struct TimeGrid<'axis, T> {
+pub struct TimeGrid<'a, T> {
     /// Reference to the original axis.
     ///
     /// This is not owned in order to enforce single source of truth.
-    axis: &'axis TimeAxis<T>,
+    axis: &'a TimeAxis<T>,
     /// Length of the 1D grid.
     len: usize,
 }
 
-impl<'axis, T> IntoIterator for TimeGrid<'axis, T>
+impl<'a, T> IntoIterator for TimeGrid<'a, T>
 where
     T: Float,
 {
@@ -129,7 +126,7 @@ where
     }
 }
 
-impl<'axis, T> IntoIterator for &TimeGrid<'axis, T>
+impl<'a, T> IntoIterator for &TimeGrid<'a, T>
 where
     T: Float,
 {
@@ -141,7 +138,7 @@ where
     }
 }
 
-impl<'axis, T> IntoIterator for &mut TimeGrid<'axis, T>
+impl<'a, T> IntoIterator for &mut TimeGrid<'a, T>
 where
     T: Float,
 {
@@ -153,7 +150,7 @@ where
     }
 }
 
-impl<'axis, T> TimeGrid<'axis, T>
+impl<'a, T> TimeGrid<'a, T>
 where
     T: Float,
 {
@@ -163,7 +160,7 @@ where
     }
 
     /// Returns a reference to the original axis.
-    pub fn axis(&self) -> &'axis TimeAxis<T> {
+    pub fn axis(&self) -> &'a TimeAxis<T> {
         self.axis
     }
 
@@ -186,7 +183,7 @@ where
 }
 
 #[cfg(feature = "rayon")]
-impl<'axis, T> IntoParallelIterator for TimeGrid<'axis, T>
+impl<'a, T> IntoParallelIterator for TimeGrid<'a, T>
 where
     T: Float + Send,
 {
@@ -199,7 +196,7 @@ where
 }
 
 #[cfg(feature = "rayon")]
-impl<'axis, T> IntoParallelIterator for &TimeGrid<'axis, T>
+impl<'a, T> IntoParallelIterator for &TimeGrid<'a, T>
 where
     T: Float + Send,
 {
@@ -212,7 +209,7 @@ where
 }
 
 #[cfg(feature = "rayon")]
-impl<'axis, T> IntoParallelIterator for &mut TimeGrid<'axis, T>
+impl<'a, T> IntoParallelIterator for &mut TimeGrid<'a, T>
 where
     T: Float + Send,
 {
@@ -225,7 +222,7 @@ where
 }
 
 #[cfg(feature = "rayon")]
-impl<'axis, T> TimeGrid<'axis, T>
+impl<'a, T> TimeGrid<'a, T>
 where
     T: Float + Send,
 {

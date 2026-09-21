@@ -243,6 +243,10 @@
 //!
 //! [NumPy]: https://numpy.org/
 
+pub mod diagnostic_1d;
+
+pub mod iter;
+
 mod array;
 pub use array::{
     Array, Array1D, Array2D, Array3D, ArrayArc, ArrayCow, ArrayDyn, ArrayOwned, ArrayRc,
@@ -263,7 +267,3 @@ pub use layout::{
 
 mod lane;
 pub use lane::{Lane, LaneMut};
-
-pub mod diagnostic_1d;
-
-pub mod iter;

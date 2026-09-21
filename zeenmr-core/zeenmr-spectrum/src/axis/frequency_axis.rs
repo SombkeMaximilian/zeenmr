@@ -280,10 +280,7 @@ pub struct FrequencyAxis<T> {
     reference: ShiftReference<T>,
 }
 
-impl<T> Axis for FrequencyAxis<T>
-where
-    T: Float,
-{
+impl<T> Axis for FrequencyAxis<T> {
     type Grid<'a>
         = FrequencyGrid<'a, T>
     where
@@ -584,16 +581,16 @@ where
 ///
 /// An instance of this type can be obtained from [`FrequencyAxis::grid`].
 #[derive(Copy, Clone, PartialEq, Debug)]
-pub struct FrequencyGrid<'axis, T> {
+pub struct FrequencyGrid<'a, T> {
     /// Reference to the original axis.
     ///
     /// This is not owned in order to enforce single source of truth.
-    axis: &'axis FrequencyAxis<T>,
+    axis: &'a FrequencyAxis<T>,
     /// Length of the 1D grid.
     len: usize,
 }
 
-impl<'axis, T> FrequencyGrid<'axis, T>
+impl<'a, T> FrequencyGrid<'a, T>
 where
     T: Float,
 {
@@ -603,7 +600,7 @@ where
     }
 
     /// Returns a reference to the original axis.
-    pub fn axis(&self) -> &'axis FrequencyAxis<T> {
+    pub fn axis(&self) -> &'a FrequencyAxis<T> {
         self.axis
     }
 

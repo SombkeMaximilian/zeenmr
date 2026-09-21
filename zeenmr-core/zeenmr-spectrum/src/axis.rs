@@ -6,8 +6,8 @@ pub mod range;
 
 mod axes;
 pub use axes::{
-    Axes, Axis, DynFrequencyAxes, DynTimeAxes, StaticFrequencyAxes, StaticTimeAxes, frequency_axes,
-    time_axes,
+    Axes, Axis, DynFrequencyAxes, DynTimeAxes, GridAxes, StaticFrequencyAxes, StaticTimeAxes,
+    frequency_axes, time_axes,
 };
 
 mod frequency_axis;
