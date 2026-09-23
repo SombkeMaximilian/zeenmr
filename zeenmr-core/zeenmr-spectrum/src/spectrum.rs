@@ -31,17 +31,17 @@ pub type SpectrumRc<A, T, D> = Spectrum<A, Rc<[T]>, D>;
 /// Spectrum using reference atomic counted storage for its intensities.
 pub type SpectrumArc<A, T, D> = Spectrum<A, Arc<[T]>, D>;
 
-/// Spectrum of rank 1.
-pub type Spectrum1<T, S> = Spectrum<StaticDim<T, 1>, S, StaticDim<usize, 1>>;
+/// 1D Spectrum.
+pub type Spectrum1D<F, S> = Spectrum<StaticDim<FrequencyAxis<F>, 1>, S, StaticDim<usize, 1>>;
 
-/// Spectrum of rank 2.
-pub type Spectrum2<T, S> = Spectrum<StaticDim<T, 2>, S, StaticDim<usize, 2>>;
+/// 2D Spectrum.
+pub type Spectrum2D<F, S> = Spectrum<StaticDim<FrequencyAxis<F>, 2>, S, StaticDim<usize, 2>>;
 
-/// Spectrum of rank 3.
-pub type Spectrum3<T, S> = Spectrum<StaticDim<T, 3>, S, StaticDim<usize, 3>>;
+/// 3D Spectrum.
+pub type Spectrum3D<F, S> = Spectrum<StaticDim<FrequencyAxis<F>, 3>, S, StaticDim<usize, 3>>;
 
 /// Spectrum of a rank determined at runtime.
-pub type SpectrumDyn<T, S> = Spectrum<DynDim<T>, S, DynDim<usize>>;
+pub type SpectrumDyn<F, S> = Spectrum<DynDim<FrequencyAxis<F>>, S, DynDim<usize>>;
 
 /// Spectrum type with arbitrary dimensions.
 #[derive(Clone, Debug)]
