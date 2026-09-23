@@ -19,14 +19,13 @@ use zeenmr::{
     spectrum::{
         Spectrum1D,
         axis::range::{FiniteBounds, FrequencyRange},
-        axis::{FrequencyAxis, Larmor, ShiftReference},
+        axis::{FrequencyAxis, Larmor, ShiftReference, frequency_axes},
+        intensity_array::{Array1D, shape},
     },
 };
 
 mod workspace_dir;
 use workspace_dir::workspace_dir;
-use zeenmr::spectrum::axis::frequency_axes;
-use zeenmr::spectrum::intensity_array::{Array1D, shape};
 
 fn read_spectrum<T, P>(path: P) -> Spectrum1D<T, Arc<[T]>>
 where

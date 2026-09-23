@@ -1,11 +1,14 @@
 use crate::axis::{Axes, Axis, FrequencyAxis, FrequencyGrid, GridAxes};
 use crate::dimension::{DimIndex, Dimension, DynDim, StaticDim, assert_rank_compatible};
-use crate::intensity_array::{Access, Array, ArrayView, RawStorage, StorageOwned};
-use num_traits::Float;
+use crate::intensity_array::{Access, Array, ArrayView, RawStorage};
 use std::borrow::Cow;
 use std::rc::Rc;
 use std::sync::Arc;
 
+#[cfg(feature = "serde")]
+use crate::intensity_array::StorageOwned;
+#[cfg(feature = "serde")]
+use num_traits::Float;
 #[cfg(feature = "serde")]
 use serde::de::Error;
 #[cfg(feature = "serde")]
