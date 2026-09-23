@@ -55,10 +55,9 @@ pub struct Spectrum<A, S, D> {
     intensities: Array<S, D>,
 }
 
-impl<T, A, S, D> Spectrum<A, S, D>
+impl<F, A, S, D> Spectrum<A, S, D>
 where
-    T: Float,
-    A: Dimension<Elem = FrequencyAxis<T>>,
+    A: Dimension<Elem = FrequencyAxis<F>>,
     S: RawStorage,
     D: Dimension<Elem = usize>,
 {
@@ -93,8 +92,8 @@ where
     /// attached.
     pub fn axes<'a, G>(&'a self) -> GridAxes<G>
     where
-        T: 'a,
-        G: Dimension<Elem = FrequencyGrid<'a, T>>,
+        F: 'a,
+        G: Dimension<Elem = FrequencyGrid<'a, F>>,
     {
         debug_assert_eq!(self.axes.rank(), self.intensities.rank());
 
