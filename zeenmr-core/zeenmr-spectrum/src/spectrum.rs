@@ -85,6 +85,14 @@ where
         Some(Self { axes, intensities })
     }
 
+    /// Returns a view of the spectrum.
+    pub fn view(&self) -> SpectrumView<'_, A, S::Elem, D> {
+        SpectrumView {
+            axes: self.axes.clone(),
+            intensities: self.intensities.view(),
+        }
+    }
+
     /// Returns the parts of `self`.
     ///
     /// The axes and array returned by this method are guaranteed to be valid
