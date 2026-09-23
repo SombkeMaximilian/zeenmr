@@ -7,9 +7,10 @@ use num_traits::Float;
 use std::ops::Range;
 use zeenmr_peakshape::PeakShape;
 use zeenmr_peakshape::batch_superposition::{Standard, SuperpositionKernel};
-use zeenmr_spectrum::Spectrum1D;
+use zeenmr_spectrum::SpectrumView1D;
 use zeenmr_spectrum::axis::range::{FiniteBounds, ShiftRange};
-use zeenmr_spectrum::intensity_array::Storage;
+use zeenmr_spectrum::dimension::DimIndex;
+use zeenmr_spectrum::intensity_array::index;
 
 #[cfg(feature = "rayon")]
 use crate::fitting::ParFit;
@@ -29,12 +30,10 @@ pub trait Deconvolute<T, P> {
     /// Deconvolutes the provided `Spectrum` into its constituent signals.
     ///
     /// Each signal is modeled as a peak shape.
-    fn deconvolute<S>(
+    fn deconvolute(
         &self,
-        spectrum: &Spectrum1D<T, S>,
-    ) -> Result<Deconvolution<T, P>, Self::Error>
-    where
-        S: Storage<Elem = T>;
+        spectrum: SpectrumView1D<T, T>,
+    ) -> Result<Deconvolution<T, P>, Self::Error>;
 }
 
 /// Trait for deconvoluting a spectrum into its constituent signals in
@@ -50,12 +49,10 @@ pub trait ParDeconvolute<T, P> {
     /// parallel.
     ///
     /// Each signal is modeled as a peak shape.
-    fn par_deconvolute<S>(
+    fn par_deconvolute(
         &self,
-        spectrum: &Spectrum1D<T, S>,
-    ) -> Result<Deconvolution<T, P>, Self::Error>
-    where
-        S: Storage<Elem = T>;
+        spectrum: SpectrumView1D<T, T>,
+    ) -> Result<Deconvolution<T, P>, Self::Error>;
 }
 
 /// Extension trait for iterators of spectrum types to deconvolute each item
@@ -70,18 +67,18 @@ pub trait DeconvoluteMap<T, P>: Iterator {
         D: Deconvolute<T, P>;
 }
 
-impl<'s, S, I, P> DeconvoluteMap<S::Elem, P> for I
+impl<'s, T, I, P> DeconvoluteMap<T, P> for I
 where
-    S: Storage + 's,
-    I: Iterator<Item = &'s Spectrum1D<S::Elem, S>>,
-    P: PeakShape<S::Elem>,
+    T: 's,
+    I: Iterator<Item = SpectrumView1D<'s, T, T>>,
+    P: PeakShape<T>,
 {
     fn deconvolute<D>(
         self,
         deconvoluter: &D,
-    ) -> impl Iterator<Item = Result<Deconvolution<S::Elem, P>, D::Error>>
+    ) -> impl Iterator<Item = Result<Deconvolution<T, P>, D::Error>>
     where
-        D: Deconvolute<S::Elem, P>,
+        D: Deconvolute<T, P>,
     {
         self.map(move |spectrum| deconvoluter.deconvolute(spectrum))
     }
@@ -103,19 +100,18 @@ pub trait ParDeconvoluteMap<T, P>: IndexedParallelIterator {
 }
 
 #[cfg(feature = "rayon")]
-impl<'s, S, I, P> ParDeconvoluteMap<S::Elem, P> for I
+impl<'s, T, I, P> ParDeconvoluteMap<T, P> for I
 where
-    S: Storage + 's,
-    S::Elem: Send + Sync,
-    I: IndexedParallelIterator<Item = &'s Spectrum1D<S::Elem, S>>,
-    P: PeakShape<S::Elem> + Send + Sync,
+    T: Send + Sync + 's,
+    I: IndexedParallelIterator<Item = SpectrumView1D<'s, T, T>>,
+    P: PeakShape<T> + Send + Sync,
 {
     fn deconvolute<D>(
         self,
         deconvoluter: &D,
-    ) -> impl IndexedParallelIterator<Item = Result<Deconvolution<S::Elem, P>, D::Error>>
+    ) -> impl IndexedParallelIterator<Item = Result<Deconvolution<T, P>, D::Error>>
     where
-        D: ParDeconvolute<S::Elem, P> + Send + Sync,
+        D: ParDeconvolute<T, P> + Send + Sync,
         D::Error: Send,
     {
         self.map(move |spectrum| deconvoluter.par_deconvolute(spectrum))
@@ -155,7 +151,7 @@ pub struct Deconvoluter<T, C1, C2, C3> {
 
 impl<T, P, C1, C2, C3> Deconvolute<T, P> for Deconvoluter<T, C1, C2, C3>
 where
-    T: Float,
+    T: Float + Send + Sync,
     P: PeakShape<T>,
     C1: Smooth<T>,
     C2: Find<T>,
@@ -163,26 +159,29 @@ where
 {
     type Error = Error<C1::Error, C2::Error, C3::Error>;
 
-    fn deconvolute<S>(
+    fn deconvolute(
         &self,
-        spectrum: &Spectrum1D<T, S>,
-    ) -> Result<Deconvolution<T, P>, Self::Error>
-    where
-        S: Storage<Elem = T>,
-    {
-        let len = spectrum.intensities().len();
+        spectrum: SpectrumView1D<T, T>,
+    ) -> Result<Deconvolution<T, P>, Self::Error> {
+        let intensities = spectrum.intensities();
+        let mut intensities = intensities
+            .lane_at(DimIndex(0), &index([0]))
+            .map(|lane| lane.to_vec())
+            .expect("1D spectrum always has a first dimension");
+        let len = intensities.len();
         let len_as_t = T::from(len).expect("conversion from usize to T must never fail");
-        let axis = spectrum.axis();
-        let smoothed = self
-            .smoother
-            .smooth(spectrum.intensities())
+        let grid = spectrum
+            .grid_axis(DimIndex(0))
+            .expect("1D spectrum always has a first dimension");
+        self.smoother
+            .smooth_in_place(&mut intensities)
             .map_err(Error::smoothing)?;
         let ignore = self
             .ignore
             .iter()
             .filter_map(|range| {
-                let start = axis.shift_to_rel(range.start())? * len_as_t;
-                let end = axis.shift_to_rel(range.end())? * len_as_t;
+                let start = grid.axis().shift_to_rel(range.start())? * len_as_t;
+                let end = grid.axis().shift_to_rel(range.end())? * len_as_t;
                 let min = start.min(end).ceil().to_usize()?;
                 let max = start.max(end).floor().to_usize()? + 1;
 
@@ -193,7 +192,7 @@ where
             .collect::<Vec<Range<usize>>>();
         let peaks = self
             .finder
-            .find(&smoothed, spectrum.signal_range(), &ignore)
+            .find(&intensities, &signal_range(intensities.len()), &ignore)
             .map_err(Error::finding)?;
         let peak_shapes = self
             .fitter
@@ -216,26 +215,29 @@ where
 {
     type Error = Error<C1::Error, C2::Error, C3::Error>;
 
-    fn par_deconvolute<S>(
+    fn par_deconvolute(
         &self,
-        spectrum: &Spectrum1D<T, S>,
-    ) -> Result<Deconvolution<T, P>, Self::Error>
-    where
-        S: Storage<Elem = T>,
-    {
-        let len = spectrum.intensities().len();
+        spectrum: SpectrumView1D<T, T>,
+    ) -> Result<Deconvolution<T, P>, Self::Error> {
+        let intensities = spectrum.intensities();
+        let mut intensities = intensities
+            .lane_at(DimIndex(0), &index([0]))
+            .map(|lane| lane.to_vec())
+            .expect("1D spectrum always has a first dimension");
+        let len = intensities.len();
         let len_as_t = T::from(len).expect("conversion from usize to T must never fail");
-        let axis = spectrum.axis();
-        let intensities = self
-            .smoother
-            .smooth(spectrum.intensities())
+        let grid = spectrum
+            .grid_axis(DimIndex(0))
+            .expect("1D spectrum always has a first dimension");
+        self.smoother
+            .smooth_in_place(&mut intensities)
             .map_err(Error::smoothing)?;
         let ignore = self
             .ignore
             .iter()
             .filter_map(|range| {
-                let start = axis.shift_to_rel(range.start())? * len_as_t;
-                let end = axis.shift_to_rel(range.end())? * len_as_t;
+                let start = grid.axis().shift_to_rel(range.start())? * len_as_t;
+                let end = grid.axis().shift_to_rel(range.end())? * len_as_t;
                 let min = start.min(end).ceil().to_usize()?;
                 let max = start.max(end).floor().to_usize()? + 1;
 
@@ -246,7 +248,7 @@ where
             .collect::<Vec<Range<usize>>>();
         let peaks = self
             .finder
-            .find(&intensities, spectrum.signal_range(), &ignore)
+            .find(&intensities, &signal_range(intensities.len()), &ignore)
             .map_err(Error::finding)?;
         let peak_shapes = self
             .fitter
@@ -410,13 +412,12 @@ where
 /// the superposition of the fitted peak shapes.
 ///
 /// Ignored regions and signal-free region are excluded.
-fn mse<T, P, S>(spectrum: &Spectrum1D<T, S>, peak_shapes: &[P], ignore: &[Range<usize>]) -> T
+fn mse<T, P>(spectrum: SpectrumView1D<T, T>, peak_shapes: &[P], ignore: &[Range<usize>]) -> T
 where
-    T: Float,
+    T: Float + Send + Sync,
     P: PeakShape<T>,
-    S: Storage<Elem = T>,
 {
-    let signal = spectrum.signal_range();
+    let signal = signal_range(spectrum.intensities().len());
     let iter = std::iter::once(signal.start)
         .chain(
             ignore
@@ -430,7 +431,8 @@ where
         .zip(iter.skip(1).step_by(2))
         .fold((T::zero(), 0), |acc, (start, end)| {
             let shifts = spectrum
-                .axis()
+                .axis(DimIndex(0))
+                .expect("1D spectrum always has a first dimension")
                 .shifts(spectrum.intensities().len())
                 .skip(start)
                 .take(end - start)
@@ -439,14 +441,25 @@ where
 
             let residual = superposition
                 .iter()
-                .zip(spectrum.intensities()[start..end].iter())
+                .zip(
+                    spectrum
+                        .intensities()
+                        .cropped(DimIndex(0), start..end)
+                        .expect("1D spectrum always has a first dimension")
+                        .elem(),
+                )
                 .map(|(&sup, &obs)| (sup - obs).powi(2))
-                .fold(S::Elem::zero(), |acc, x| acc + x);
+                .fold(T::zero(), |acc, x| acc + x);
 
             (acc.0 + residual, acc.1 + end - start)
         });
 
     residual / T::from(count).expect("conversion from usize to T must never fail")
+}
+
+/// TODO: remove this.
+fn signal_range(len: usize) -> Range<usize> {
+    ((0.2 * len as f64) as usize)..((0.8 * len as f64) as usize)
 }
 
 #[cfg(test)]

@@ -20,16 +20,17 @@ use zeenmr::{
         Spectrum1D,
         axis::range::{FiniteBounds, FrequencyRange},
         axis::{FrequencyAxis, Larmor, ShiftReference},
-        builder_1d::Builder1D,
     },
 };
 
 mod workspace_dir;
 use workspace_dir::workspace_dir;
+use zeenmr::spectrum::axis::frequency_axes;
+use zeenmr::spectrum::intensity_array::{Array1D, shape};
 
 fn read_spectrum<T, P>(path: P) -> Spectrum1D<T, Arc<[T]>>
 where
-    T: Float,
+    T: Float + Send + Sync,
     P: AsRef<Path>,
 {
     let mut bruker = read_bruker_dir(path, 10, 10).unwrap();
@@ -63,20 +64,18 @@ where
         .unwrap();
     let reference = ShiftReference::new(ref_shift, ref_freq).unwrap();
     let axis = FrequencyAxis::new(freq_range, larmor, reference).unwrap();
-    let start = (0.15_f64 * raw.len() as f64) as usize;
-    let end = (0.85_f64 * raw.len() as f64) as usize;
+    let len = raw.len();
 
-    Builder1D::real(raw)
-        .unwrap()
-        .axis(axis)
-        .signal_range(start..end)
-        .unwrap()
-        .finalize()
+    Spectrum1D::new(
+        frequency_axes([axis]),
+        Array1D::new(raw, shape([len])).expect("non-empty 1D array"),
+    )
+    .expect("should be valid")
 }
 
 fn read_spectra<T, P>(path: P) -> Vec<Spectrum1D<T, Arc<[T]>>>
 where
-    T: Float,
+    T: Float + Send + Sync,
     P: AsRef<Path>,
 {
     path.as_ref()
@@ -99,14 +98,14 @@ fn single_and_batch(c: &mut Criterion) {
     c.bench_function("f32_deconvolute_blood_single", |b| {
         b.iter(|| {
             deconvoluter
-                .deconvolute(&blood_spectra[0])
+                .deconvolute(blood_spectra[0].view())
                 .unwrap()
         })
     });
     c.bench_function("f32_par_deconvolute_blood_single", |b| {
         b.iter(|| {
             deconvoluter
-                .par_deconvolute(&blood_spectra[0])
+                .par_deconvolute(blood_spectra[0].view())
                 .unwrap()
         })
     });
@@ -114,6 +113,7 @@ fn single_and_batch(c: &mut Criterion) {
         b.iter(|| {
             blood_spectra
                 .par_iter()
+                .map(|spectrum| spectrum.view())
                 .deconvolute(&deconvoluter)
                 .collect::<Vec<_>>()
         })
@@ -128,14 +128,14 @@ fn single_and_batch(c: &mut Criterion) {
     c.bench_function("f64_deconvolute_blood_single", |b| {
         b.iter(|| {
             deconvoluter
-                .deconvolute(&blood_spectra[0])
+                .deconvolute(blood_spectra[0].view())
                 .unwrap()
         })
     });
     c.bench_function("f64_par_deconvolute_blood_single", |b| {
         b.iter(|| {
             deconvoluter
-                .par_deconvolute(&blood_spectra[0])
+                .par_deconvolute(blood_spectra[0].view())
                 .unwrap()
         })
     });
@@ -143,6 +143,7 @@ fn single_and_batch(c: &mut Criterion) {
         b.iter(|| {
             blood_spectra
                 .par_iter()
+                .map(|spectrum| spectrum.view())
                 .deconvolute(&deconvoluter)
                 .collect::<Vec<_>>()
         })

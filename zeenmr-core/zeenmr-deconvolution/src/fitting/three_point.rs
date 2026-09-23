@@ -5,6 +5,7 @@ use std::marker::PhantomData;
 use zeenmr_peakshape::batch_superposition::{Standard, SuperpositionKernel};
 use zeenmr_peakshape::{Gaussian, Lorentzian, PeakShape};
 use zeenmr_spectrum::SpectrumView1D;
+use zeenmr_spectrum::dimension::DimIndex;
 
 #[cfg(feature = "rayon")]
 use crate::fitting::ParFit;
@@ -15,6 +16,7 @@ use zeenmr_peakshape::batch_superposition::ParSuperpositionKernel;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use zeenmr_spectrum::intensity_array::index;
 
 /// Temporary way to make the new API work.
 const SUPERPOSITION: Standard = Standard::new();
@@ -103,18 +105,25 @@ struct ReducedSpectrum<T> {
 
 impl<T> ReducedSpectrum<T>
 where
-    T: Float,
+    T: Float + Send + Sync,
 {
     /// Extracts the positions and intensities of the peaks from the spectrum
     /// and constructs a `ReducedSpectrum` from them.
     fn new(spectrum: SpectrumView1D<T, T>, peaks: &[Peak]) -> Self {
-        let len = spectrum.intensities().len();
+        let intensities = spectrum.intensities();
+        let intensities = intensities
+            .lane_at(DimIndex(0), &index([0]))
+            .expect("1D spectrum always has a first dimension");
+        let len = intensities.len();
         let len_as_t = T::from(len).expect("conversion from usize to T must never fail");
-        let axis = spectrum.axis();
+        let grid = spectrum
+            .grid_axis(DimIndex(0))
+            .expect("1D spectrum always has a first dimension");
         let index_to_shift = move |index: usize| {
             let index_as_t = T::from(index).expect("conversion from usize to T must never fail");
 
-            axis.rel_to_shift(index_as_t / len_as_t)
+            grid.axis()
+                .rel_to_shift(index_as_t / len_as_t)
                 .expect("index should be less than len")
         };
         let (shifts, intensities) = peaks
@@ -127,11 +136,15 @@ where
                         index_to_shift(peak.center),
                         index_to_shift(peak.right),
                     ],
-                    [
-                        spectrum.intensities()[peak.left],
-                        spectrum.intensities()[peak.center],
-                        spectrum.intensities()[peak.right],
-                    ],
+                    // SAFETY: every index is less than len and therefore within
+                    // bounds of the intensities.
+                    unsafe {
+                        [
+                            *(intensities.get_unchecked(peak.left)),
+                            *(intensities.get_unchecked(peak.center)),
+                            *(intensities.get_unchecked(peak.right)),
+                        ]
+                    },
                 )
             })
             .unzip::<_, _, Vec<_>, Vec<_>>();
@@ -221,7 +234,7 @@ impl<P> Clone for ThreePoint<P> {
 
 impl<T, P> Fit<T, P> for ThreePoint<P>
 where
-    T: Float,
+    T: Float + Send + Sync,
     P: PeakShape<T> + ThreePointStencil<T>,
 {
     type Error = std::convert::Infallible;
