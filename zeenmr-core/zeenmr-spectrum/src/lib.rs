@@ -19,5 +19,6 @@ pub use nucleus::Nucleus;
 mod spectrum;
 pub use spectrum::{
     Spectrum, Spectrum1D, Spectrum2D, Spectrum3D, SpectrumArc, SpectrumCow, SpectrumDyn,
-    SpectrumOwned, SpectrumRc, SpectrumSliceView, SpectrumView,
+    SpectrumOwned, SpectrumRc, SpectrumSliceView, SpectrumView, SpectrumView1D, SpectrumView2D,
+    SpectrumView3D,
 };

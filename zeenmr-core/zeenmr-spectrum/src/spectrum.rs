@@ -1,5 +1,5 @@
-use crate::axis::{Axes, FrequencyAxis, FrequencyGrid, GridAxes};
-use crate::dimension::{Dimension, DynDim, StaticDim, assert_rank_compatible};
+use crate::axis::{Axes, Axis, FrequencyAxis, FrequencyGrid, GridAxes};
+use crate::dimension::{DimIndex, Dimension, DynDim, StaticDim, assert_rank_compatible};
 use crate::intensity_array::{Access, Array, ArrayView, RawStorage, StorageOwned};
 use num_traits::Float;
 use std::borrow::Cow;
@@ -34,11 +34,23 @@ pub type SpectrumArc<A, T, D> = Spectrum<A, Arc<[T]>, D>;
 /// 1D Spectrum.
 pub type Spectrum1D<F, S> = Spectrum<StaticDim<FrequencyAxis<F>, 1>, S, StaticDim<usize, 1>>;
 
+/// 1D Spectrum that borrows its intensities.
+pub type SpectrumView1D<'s, F, T> =
+    Spectrum<StaticDim<FrequencyAxis<F>, 1>, Access<'s, T>, StaticDim<usize, 1>>;
+
 /// 2D Spectrum.
 pub type Spectrum2D<F, S> = Spectrum<StaticDim<FrequencyAxis<F>, 2>, S, StaticDim<usize, 2>>;
 
+/// 2D Spectrum that borrows its intensities.
+pub type SpectrumView2D<'s, F, T> =
+    Spectrum<StaticDim<FrequencyAxis<F>, 2>, Access<'s, T>, StaticDim<usize, 2>>;
+
 /// 3D Spectrum.
 pub type Spectrum3D<F, S> = Spectrum<StaticDim<FrequencyAxis<F>, 3>, S, StaticDim<usize, 3>>;
+
+/// 3D Spectrum that borrows its intensities.
+pub type SpectrumView3D<'s, F, T> =
+    Spectrum<StaticDim<FrequencyAxis<F>, 3>, Access<'s, T>, StaticDim<usize, 3>>;
 
 /// Spectrum of a rank determined at runtime.
 pub type SpectrumDyn<F, S> = Spectrum<DynDim<FrequencyAxis<F>>, S, DynDim<usize>>;
@@ -88,9 +100,22 @@ where
         self.axes.rank()
     }
 
-    /// Returns the grid axes of the spectrum, with the respective extent
-    /// attached.
-    pub fn axes<'a, G>(&'a self) -> GridAxes<G>
+    /// Returns a reference to the frequency axis of the spectrum at `index`.
+    ///
+    /// Use [`Spectrum::grid_axis`] to get the axis with its extent.
+    pub fn axis(&self, index: DimIndex) -> Option<&FrequencyAxis<F>> {
+        self.axes.get(index)
+    }
+
+    /// Returns a frequency grid axis of the spectrum at `index`.
+    pub fn grid_axis(&self, index: DimIndex) -> Option<FrequencyGrid<'_, F>> {
+        let extent = self.intensities.shape().get(index)?;
+
+        self.axes.get(index).map(|axis| axis.grid(extent))
+    }
+
+    /// Returns the axes of the spectrum with their respective extents.
+    pub fn grid_axes<'a, G>(&'a self) -> GridAxes<G>
     where
         F: 'a,
         G: Dimension<Elem = FrequencyGrid<'a, F>>,
