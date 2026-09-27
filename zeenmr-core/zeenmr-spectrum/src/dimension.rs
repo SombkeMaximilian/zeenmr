@@ -19,9 +19,9 @@ use serde::{Deserialize, Serialize};
 pub struct DimIndex(pub usize);
 
 /// Abstraction for multidimensional quantities.
-pub trait Dimension: Clone + Send + Sync {
+pub trait Dimension: Clone {
     /// Element type of the quantity.
-    type Elem: Clone + Send + Sync;
+    type Elem: Clone;
 
     /// Compile time constant rank, if available.
     const RANK: Option<usize>;
@@ -91,7 +91,7 @@ pub trait IntoDimension {
 
 impl<T, const N: usize> IntoDimension for StaticDim<T, N>
 where
-    T: Clone + Send + Sync,
+    T: Clone,
 {
     type Dim = Self;
 
@@ -102,7 +102,7 @@ where
 
 impl<T, const N: usize> IntoDimension for [T; N]
 where
-    T: Clone + Send + Sync,
+    T: Clone,
 {
     type Dim = StaticDim<T, N>;
 
@@ -113,7 +113,7 @@ where
 
 impl<T> IntoDimension for DynDim<T>
 where
-    T: Clone + Send + Sync,
+    T: Clone,
 {
     type Dim = Self;
 
@@ -124,7 +124,7 @@ where
 
 impl<T> IntoDimension for &[T]
 where
-    T: Clone + Send + Sync,
+    T: Clone,
 {
     type Dim = DynDim<T>;
 
@@ -135,7 +135,7 @@ where
 
 impl<T> IntoDimension for &mut [T]
 where
-    T: Clone + Send + Sync,
+    T: Clone,
 {
     type Dim = DynDim<T>;
 
@@ -146,7 +146,7 @@ where
 
 impl<T> IntoDimension for Vec<T>
 where
-    T: Clone + Send + Sync,
+    T: Clone,
 {
     type Dim = DynDim<T>;
 
@@ -157,7 +157,7 @@ where
 
 impl<T> IntoDimension for Box<[T]>
 where
-    T: Clone + Send + Sync,
+    T: Clone,
 {
     type Dim = DynDim<T>;
 
@@ -168,7 +168,7 @@ where
 
 impl<T> IntoDimension for Cow<'_, [T]>
 where
-    T: Clone + Send + Sync,
+    T: Clone,
 {
     type Dim = DynDim<T>;
 
@@ -226,7 +226,7 @@ impl<T, const N: usize> IntoIterator for StaticDim<T, N> {
 
 impl<T, const N: usize> Dimension for StaticDim<T, N>
 where
-    T: Clone + Send + Sync,
+    T: Clone,
 {
     type Elem = T;
 
@@ -373,7 +373,7 @@ impl<T> FromIterator<T> for DynDim<T> {
 
 impl<T> Dimension for DynDim<T>
 where
-    T: Clone + Send + Sync,
+    T: Clone,
 {
     type Elem = T;
 
