@@ -1,6 +1,6 @@
 use crate::axis::{Axes, Axis, FrequencyAxis, FrequencyGrid, GridAxes};
 use crate::dimension::{DimIndex, Dimension, DynDim, StaticDim, assert_rank_compatible};
-use crate::intensity_array::{Access, Array, ArrayView, RawStorage};
+use crate::intensity_array::{Access, Array, ArrayView, RawStorage, Shape};
 use std::borrow::Cow;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -70,6 +70,45 @@ pub struct Spectrum<A, S, D> {
     intensities: Array<S, D>,
 }
 
+impl<A, S, D> Spectrum<A, S, D>
+where
+    D: Dimension<Elem = usize>,
+{
+    /// Returns the rank of `self`.
+    pub fn rank(&self) -> usize {
+        self.intensities.rank()
+    }
+
+    /// Returns a reference to the shape of the spectrum.
+    pub fn shape(&self) -> &Shape<D> {
+        self.intensities.shape()
+    }
+
+    /// Returns the number of intensity values that the spectrum contains.
+    pub fn len(&self) -> usize {
+        self.intensities.len()
+    }
+
+    /// Returns the number of intensity values that the spectrum contains.
+    ///
+    /// This always returns `false`, since no empty arrays cannot be
+    /// constructed.
+    pub fn is_empty(&self) -> bool {
+        self.intensities.is_empty()
+    }
+}
+
+impl<A, S, D> Spectrum<A, S, D>
+where
+    S: RawStorage,
+    D: Dimension<Elem = usize>,
+{
+    /// Returns a view of the intensities.
+    pub fn intensities(&self) -> ArrayView<'_, S::Elem, D> {
+        self.intensities.view()
+    }
+}
+
 impl<F, A, S, D> Spectrum<A, S, D>
 where
     A: Dimension<Elem = FrequencyAxis<F>>,
@@ -104,13 +143,6 @@ where
         (self.axes, self.intensities)
     }
 
-    /// Returns the rank of `self`.
-    pub fn rank(&self) -> usize {
-        debug_assert_eq!(self.axes.rank(), self.intensities.rank());
-
-        self.axes.rank()
-    }
-
     /// Returns a reference to the frequency axis of the spectrum at `index`.
     ///
     /// Use [`Spectrum::grid_axis`] to get the axis with its extent.
@@ -131,16 +163,9 @@ where
         F: 'a,
         G: Dimension<Elem = FrequencyGrid<'a, F>>,
     {
-        debug_assert_eq!(self.axes.rank(), self.intensities.rank());
-
         self.axes
             .grid(self.intensities.shape().clone())
             .expect("type invariant guarantees that this is valid")
-    }
-
-    /// Returns a view of the intensities.
-    pub fn intensities(&self) -> ArrayView<'_, S::Elem, D> {
-        self.intensities.view()
     }
 }
 

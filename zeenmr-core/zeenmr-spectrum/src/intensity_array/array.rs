@@ -253,7 +253,7 @@ where
     /// Returns `true` if the array contains no elements.
     ///
     /// This always returns `false`, since no layout constructor produces an
-    /// empty layout. It exists as the counterpart to [`Array::len`].
+    /// empty layout.
     pub fn is_empty(&self) -> bool {
         self.layout.is_empty()
     }
