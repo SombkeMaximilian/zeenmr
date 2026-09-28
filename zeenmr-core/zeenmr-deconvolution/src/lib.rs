@@ -11,8 +11,12 @@ pub(crate) fn precision<T: num_traits::Float>() -> T {
 
 pub mod error;
 
+pub mod signal_boundaries;
+
 pub mod fitting;
+
 pub mod peak_finding;
+
 pub mod smoothing;
 
 mod deconvolute;

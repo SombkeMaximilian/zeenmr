@@ -243,8 +243,6 @@
 //!
 //! [NumPy]: https://numpy.org/
 
-pub mod diagnostic_1d;
-
 pub mod iter;
 
 mod array;
