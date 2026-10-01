@@ -417,8 +417,8 @@ where
     T: Float + Send + Sync,
     P: PeakShape<T>,
 {
-    let len = T::from(spectrum.intensities().len())
-        .expect("conversion from usize to T must never fail");
+    let len =
+        T::from(spectrum.intensities().len()).expect("conversion from usize to T must never fail");
     let axis = spectrum
         .axis(DimIndex(0))
         .expect("1D spectrum always has a first dimension");
@@ -426,11 +426,13 @@ where
         .iter()
         .map(|p| (p.center(), p.full_width()))
         .fold(spectrum.len()..0, |acc, (center, width)| {
-            let left = axis.shift_to_rel(center - width)
+            let left = axis
+                .shift_to_rel(center - width)
                 .and_then(|rel| (rel * len).to_usize())
                 .unwrap_or(acc.start)
                 .min(acc.start);
-            let right = axis.shift_to_rel(center + width)
+            let right = axis
+                .shift_to_rel(center + width)
                 .and_then(|rel| (rel * len).to_usize())
                 .unwrap_or(acc.end)
                 .max(acc.end);

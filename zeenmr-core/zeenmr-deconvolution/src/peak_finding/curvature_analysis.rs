@@ -1,5 +1,5 @@
-use crate::peak_finding::{Find, Peak};
 use crate::peak_finding::signal_boundaries::SignalBoundaries;
+use crate::peak_finding::{Find, Peak};
 use num_traits::Float;
 use std::ops::Range;
 use zeenmr_spectrum::SpectrumView1D;
