@@ -1,9 +1,12 @@
 use crate::peak_finding::{Find, Peak};
+use crate::peak_finding::signal_boundaries::SignalBoundaries;
 use num_traits::Float;
 use std::ops::Range;
+use zeenmr_spectrum::SpectrumView1D;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use zeenmr_spectrum::axis::range::RelativeRange;
 
 /// An error that occurred during the curvature analysis based peak finding.
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
@@ -260,23 +263,27 @@ where
 /// derivative values within bounds on both sides of the peak center.
 #[derive(Copy, Clone, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct CurvatureAnalysis<T> {
+pub struct CurvatureAnalysis<T, S> {
     /// Score threshold for peak filtering.
     pub threshold: Option<T>,
+    /// Type determining the signal boundaries of the input spectrum.
+    pub signal_finder: S,
 }
 
-impl<T> Find<T> for CurvatureAnalysis<T>
+impl<T, S> Find<T> for CurvatureAnalysis<T, S>
 where
     T: Float,
+    S: SignalBoundaries<T>,
 {
     type Error = CurvatureError;
 
     fn find(
         &self,
+        spectrum: SpectrumView1D<T, T>,
         smoothed: &[T],
-        signal: &Range<usize>,
         ignore: &[Range<usize>],
     ) -> Result<Vec<Peak>, Self::Error> {
+        let signal = self.signal_finder.signal_boundaries(spectrum);
         let mut second_derivative = smoothed
             .windows(3)
             .map(|w| w[0] - w[1] - w[1] + w[2])
@@ -291,7 +298,7 @@ where
             *value = value.abs();
         }
         let scorer = CurvatureScore(&second_derivative);
-        let bounds = peak_region_boundaries(&peaks, signal);
+        let bounds = peak_region_boundaries(&peaks, &signal);
 
         if peaks[..bounds.start].is_empty() && peaks[bounds.end..].is_empty() {
             return Err(CurvatureError::empty_signal_free_region());
@@ -322,21 +329,29 @@ where
     }
 }
 
-impl<T> Default for CurvatureAnalysis<T>
+impl<T> Default for CurvatureAnalysis<T, RelativeRange<T>>
 where
     T: Float,
 {
     fn default() -> Self {
         Self {
             threshold: Some(T::from(5_u8).expect("conversion from u8 to T must never fail")),
+            signal_finder: RelativeRange::new(
+                T::from(0.2).expect("conversion from {float} to T must never fail"),
+                T::from(0.8).expect("conversion from {float} to T must never fail"),
+            )
+            .expect("bounds are in [0, 1]"),
         }
     }
 }
 
-impl<T> CurvatureAnalysis<T> {
+impl<T, S> CurvatureAnalysis<T, S> {
     /// Creates a new `CurvatureAnalysis`.
-    pub fn new(threshold: Option<T>) -> Self {
-        Self { threshold }
+    pub fn new(threshold: Option<T>, signal_finder: S) -> Self {
+        Self {
+            threshold,
+            signal_finder,
+        }
     }
 }
 

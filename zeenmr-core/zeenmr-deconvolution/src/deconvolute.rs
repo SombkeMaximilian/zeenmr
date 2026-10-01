@@ -192,7 +192,7 @@ where
             .collect::<Vec<Range<usize>>>();
         let peaks = self
             .finder
-            .find(&intensities, &signal_range(intensities.len()), &ignore)
+            .find(spectrum.view(), &intensities, &ignore)
             .map_err(Error::finding)?;
         let peak_shapes = self
             .fitter
@@ -248,7 +248,7 @@ where
             .collect::<Vec<Range<usize>>>();
         let peaks = self
             .finder
-            .find(&intensities, &signal_range(intensities.len()), &ignore)
+            .find(spectrum.view(), &intensities, &ignore)
             .map_err(Error::finding)?;
         let peak_shapes = self
             .fitter
@@ -417,12 +417,38 @@ where
     T: Float + Send + Sync,
     P: PeakShape<T>,
 {
-    let signal = signal_range(spectrum.intensities().len());
+    let len = T::from(spectrum.intensities().len())
+        .expect("conversion from usize to T must never fail");
+    let axis = spectrum
+        .axis(DimIndex(0))
+        .expect("1D spectrum always has a first dimension");
+    let signal = peak_shapes
+        .iter()
+        .map(|p| (p.center(), p.full_width()))
+        .fold(spectrum.len()..0, |acc, (center, width)| {
+            let left = axis.shift_to_rel(center - width)
+                .and_then(|rel| (rel * len).to_usize())
+                .unwrap_or(acc.start)
+                .min(acc.start);
+            let right = axis.shift_to_rel(center + width)
+                .and_then(|rel| (rel * len).to_usize())
+                .unwrap_or(acc.end)
+                .max(acc.end);
+
+            left..right
+        });
+
+    if signal.start >= signal.end {
+        return T::nan();
+    }
+
     let iter = std::iter::once(signal.start)
         .chain(
             ignore
                 .iter()
-                .flat_map(|range| [range.start, range.end]),
+                .map(|r| r.start.max(signal.start)..r.end.min(signal.end))
+                .filter(|r| r.start < r.end)
+                .flat_map(|r| [r.start, r.end]),
         )
         .chain(std::iter::once(signal.end));
     let (residual, count) = iter
@@ -430,10 +456,8 @@ where
         .step_by(2)
         .zip(iter.skip(1).step_by(2))
         .fold((T::zero(), 0), |acc, (start, end)| {
-            let shifts = spectrum
-                .axis(DimIndex(0))
-                .expect("1D spectrum always has a first dimension")
-                .shifts(spectrum.intensities().len())
+            let shifts = axis
+                .shifts(spectrum.len())
                 .skip(start)
                 .take(end - start)
                 .collect::<Vec<T>>();
@@ -455,11 +479,6 @@ where
         });
 
     residual / T::from(count).expect("conversion from usize to T must never fail")
-}
-
-/// TODO: remove this.
-fn signal_range(len: usize) -> Range<usize> {
-    ((0.2 * len as f64) as usize)..((0.8 * len as f64) as usize)
 }
 
 #[cfg(test)]

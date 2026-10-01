@@ -1,4 +1,5 @@
 use std::ops::Range;
+use zeenmr_spectrum::SpectrumView1D;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -16,12 +17,12 @@ pub trait Find<T> {
     /// Error type when an error occurs during peak finding.
     type Error;
 
-    /// Finds peaks in the given smoothed signal within the specified bounds,
-    /// optionally ignoring certain regions.
+    /// Finds peaks in the spectrum using the smoothed signal, optionally
+    /// ignoring certain regions.
     fn find(
         &self,
+        spectrum: SpectrumView1D<T, T>,
         smoothed: &[T],
-        signal: &Range<usize>,
         ignore: &[Range<usize>],
     ) -> Result<Vec<Peak>, Self::Error>;
 }
