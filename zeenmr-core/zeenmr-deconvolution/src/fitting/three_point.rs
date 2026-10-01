@@ -6,6 +6,7 @@ use zeenmr_peakshape::batch_superposition::{Standard, SuperpositionKernel};
 use zeenmr_peakshape::{Gaussian, Lorentzian, PeakShape};
 use zeenmr_spectrum::SpectrumView1D;
 use zeenmr_spectrum::dimension::DimIndex;
+use zeenmr_spectrum::intensity_array::index;
 
 #[cfg(feature = "rayon")]
 use crate::fitting::ParFit;
@@ -16,10 +17,12 @@ use zeenmr_peakshape::batch_superposition::ParSuperpositionKernel;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use zeenmr_spectrum::intensity_array::index;
 
 /// Temporary way to make the new API work.
 const SUPERPOSITION: Standard = Standard::new();
+
+/// Minimum number of peak shapes to parallelize the update loop.
+const PAR_UPDATE_THRESHOLD: usize = 1024;
 
 /// Trait for estimating parameters of a peak shape from three data points.
 ///
@@ -246,7 +249,7 @@ where
             .iter()
             .map(|stencil| P::estimate_parameters(stencil.shifts, stencil.intensities))
             .collect::<Vec<_>>();
-        let mut ratios = vec![T::zero(); peak_shapes.len() * 3];
+        let mut superposition = vec![[T::zero(); 3]; peak_shapes.len()];
         for _ in 0..self.iterations {
             prune(
                 &mut reduced.shifts,
@@ -257,25 +260,25 @@ where
             if peak_shapes.is_empty() {
                 break;
             }
-            ratios.truncate(peak_shapes.len() * 3);
-            SUPERPOSITION.accumulate(&peak_shapes, reduced.shifts.as_flattened(), &mut ratios);
-            ratios
+            superposition.truncate(peak_shapes.len());
+            SUPERPOSITION.accumulate(
+                &peak_shapes,
+                reduced.shifts.as_flattened(),
+                superposition.as_flattened_mut(),
+            );
+            for (((stencil, peak_shape), sup), raw) in stencils
                 .iter_mut()
-                .zip(reduced.intensities.as_flattened().iter())
-                .for_each(|(sup, &raw)| *sup = raw / *sup);
-            for (stencil, ratios) in stencils.iter_mut().zip(ratios.chunks(3)) {
-                stencil.intensities[0] = stencil.intensities[0] * ratios[0];
-                stencil.intensities[1] = stencil.intensities[1] * ratios[1];
-                stencil.intensities[2] = stencil.intensities[2] * ratios[2];
+                .zip(peak_shapes.iter_mut())
+                .zip(superposition.iter())
+                .zip(reduced.intensities.iter())
+            {
+                stencil.intensities[0] = stencil.intensities[0] * raw[0] / sup[0];
+                stencil.intensities[1] = stencil.intensities[1] * raw[1] / sup[1];
+                stencil.intensities[2] = stencil.intensities[2] * raw[2] / sup[2];
                 stencil.mirror_shoulder();
+                *peak_shape = P::estimate_parameters(stencil.shifts, stencil.intensities);
             }
-            peak_shapes
-                .iter_mut()
-                .zip(stencils.iter())
-                .for_each(|(p, stencil)| {
-                    *p = P::estimate_parameters(stencil.shifts, stencil.intensities);
-                });
-            ratios.fill(T::zero());
+            superposition.fill([T::zero(); 3]);
         }
         peak_shapes.retain(|p| p.is_valid() && p.is_significant(crate::precision()));
 
@@ -302,7 +305,7 @@ where
             .iter()
             .map(|stencil| P::estimate_parameters(stencil.shifts, stencil.intensities))
             .collect::<Vec<_>>();
-        let mut ratios = vec![T::zero(); peak_shapes.len() * 3];
+        let mut superposition = vec![[T::zero(); 3]; peak_shapes.len()];
         for _ in 0..self.iterations {
             prune(
                 &mut reduced.shifts,
@@ -313,27 +316,26 @@ where
             if peak_shapes.is_empty() {
                 break;
             }
-            ratios.truncate(peak_shapes.len() * 3);
-            SUPERPOSITION.par_accumulate(&peak_shapes, reduced.shifts.as_flattened(), &mut ratios);
-            ratios
-                .iter_mut()
-                .zip(reduced.intensities.as_flattened().iter())
-                .for_each(|(superposition, &intensity)| {
-                    *superposition = intensity / *superposition
-                });
-            for (stencil, ratios) in stencils.iter_mut().zip(ratios.chunks(3)) {
-                stencil.intensities[0] = stencil.intensities[0] * ratios[0];
-                stencil.intensities[1] = stencil.intensities[1] * ratios[1];
-                stencil.intensities[2] = stencil.intensities[2] * ratios[2];
-                stencil.mirror_shoulder();
-            }
-            peak_shapes
+            superposition.truncate(peak_shapes.len());
+            SUPERPOSITION.par_accumulate(
+                &peak_shapes,
+                reduced.shifts.as_flattened(),
+                superposition.as_flattened_mut(),
+            );
+            stencils
                 .par_iter_mut()
-                .zip(stencils.par_iter())
-                .for_each(|(p, stencil)| {
-                    *p = P::estimate_parameters(stencil.shifts, stencil.intensities);
+                .zip(peak_shapes.par_iter_mut())
+                .zip(superposition.par_iter())
+                .zip(reduced.intensities.par_iter())
+                .with_min_len(PAR_UPDATE_THRESHOLD)
+                .for_each(|(((stencil, peak_shape), sup), raw)| {
+                    stencil.intensities[0] = stencil.intensities[0] * raw[0] / sup[0];
+                    stencil.intensities[1] = stencil.intensities[1] * raw[1] / sup[1];
+                    stencil.intensities[2] = stencil.intensities[2] * raw[2] / sup[2];
+                    stencil.mirror_shoulder();
+                    *peak_shape = P::estimate_parameters(stencil.shifts, stencil.intensities);
                 });
-            ratios.fill(T::zero());
+            superposition.fill([T::zero(); 3]);
         }
         peak_shapes.retain(|p| p.is_valid() && p.is_significant(crate::precision()));
 
@@ -375,6 +377,7 @@ fn prune<T, P>(
     debug_assert_eq!(shifts.len(), intensities.len());
     debug_assert_eq!(intensities.len(), stencils.len());
     debug_assert_eq!(stencils.len(), peak_shapes.len());
+
     let mut curr = 0;
     while curr < peak_shapes.len() {
         if peak_shapes[curr].is_valid() && peak_shapes[curr].is_significant(crate::precision()) {
