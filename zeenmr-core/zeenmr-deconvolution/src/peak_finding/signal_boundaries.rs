@@ -1,4 +1,4 @@
-//! Types and algorithms for finding ranges of data points with real signals.
+//! Types and traits for finding ranges of data points with real signals.
 
 use num_traits::Float;
 use std::ops::Range;
@@ -10,21 +10,23 @@ use zeenmr_spectrum::dimension::{DimIndex, StaticDim};
 use zeenmr_spectrum::intensity_array::ArrayView;
 
 /// Trait for finding the range within which signals are found.
-pub trait FindSignalBoundaries<F, T> {
+pub trait SignalBoundaries<T> {
     /// Returns an estimate for the index range within which real signals are
     /// contained.
-    fn find_signal_boundaries(&self, spectrum: SpectrumView1D<F, T>) -> Range<usize>;
+    fn signal_boundaries(&self, spectrum: SpectrumView1D<T, T>) -> Range<usize>;
 }
 
 /// Fallback helper if detecting the signal boundaries fails.
-pub fn fallback<F, T>(spectrum: SpectrumView1D<F, T>) -> Range<usize> {
-    RelativeRange::new(0.2, 0.8)
-        .expect("bounds are in [0, 1]")
-        .find_signal_boundaries(spectrum)
+///
+/// Returns the equivalent of the relative range `[0.2, 0.8]`.
+pub fn fallback<T>(array: ArrayView<T, StaticDim<usize, 1>>) -> Range<usize> {
+    let len = array.len() as f64;
+
+    ((0.2 * len) as usize)..((0.8 * len) as usize)
 }
 
-impl<F, T> FindSignalBoundaries<F, T> for Range<usize> {
-    fn find_signal_boundaries(&self, spectrum: SpectrumView1D<F, T>) -> Range<usize> {
+impl<T> SignalBoundaries<T> for Range<usize> {
+    fn signal_boundaries(&self, spectrum: SpectrumView1D<T, T>) -> Range<usize> {
         let upper = spectrum.intensities().len();
         let start = self
             .start
@@ -38,11 +40,11 @@ impl<F, T> FindSignalBoundaries<F, T> for Range<usize> {
     }
 }
 
-impl<R, F, T> FindSignalBoundaries<F, T> for RelativeRange<R>
+impl<R, T> SignalBoundaries<T> for RelativeRange<R>
 where
     R: Float,
 {
-    fn find_signal_boundaries(&self, spectrum: SpectrumView1D<F, T>) -> Range<usize> {
+    fn signal_boundaries(&self, spectrum: SpectrumView1D<T, T>) -> Range<usize> {
         let len = R::from(spectrum.intensities().len())
             .expect("conversion from usize to T must never fail");
         let start = (self.lower() * len)
@@ -60,12 +62,12 @@ where
     }
 }
 
-impl<F, T> FindSignalBoundaries<F, T> for FrequencyRange<F>
+impl<T> SignalBoundaries<T> for FrequencyRange<T>
 where
-    F: Float,
+    T: Float,
 {
-    fn find_signal_boundaries(&self, spectrum: SpectrumView1D<F, T>) -> Range<usize> {
-        let len = F::from(spectrum.intensities().len())
+    fn signal_boundaries(&self, spectrum: SpectrumView1D<T, T>) -> Range<usize> {
+        let len = T::from(spectrum.intensities().len())
             .expect("conversion from usize to T must never fail");
         let axis = spectrum
             .axis(DimIndex(0))
@@ -86,12 +88,12 @@ where
     }
 }
 
-impl<F, T> FindSignalBoundaries<F, T> for ShiftRange<F>
+impl<T> SignalBoundaries<T> for ShiftRange<T>
 where
-    F: Float,
+    T: Float,
 {
-    fn find_signal_boundaries(&self, spectrum: SpectrumView1D<F, T>) -> Range<usize> {
-        let len = F::from(spectrum.intensities().len())
+    fn signal_boundaries(&self, spectrum: SpectrumView1D<T, T>) -> Range<usize> {
+        let len = T::from(spectrum.intensities().len())
             .expect("conversion from usize to T must never fail");
         let axis = spectrum
             .axis(DimIndex(0))
@@ -128,21 +130,21 @@ pub struct CumulativeSum<T> {
     padding: usize,
 }
 
-impl<F, T> FindSignalBoundaries<F, T> for CumulativeSum<T>
+impl<T> SignalBoundaries<T> for CumulativeSum<T>
 where
     T: Float,
 {
-    fn find_signal_boundaries(&self, spectrum: SpectrumView1D<F, T>) -> Range<usize> {
+    fn signal_boundaries(&self, spectrum: SpectrumView1D<T, T>) -> Range<usize> {
         let intensities = spectrum.intensities();
         let Some((mean, std)) = self.edge_stats(intensities.clone()) else {
-            return fallback(spectrum);
+            return fallback(spectrum.intensities());
         };
         let signal_range = self.two_sided_scan(intensities, mean, std);
 
         if !signal_range.is_empty() {
             signal_range
         } else {
-            fallback(spectrum)
+            fallback(spectrum.intensities())
         }
     }
 }
