@@ -257,7 +257,7 @@ where
 }
 
 /// Owned storage for operations that allocate a result.
-pub trait StorageOwned: Storage + FromIterator<Self::Elem> {
+pub trait StorageOwned: RawStorage + FromIterator<Self::Elem> {
     /// Constructs `Self` from an owned `Vec`.
     ///
     /// The result must contain the same elements in the same memory order.

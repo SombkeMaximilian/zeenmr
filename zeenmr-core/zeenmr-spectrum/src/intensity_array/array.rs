@@ -340,7 +340,7 @@ where
         let layout = Layout::row_major(shape, 0)?;
         let storage = (0..layout.len()).map(f).collect();
 
-        Self::from_parts(storage, layout)
+        Some(Self { storage, layout })
     }
 
     /// Creates a row-major, contiguous array from the multidimensional
@@ -367,7 +367,10 @@ where
             index.increment_lexicographic(layout.shape().as_slice());
         }
 
-        Self::from_parts(S::from_vec(storage), layout)
+        Some(Self {
+            storage: S::from_vec(storage),
+            layout,
+        })
     }
 }
 
@@ -473,7 +476,10 @@ where
             }
         }
 
-        Array::from_parts(S2::from_vec(storage), layout)
+        Some(Array {
+            storage: S2::from_vec(storage),
+            layout,
+        })
     }
 
     /// Returns an immutable view of the entire array.
@@ -1373,10 +1379,10 @@ where
         let layout = Layout::new(shape, strides, 0)
             .expect("max offset cannot overflow for shape a with finite product");
 
-        Ok(
-            Array::from_parts(S::from_vec(data), layout)
-                .expect("failure modes should be exhausted"),
-        )
+        Ok(Array {
+            storage: S::from_vec(data),
+            layout,
+        })
     }
 }
 
