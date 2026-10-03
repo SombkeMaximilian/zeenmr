@@ -1,6 +1,6 @@
 use crate::axis::{Axes, Axis, FrequencyAxis, FrequencyGrid, GridAxes};
 use crate::dimension::{DimIndex, Dimension, DynDim, StaticDim, assert_rank_compatible};
-use crate::intensity_array::{Access, Array, ArrayView, RawStorage, Shape};
+use crate::intensity_array::{Access, Array, ArrayView, CowAccess, RawStorage, Shape};
 use std::borrow::Cow;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -26,7 +26,11 @@ pub type SpectrumSliceView<'s, A, T, D> = Spectrum<A, &'s [T], D>;
 pub type SpectrumOwned<A, T, D> = Spectrum<A, Box<[T]>, D>;
 
 /// Spectrum using clone-on-write storage for its intensities.
-pub type SpectrumCow<'s, A, T, D> = Spectrum<A, Cow<'s, [T]>, D>;
+pub type SpectrumCow<'s, A, T, D> = Spectrum<A, CowAccess<'s, T>, D>;
+
+/// Spectrum using the standard library's clone-on-write pointer as storage for
+/// its intensities.
+pub type SpectrumCowSlice<'s, A, T, D> = Spectrum<A, Cow<'s, [T]>, D>;
 
 /// Spectrum using reference counted storage for its intensities.
 pub type SpectrumRc<A, T, D> = Spectrum<A, Rc<[T]>, D>;

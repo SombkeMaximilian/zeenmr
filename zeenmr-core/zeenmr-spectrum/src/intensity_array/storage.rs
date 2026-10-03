@@ -609,6 +609,107 @@ impl<'s, T> AccessMut<'s, T> {
     }
 }
 
+/// Pointer wrapper that provides clone-on-write access to the elements of an
+/// allocation.
+///
+/// This type works similarly to the standard library's [`Cow`] type. However,
+/// it does not innately have the clone-on-write functionality, as the access
+/// pointer types themselves do not carry any information about the allocation
+/// other than it being aligned and non-null, its type and a lifetime. Instead,
+/// the array type gains clone-on-write functionality if this type acts as its
+/// storage.
+///
+/// See the [`module`] level documentation for more information about access
+/// pointers.
+///
+/// [`module`]: crate::intensity_array#access-pointers
+#[derive(Debug)]
+pub enum CowAccess<'s, T: Clone> {
+    /// Borrowed storage.
+    Borrowed(Access<'s, T>),
+    /// Owned storage.
+    Owned(Box<[T]>),
+}
+
+impl<T> Clone for CowAccess<'_, T>
+where
+    T: Clone,
+{
+    fn clone(&self) -> Self {
+        match self {
+            Self::Borrowed(access) => Self::Borrowed(*access),
+            Self::Owned(owned) => Self::Owned(owned.clone()),
+        }
+    }
+}
+
+impl<T> FromIterator<T> for CowAccess<'_, T>
+where
+    T: Clone,
+{
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = T>,
+    {
+        Self::Owned(iter.into_iter().collect())
+    }
+}
+
+unsafe impl<T> RawStorage for CowAccess<'_, T>
+where
+    T: Clone,
+{
+    type Elem = T;
+
+    fn as_ptr(&self) -> *const Self::Elem {
+        match self {
+            Self::Borrowed(access) => access.as_ptr(),
+            Self::Owned(owned) => owned.as_ptr(),
+        }
+    }
+}
+
+impl<T> StorageOwned for CowAccess<'_, T>
+where
+    T: Clone,
+{
+    fn from_vec(data: Vec<Self::Elem>) -> Self {
+        Self::Owned(data.into_boxed_slice())
+    }
+}
+
+impl<'s, T> CowAccess<'s, T>
+where
+    T: Clone,
+{
+    /// Creates a clone-on-write access pointer to the allocation backing
+    /// `storage`.
+    pub fn from_slice(storage: &'s mut [T]) -> Self {
+        Self::Borrowed(Access::from_slice(storage))
+    }
+
+    /// Creates a clone-on-write access pointer from an access pointer.
+    pub fn from_access(access: Access<'s, T>) -> Self {
+        Self::Borrowed(access)
+    }
+
+    /// Returns `true` if the data is borrowed.
+    ///
+    /// If this returns `true`, acquiring a mutable view of the array this
+    /// backs will clone the storage.
+    pub fn is_borrowed(&self) -> bool {
+        matches!(self, Self::Borrowed(_))
+    }
+
+    /// Returns `true` if the data is owned.
+    ///
+    /// If this returns `true`, acquiring a mutable view of the array this
+    /// backs will not clone the storage.
+    pub fn is_owned(&self) -> bool {
+        matches!(self, Self::Owned(_))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

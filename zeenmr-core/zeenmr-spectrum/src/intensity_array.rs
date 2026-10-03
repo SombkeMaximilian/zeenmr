@@ -247,13 +247,13 @@ pub mod iter;
 
 mod array;
 pub use array::{
-    Array, Array1D, Array2D, Array3D, ArrayArc, ArrayCow, ArrayDyn, ArrayOwned, ArrayRc,
-    ArraySliceView, ArraySliceViewMut, ArrayView, ArrayViewMut,
+    Array, Array1D, Array2D, Array3D, ArrayArc, ArrayCow, ArrayCowSlice, ArrayDyn, ArrayOwned,
+    ArrayRc, ArraySliceView, ArraySliceViewMut, ArrayView, ArrayViewMut,
 };
 
 mod storage;
 pub use storage::{
-    Access, AccessMut, RawStorage, RawStorageMut, Storage, StorageMut, StorageOwned,
+    Access, AccessMut, CowAccess, RawStorage, RawStorageMut, Storage, StorageMut, StorageOwned,
 };
 
 mod layout;

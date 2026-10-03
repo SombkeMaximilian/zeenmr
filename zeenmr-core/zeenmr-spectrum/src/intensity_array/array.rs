@@ -5,8 +5,8 @@ use crate::intensity_array::iter::{
 };
 use crate::intensity_array::storage::{RawAccess, RawAccessMut};
 use crate::intensity_array::{
-    Access, AccessMut, ArrayIndex, DimOrder, Lane, LaneMut, Layout, RawStorage, RawStorageMut,
-    Shape, Storage, StorageMut, StorageOwned,
+    Access, AccessMut, ArrayIndex, CowAccess, DimOrder, Lane, LaneMut, Layout, RawStorage,
+    RawStorageMut, Shape, Storage, StorageMut, StorageOwned,
 };
 use std::borrow::Cow;
 use std::ops::{Index, IndexMut, RangeBounds};
@@ -43,7 +43,13 @@ pub type ArraySliceViewMut<'s, T, D> = Array<&'s mut [T], D>;
 pub type ArrayOwned<T, D> = Array<Box<[T]>, D>;
 
 /// Array using clone-on-write storage.
-pub type ArrayCow<'s, T, D> = Array<Cow<'s, [T]>, D>;
+///
+/// Requires acquiring a mutable view via [`ArrayCow::to_mut`] in order to
+/// mutate its storage.
+pub type ArrayCow<'s, T, D> = Array<CowAccess<'s, T>, D>;
+
+/// Array using the standard library's clone-on-write pointer as storage.
+pub type ArrayCowSlice<'s, T, D> = Array<Cow<'s, [T]>, D>;
 
 /// Array using referencing counted storage.
 pub type ArrayRc<T, D> = Array<Rc<[T]>, D>;
@@ -301,6 +307,18 @@ where
             layout: self.layout.clone(),
         }
     }
+
+    /// Returns a view using the standard library's clone-on-write pointer as
+    /// storage.
+    pub fn cow_slice_view(&self) -> ArrayCowSlice<'_, S::Elem, D>
+    where
+        S::Elem: Clone,
+    {
+        Array {
+            storage: Cow::Borrowed(self.storage.as_slice()),
+            layout: self.layout.clone(),
+        }
+    }
 }
 
 impl<S, D> Array<S, D>
@@ -493,6 +511,21 @@ where
         Array {
             storage: access,
             layout: self.layout.clone(),
+        }
+    }
+
+    /// Returns a clone-on-write view of the entire array.
+    ///
+    /// Prefer [`Array::cow_slice_view`] for types that can yield a slice.
+    pub fn cow_view(&self) -> ArrayCow<'_, S::Elem, D>
+    where
+        S::Elem: Clone,
+    {
+        let Array { storage, layout } = self.view();
+
+        Array {
+            storage: CowAccess::from_access(storage),
+            layout,
         }
     }
 
@@ -1272,6 +1305,30 @@ where
     ) -> Option<ParLanesMut<'_, S::Elem, D>> {
         self.lanes_with_order_mut(dim, order)
             .map(Par::new)
+    }
+}
+
+impl<T, D> ArrayCow<'_, T, D>
+where
+    T: Clone,
+    D: Dimension<Elem = usize>,
+{
+    /// Returns a mutable view of the entire array.
+    ///
+    /// If the storage is borrowed, this will first clone all addressable
+    /// elements.
+    pub fn to_mut(&mut self) -> ArrayViewMut<'_, T, D> {
+        match self.storage {
+            CowAccess::Borrowed(_) => {
+                *self = self.to_owned_storage::<CowAccess<'_, T>>();
+
+                self.to_mut()
+            }
+            CowAccess::Owned(ref mut owned) => ArrayViewMut {
+                storage: AccessMut::from_slice(owned),
+                layout: self.layout.clone(),
+            },
+        }
     }
 }
 
