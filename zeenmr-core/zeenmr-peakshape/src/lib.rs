@@ -10,7 +10,7 @@ pub mod approximations;
 pub mod batch_superposition;
 
 mod peak_shape;
-pub use peak_shape::{FromArray, PeakShape};
+pub use peak_shape::{DefaultSupport, FromArray, PeakShape};
 
 mod evaluate;
 pub use evaluate::{Evaluate, EvaluateParts};
@@ -24,10 +24,10 @@ pub mod iter {
 }
 
 mod lorentzian;
-pub use lorentzian::Lorentzian;
+pub use lorentzian::{Lorentzian, LorentzianSupport};
 
 mod gaussian;
-pub use gaussian::Gaussian;
+pub use gaussian::{Gaussian, GaussianSupport};
 
 mod voigt;
-pub use voigt::Voigt;
+pub use voigt::{Voigt, VoigtSupport};

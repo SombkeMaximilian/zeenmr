@@ -1,8 +1,11 @@
-use crate::{Evaluate, PeakShape};
+use crate::{Evaluate, LorentzianSupport, PeakShape};
 use num_traits::{Float, FloatConst};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+
+/// Precision information for [`Voigt`].
+pub type VoigtSupport<T> = LorentzianSupport<T>;
 
 /// Represents a [pseudo-Voigt] peak shape.
 ///
@@ -96,6 +99,8 @@ impl<T> PeakShape<T> for Voigt<T>
 where
     T: Float + FloatConst,
 {
+    type Support = VoigtSupport<T>;
+
     fn center(&self) -> T {
         self.center
     }
@@ -131,8 +136,8 @@ where
             && self.eta <= T::one()
     }
 
-    fn is_significant(&self, precision: T) -> bool {
-        self.maximum().abs() > precision && self.scale2.abs() > precision
+    fn is_significant(&self, precision: &Self::Support) -> bool {
+        self.scale2 > precision.width2 && self.maximum() > precision.intensity
     }
 }
 

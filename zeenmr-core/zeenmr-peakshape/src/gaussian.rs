@@ -1,9 +1,31 @@
 use crate::approximations::Exp2;
-use crate::{Evaluate, FromArray, PeakShape};
+use crate::{DefaultSupport, Evaluate, FromArray, PeakShape};
 use num_traits::{Float, FloatConst};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+
+/// Precision information for [`Gaussian`].
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct GaussianSupport<T> {
+    /// Negated inverse squared precision of width-based quantities.
+    pub neg_width2_inv: T,
+    /// Precision of intensity-based quantities.
+    pub intensity: T,
+}
+
+impl<T> From<DefaultSupport<T>> for GaussianSupport<T>
+where
+    T: Float,
+{
+    fn from(value: DefaultSupport<T>) -> Self {
+        Self {
+            neg_width2_inv: -value.width.powi(2).recip(),
+            intensity: value.intensity,
+        }
+    }
+}
 
 /// Represents a [Gaussian] peak shape.
 ///
@@ -103,6 +125,8 @@ impl<T> PeakShape<T> for Gaussian<T>
 where
     T: Exp2 + FloatConst,
 {
+    type Support = GaussianSupport<T>;
+
     fn center(&self) -> T {
         self.center
     }
@@ -131,8 +155,8 @@ where
             && self.center.is_finite()
     }
 
-    fn is_significant(&self, precision: T) -> bool {
-        self.maximum().abs() > precision && self.half_width().abs() > precision
+    fn is_significant(&self, precision: &Self::Support) -> bool {
+        self.exp2_scale < precision.neg_width2_inv && self.maximum() > precision.intensity
     }
 }
 

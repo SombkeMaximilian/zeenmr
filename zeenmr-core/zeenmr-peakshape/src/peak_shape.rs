@@ -23,11 +23,11 @@ use crate::Evaluate;
 /// - `is_valid` should return `true` if and only if the peak shape is
 ///   geometrically sensible.
 /// - `is_significant` should return `true` if and only if the internal
-///   representation of its parameters is significant relative to the threshold.
-///   This is to ensure numerical stability for its other operations. For
-///   example, a peak shape with an area close to machine epsilon would likely
-///   lead to downstream calculations producing nonsensical results.
+///   representation of its parameters is significant relative to the support.
 pub trait PeakShape<T>: Evaluate<T> {
+    /// Type containing precision information for [`PeakShape::is_significant`].
+    type Support: From<DefaultSupport<T>>;
+
     /// Returns the center position.
     fn center(&self) -> T;
 
@@ -52,7 +52,23 @@ pub trait PeakShape<T>: Evaluate<T> {
 
     /// Returns `true` if any calculations are significant relative to the given
     /// precision.
-    fn is_significant(&self, precision: T) -> bool;
+    ///
+    /// The first value is the ordinal precision, the second is the intensity
+    /// precision.
+    fn is_significant(&self, precision: &Self::Support) -> bool;
+}
+
+/// A default way of storing precision information.
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub struct DefaultSupport<T> {
+    /// Precision of width-based quantities.
+    ///
+    /// Must be positive.
+    pub width: T,
+    /// Precision of intensity-based quantities.
+    ///
+    /// Must be positive.
+    pub intensity: T,
 }
 
 /// Trait for peak shapes which can be constructed from an array of parameters.

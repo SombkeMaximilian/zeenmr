@@ -1,9 +1,31 @@
 use crate::util::fma;
-use crate::{Evaluate, EvaluateParts, FromArray, PeakShape};
+use crate::{DefaultSupport, Evaluate, EvaluateParts, FromArray, PeakShape};
 use num_traits::{Float, FloatConst};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+
+/// Precision information for [`Lorentzian`].
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct LorentzianSupport<T> {
+    /// Squared precision of width-based quantities.
+    pub width2: T,
+    /// Precision of intensity-based quantities.
+    pub intensity: T,
+}
+
+impl<T> From<DefaultSupport<T>> for LorentzianSupport<T>
+where
+    T: Float,
+{
+    fn from(value: DefaultSupport<T>) -> Self {
+        Self {
+            width2: value.width.powi(2),
+            intensity: value.intensity,
+        }
+    }
+}
 
 /// Represents a [Lorentzian] peak shape.
 ///
@@ -130,6 +152,8 @@ impl<T> PeakShape<T> for Lorentzian<T>
 where
     T: Float + FloatConst,
 {
+    type Support = LorentzianSupport<T>;
+
     fn center(&self) -> T {
         self.center
     }
@@ -158,8 +182,8 @@ where
             && self.center.is_finite()
     }
 
-    fn is_significant(&self, precision: T) -> bool {
-        self.maximum().abs() > precision && self.scale2.abs() > precision
+    fn is_significant(&self, precision: &Self::Support) -> bool {
+        self.scale2 > precision.width2 && self.maximum() > precision.intensity
     }
 }
 

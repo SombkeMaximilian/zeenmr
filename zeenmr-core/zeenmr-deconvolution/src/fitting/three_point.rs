@@ -3,7 +3,7 @@ use crate::peak_finding::Peak;
 use num_traits::Float;
 use std::marker::PhantomData;
 use zeenmr_peakshape::batch_superposition::{Standard, SuperpositionKernel};
-use zeenmr_peakshape::{Gaussian, Lorentzian, PeakShape};
+use zeenmr_peakshape::{DefaultSupport, Gaussian, Lorentzian, PeakShape};
 use zeenmr_spectrum::SpectrumView1D;
 use zeenmr_spectrum::dimension::DimIndex;
 use zeenmr_spectrum::intensity_array::index;
@@ -243,6 +243,13 @@ where
     type Error = std::convert::Infallible;
 
     fn fit(&self, spectrum: SpectrumView1D<T, T>, peaks: &[Peak]) -> Result<Vec<P>, Self::Error> {
+        let support = P::Support::from(DefaultSupport {
+            width: spectrum
+                .axis(DimIndex(0))
+                .expect("1D spectrum always has a first dimension")
+                .shift_step(spectrum.len()),
+            intensity: T::one(),
+        });
         let mut reduced = ReducedSpectrum::new(spectrum, peaks);
         let mut stencils = reduced.stencils().collect::<Vec<_>>();
         let mut peak_shapes = stencils
@@ -256,6 +263,7 @@ where
                 &mut reduced.intensities,
                 &mut stencils,
                 &mut peak_shapes,
+                &support,
             );
             if peak_shapes.is_empty() {
                 break;
@@ -280,7 +288,7 @@ where
             }
             superposition.fill([T::zero(); 3]);
         }
-        peak_shapes.retain(|p| p.is_valid() && p.is_significant(crate::precision()));
+        peak_shapes.retain(|p| p.is_valid() && p.is_significant(&support));
 
         Ok(peak_shapes)
     }
@@ -299,6 +307,13 @@ where
         spectrum: SpectrumView1D<T, T>,
         peaks: &[Peak],
     ) -> Result<Vec<P>, Self::Error> {
+        let support = P::Support::from(DefaultSupport {
+            width: spectrum
+                .axis(DimIndex(0))
+                .expect("1D spectrum always has a first dimension")
+                .shift_step(spectrum.len()),
+            intensity: T::one(),
+        });
         let mut reduced = ReducedSpectrum::new(spectrum, peaks);
         let mut stencils = reduced.stencils().collect::<Vec<_>>();
         let mut peak_shapes = stencils
@@ -312,6 +327,7 @@ where
                 &mut reduced.intensities,
                 &mut stencils,
                 &mut peak_shapes,
+                &support,
             );
             if peak_shapes.is_empty() {
                 break;
@@ -337,7 +353,7 @@ where
                 });
             superposition.fill([T::zero(); 3]);
         }
-        peak_shapes.retain(|p| p.is_valid() && p.is_significant(crate::precision()));
+        peak_shapes.retain(|p| p.is_valid() && p.is_significant(&support));
 
         Ok(peak_shapes)
     }
@@ -370,6 +386,7 @@ fn prune<T, P>(
     intensities: &mut Vec<[T; 3]>,
     stencils: &mut Vec<PeakStencil<T>>,
     peak_shapes: &mut Vec<P>,
+    support: &P::Support,
 ) where
     T: Float,
     P: PeakShape<T>,
@@ -380,7 +397,7 @@ fn prune<T, P>(
 
     let mut curr = 0;
     while curr < peak_shapes.len() {
-        if peak_shapes[curr].is_valid() && peak_shapes[curr].is_significant(crate::precision()) {
+        if peak_shapes[curr].is_valid() && peak_shapes[curr].is_significant(support) {
             curr += 1;
         } else {
             shifts.swap_remove(curr);
