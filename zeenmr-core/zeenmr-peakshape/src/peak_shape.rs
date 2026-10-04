@@ -51,10 +51,7 @@ pub trait PeakShape<T>: Evaluate<T> {
     fn is_valid(&self) -> bool;
 
     /// Returns `true` if any calculations are significant relative to the given
-    /// precision.
-    ///
-    /// The first value is the ordinal precision, the second is the intensity
-    /// precision.
+    /// precision support.
     fn is_significant(&self, precision: &Self::Support) -> bool;
 }
 
