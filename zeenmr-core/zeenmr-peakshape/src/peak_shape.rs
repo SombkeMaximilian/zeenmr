@@ -53,6 +53,10 @@ pub trait PeakShape<T>: Evaluate<T> {
     /// Returns `true` if any calculations are significant relative to the given
     /// precision support.
     fn is_significant(&self, precision: &Self::Support) -> bool;
+
+    /// Applies an affine map to location and width parameters of the peak
+    /// shape.
+    fn affine_transform(&mut self, shift: T, scale: T);
 }
 
 /// A default way of storing precision information.
