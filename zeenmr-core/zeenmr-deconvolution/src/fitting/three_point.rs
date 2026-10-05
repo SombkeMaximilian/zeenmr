@@ -3,8 +3,9 @@ use crate::peak_finding::Peak;
 use num_traits::Float;
 use std::marker::PhantomData;
 use zeenmr_peakshape::batch_superposition::{Standard, SuperpositionKernel};
-use zeenmr_peakshape::{DefaultSupport, Gaussian, Lorentzian, PeakShape};
+use zeenmr_peakshape::{DefaultSupport, EvaluateParts, Gaussian, Lorentzian, PeakShape};
 use zeenmr_spectrum::SpectrumView1D;
+use zeenmr_spectrum::axis::range::FiniteBounds;
 use zeenmr_spectrum::dimension::DimIndex;
 use zeenmr_spectrum::intensity_array::index;
 
@@ -100,10 +101,16 @@ where
 /// that are part of peaks.
 #[derive(Clone, Debug)]
 struct ReducedSpectrum<T> {
-    /// Chemical shifts that are part of the peaks, in ppm.
-    shifts: Vec<[T; 3]>,
+    /// Positions that are part of the peaks, usually in scaled indices.
+    positions: Vec<[T; 3]>,
     /// Intensity values that are part of the peaks.
     intensities: Vec<[T; 3]>,
+    /// Grid spacing between adjacent data points.
+    grid_step: T,
+    /// Scaling from grid coordinates to chemical shifts.
+    shift_scale: T,
+    /// Shift from grid coordinates to chemical shifts.
+    shift_offset: T,
 }
 
 impl<T> ReducedSpectrum<T>
@@ -118,26 +125,31 @@ where
             .lane_at(DimIndex(0), &index([0]))
             .expect("1D spectrum always has a first dimension");
         let len = intensities.len();
-        let len_as_t = T::from(len).expect("conversion from usize to T must never fail");
-        let grid = spectrum
-            .grid_axis(DimIndex(0))
+        let shift_range = spectrum
+            .axis(DimIndex(0))
+            .map(|axis| axis.shift_range())
             .expect("1D spectrum always has a first dimension");
-        let index_to_shift = move |index: usize| {
-            let index_as_t = T::from(index).expect("conversion from usize to T must never fail");
+        let grid_step = grid_step::<T>(len);
+        let shift_offset = shift_range.start();
+        let shift_scale = if len > 1 {
+            let last = T::from(len - 1).expect("conversion from usize to T must never fail");
 
-            grid.axis()
-                .rel_to_shift(index_as_t / len_as_t)
-                .expect("index should be less than len")
+            (shift_range.end() - shift_offset) / (last * grid_step)
+        } else {
+            T::one()
         };
-        let (shifts, intensities) = peaks
+        let index_to_grid = |index: usize| {
+            T::from(index).expect("conversion from usize to T must never fail") * grid_step
+        };
+        let (positions, intensities) = peaks
             .iter()
             .filter(|peak| peak.right < len)
             .map(|peak| {
                 (
                     [
-                        index_to_shift(peak.left),
-                        index_to_shift(peak.center),
-                        index_to_shift(peak.right),
+                        index_to_grid(peak.left),
+                        index_to_grid(peak.center),
+                        index_to_grid(peak.right),
                     ],
                     // SAFETY: every index is less than len and therefore within
                     // bounds of the intensities.
@@ -153,19 +165,22 @@ where
             .unzip::<_, _, Vec<_>, Vec<_>>();
 
         Self {
-            shifts,
+            positions,
             intensities,
+            grid_step,
+            shift_scale,
+            shift_offset,
         }
     }
 
     /// Returns an iterator over the peak stencils in the reduced spectrum.
     fn stencils(&self) -> impl Iterator<Item = PeakStencil<T>> {
-        self.shifts
+        self.positions
             .iter()
             .zip(self.intensities.iter())
             .map(|(shifts, intensities)| {
                 let mut stencil = PeakStencil {
-                    shifts: [shifts[0], shifts[1], shifts[2]],
+                    positions: [shifts[0], shifts[1], shifts[2]],
                     intensities: [intensities[0], intensities[1], intensities[2]],
                 };
                 stencil.mirror_shoulder();
@@ -173,12 +188,21 @@ where
                 stencil
             })
     }
+
+    /// Undoes the grid transformation.
+    fn restore<P>(&self, peak_shapes: &mut [P])
+    where
+        P: PeakShape<T>,
+    {
+        let map = |p: &mut P| p.affine_transform(self.shift_offset, self.shift_scale);
+        peak_shapes.iter_mut().for_each(map);
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
 struct PeakStencil<T> {
-    /// Chemical shifts of the three points in ppm.
-    shifts: [T; 3],
+    /// Positions of the three points in ppm, usually in scaled indices.
+    positions: [T; 3],
     /// Intensity values of the three points.
     intensities: [T; 3],
 }
@@ -190,9 +214,9 @@ where
     /// Mirrors the left/right data points onto the right/left data point if the
     /// intensities are ascending/descending from left to center to right.
     ///
-    /// While this might result in the chemical shift of the stencil getting
-    /// desynced from the reduced spectrum by 1~2 data points, the spectrum is
-    /// assumed to be continuous enough to where this does not cause an issue.
+    /// While this might result in the position of the stencil getting desynced
+    /// from the reduced spectrum by 1~2 data points, the spectrum is assumed
+    /// to be continuous enough to where this does not cause an issue.
     /// Empirically, this seems to hold.
     fn mirror_shoulder(&mut self) {
         let two = T::one() + T::one();
@@ -203,11 +227,11 @@ where
         match (increasing, decreasing) {
             (true, _) => {
                 self.intensities[2] = self.intensities[0];
-                self.shifts[2] = two * self.shifts[1] - self.shifts[0];
+                self.positions[2] = two * self.positions[1] - self.positions[0];
             }
             (_, true) => {
                 self.intensities[0] = self.intensities[2];
-                self.shifts[0] = two * self.shifts[1] - self.shifts[2];
+                self.positions[0] = two * self.positions[1] - self.positions[2];
             }
             _ => {}
         };
@@ -238,28 +262,25 @@ impl<P> Clone for ThreePoint<P> {
 impl<T, P> Fit<T, P> for ThreePoint<P>
 where
     T: Float + Send + Sync,
-    P: PeakShape<T> + ThreePointStencil<T>,
+    P: PeakShape<T> + EvaluateParts<T> + ThreePointStencil<T>,
 {
     type Error = std::convert::Infallible;
 
     fn fit(&self, spectrum: SpectrumView1D<T, T>, peaks: &[Peak]) -> Result<Vec<P>, Self::Error> {
+        let mut reduced = ReducedSpectrum::new(spectrum, peaks);
         let support = P::Support::from(DefaultSupport {
-            width: spectrum
-                .axis(DimIndex(0))
-                .expect("1D spectrum always has a first dimension")
-                .shift_step(spectrum.len()),
+            width: reduced.grid_step,
             intensity: T::one(),
         });
-        let mut reduced = ReducedSpectrum::new(spectrum, peaks);
         let mut stencils = reduced.stencils().collect::<Vec<_>>();
         let mut peak_shapes = stencils
             .iter()
-            .map(|stencil| P::estimate_parameters(stencil.shifts, stencil.intensities))
+            .map(|stencil| P::estimate_parameters(stencil.positions, stencil.intensities))
             .collect::<Vec<_>>();
         let mut superposition = vec![[T::zero(); 3]; peak_shapes.len()];
         for _ in 0..self.iterations {
             prune(
-                &mut reduced.shifts,
+                &mut reduced.positions,
                 &mut reduced.intensities,
                 &mut stencils,
                 &mut peak_shapes,
@@ -271,7 +292,7 @@ where
             superposition.truncate(peak_shapes.len());
             SUPERPOSITION.accumulate(
                 &peak_shapes,
-                reduced.shifts.as_flattened(),
+                reduced.positions.as_flattened(),
                 superposition.as_flattened_mut(),
             );
             for (((stencil, peak_shape), sup), raw) in stencils
@@ -284,11 +305,12 @@ where
                 stencil.intensities[1] = stencil.intensities[1] * raw[1] / sup[1];
                 stencil.intensities[2] = stencil.intensities[2] * raw[2] / sup[2];
                 stencil.mirror_shoulder();
-                *peak_shape = P::estimate_parameters(stencil.shifts, stencil.intensities);
+                *peak_shape = P::estimate_parameters(stencil.positions, stencil.intensities);
             }
             superposition.fill([T::zero(); 3]);
         }
         peak_shapes.retain(|p| p.is_valid() && p.is_significant(&support));
+        reduced.restore(&mut peak_shapes);
 
         Ok(peak_shapes)
     }
@@ -298,7 +320,7 @@ where
 impl<T, P> ParFit<T, P> for ThreePoint<P>
 where
     T: Float + Send + Sync,
-    P: PeakShape<T> + ThreePointStencil<T> + Send + Sync,
+    P: PeakShape<T> + EvaluateParts<T> + ThreePointStencil<T> + Send + Sync,
 {
     type Error = std::convert::Infallible;
 
@@ -307,23 +329,20 @@ where
         spectrum: SpectrumView1D<T, T>,
         peaks: &[Peak],
     ) -> Result<Vec<P>, Self::Error> {
+        let mut reduced = ReducedSpectrum::new(spectrum, peaks);
         let support = P::Support::from(DefaultSupport {
-            width: spectrum
-                .axis(DimIndex(0))
-                .expect("1D spectrum always has a first dimension")
-                .shift_step(spectrum.len()),
+            width: reduced.grid_step,
             intensity: T::one(),
         });
-        let mut reduced = ReducedSpectrum::new(spectrum, peaks);
         let mut stencils = reduced.stencils().collect::<Vec<_>>();
         let mut peak_shapes = stencils
             .iter()
-            .map(|stencil| P::estimate_parameters(stencil.shifts, stencil.intensities))
+            .map(|stencil| P::estimate_parameters(stencil.positions, stencil.intensities))
             .collect::<Vec<_>>();
         let mut superposition = vec![[T::zero(); 3]; peak_shapes.len()];
         for _ in 0..self.iterations {
             prune(
-                &mut reduced.shifts,
+                &mut reduced.positions,
                 &mut reduced.intensities,
                 &mut stencils,
                 &mut peak_shapes,
@@ -335,7 +354,7 @@ where
             superposition.truncate(peak_shapes.len());
             SUPERPOSITION.par_accumulate(
                 &peak_shapes,
-                reduced.shifts.as_flattened(),
+                reduced.positions.as_flattened(),
                 superposition.as_flattened_mut(),
             );
             stencils
@@ -349,11 +368,12 @@ where
                     stencil.intensities[1] = stencil.intensities[1] * raw[1] / sup[1];
                     stencil.intensities[2] = stencil.intensities[2] * raw[2] / sup[2];
                     stencil.mirror_shoulder();
-                    *peak_shape = P::estimate_parameters(stencil.shifts, stencil.intensities);
+                    *peak_shape = P::estimate_parameters(stencil.positions, stencil.intensities);
                 });
             superposition.fill([T::zero(); 3]);
         }
         peak_shapes.retain(|p| p.is_valid() && p.is_significant(&support));
+        reduced.restore(&mut peak_shapes);
 
         Ok(peak_shapes)
     }
@@ -373,6 +393,23 @@ impl<P> ThreePoint<P> {
             peak_shape: PhantomData,
         }
     }
+}
+
+/// Largest power of 2 step such that `(len - 1) * step` does not exceed
+/// `clamp(len, 2^15, 2^17)`.
+fn grid_step<T>(len: usize) -> T
+where
+    T: Float,
+{
+    let span = len.saturating_sub(1).max(1);
+    let target = len.clamp(1 << 15, 1 << 17);
+    let exp = if span <= target {
+        (target / span).ilog2() as i32
+    } else {
+        -(span.div_ceil(target).next_power_of_two().ilog2() as i32)
+    };
+
+    (T::one() + T::one()).powi(exp)
 }
 
 /// Prunes the loop components by whether the associated peak shape is
