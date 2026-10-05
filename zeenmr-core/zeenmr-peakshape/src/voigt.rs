@@ -1,3 +1,4 @@
+use crate::approximations::Exp2;
 use crate::util::fma;
 use crate::{Evaluate, LorentzianSupport, PeakShape};
 use num_traits::{Float, FloatConst};
@@ -85,12 +86,12 @@ pub struct Voigt<T> {
 
 impl<T> Evaluate<T> for Voigt<T>
 where
-    T: Float + FloatConst,
+    T: Exp2 + FloatConst,
 {
     fn evaluate(&self, at: T) -> T {
         let center_dist_2 = (at - self.center).powi(2);
         let lorentzian = self.scale2 / (self.scale2 + center_dist_2);
-        let gaussian = (-T::LN_2() * center_dist_2 / self.scale2).exp();
+        let gaussian = (-center_dist_2 / self.scale2).exp2_fast_nonpos();
 
         self.amp * (self.eta * lorentzian + (T::one() - self.eta) * gaussian)
     }
@@ -98,7 +99,7 @@ where
 
 impl<T> PeakShape<T> for Voigt<T>
 where
-    T: Float + FloatConst,
+    T: Exp2 + FloatConst,
 {
     type Support = VoigtSupport<T>;
 
