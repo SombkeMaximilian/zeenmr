@@ -6,8 +6,6 @@ pub mod error {
     pub use crate::peak_finding::curvature_analysis::{CurvatureError, CurvatureErrorKind};
 }
 
-pub mod signal_boundaries;
-
 mod curvature_analysis;
 pub use curvature_analysis::CurvatureAnalysis;
 

@@ -6,6 +6,8 @@
 
 pub mod error;
 
+pub mod util;
+
 pub mod fitting;
 
 pub mod peak_finding;
