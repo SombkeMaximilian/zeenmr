@@ -3,7 +3,7 @@ use crate::peak_finding::Peak;
 use num_traits::Float;
 use std::marker::PhantomData;
 use zeenmr_peakshape::batch_superposition::{Standard, SuperpositionKernel};
-use zeenmr_peakshape::{DefaultSupport, EvaluateParts, Gaussian, Lorentzian, PeakShape};
+use zeenmr_peakshape::{DefaultSupport, Gaussian, Lorentzian, PeakShape};
 use zeenmr_spectrum::SpectrumView1D;
 use zeenmr_spectrum::axis::range::FiniteBounds;
 use zeenmr_spectrum::dimension::DimIndex;
@@ -262,7 +262,7 @@ impl<P> Clone for ThreePoint<P> {
 impl<T, P> Fit<T, P> for ThreePoint<P>
 where
     T: Float + Send + Sync,
-    P: PeakShape<T> + EvaluateParts<T> + ThreePointStencil<T>,
+    P: PeakShape<T> + ThreePointStencil<T>,
 {
     type Error = std::convert::Infallible;
 
@@ -320,7 +320,7 @@ where
 impl<T, P> ParFit<T, P> for ThreePoint<P>
 where
     T: Float + Send + Sync,
-    P: PeakShape<T> + EvaluateParts<T> + ThreePointStencil<T> + Send + Sync,
+    P: PeakShape<T> + ThreePointStencil<T> + Send + Sync,
 {
     type Error = std::convert::Infallible;
 
