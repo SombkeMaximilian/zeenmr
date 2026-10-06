@@ -90,7 +90,7 @@ fn single_and_batch(c: &mut Criterion) {
 
     let blood_spectra = read_spectra::<f32, _>(data_dir.join("blood"));
     let deconvoluter = Deconvoluter::new()
-        .with_fitter(ThreePoint::<Lorentzian<f32>>::default())
+        .with_fitter(ThreePoint::<Lorentzian<f32>, _>::default())
         .with_finder(CurvatureAnalysis::default())
         .with_smoother(MovingAverage::default());
 
@@ -120,7 +120,7 @@ fn single_and_batch(c: &mut Criterion) {
 
     let blood_spectra = read_spectra::<f64, _>(data_dir.join("blood"));
     let deconvoluter = Deconvoluter::new()
-        .with_fitter(ThreePoint::<Lorentzian<f64>>::default())
+        .with_fitter(ThreePoint::<Lorentzian<f64>, _>::default())
         .with_finder(CurvatureAnalysis::default())
         .with_smoother(MovingAverage::default());
 

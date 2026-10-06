@@ -277,11 +277,11 @@ impl Deconvoluter<(), NeedsSmoother, NeedsFinder, NeedsFitter> {
     /// let deconvoluter = Deconvoluter::new::<f64>()
     ///     .with_smoother(MovingAverage::default())
     ///     .with_finder(CurvatureAnalysis::default())
-    ///     .with_fitter(ThreePoint::<Lorentzian<_>>::default());
+    ///     .with_fitter(ThreePoint::<Lorentzian<_>, _>::default());
     ///
     /// // alternatively, set the fitter first for the same effect
     /// let deconvoluter = Deconvoluter::new()
-    ///     .with_fitter(ThreePoint::<Lorentzian<f64>>::default())
+    ///     .with_fitter(ThreePoint::<Lorentzian<f64>, _>::default())
     ///     .with_finder(CurvatureAnalysis::default())
     ///     .with_smoother(MovingAverage::default());
     /// ```
@@ -496,6 +496,6 @@ mod tests {
         let _ = Deconvoluter::new::<f64>()
             .with_smoother(MovingAverage::default())
             .with_finder(CurvatureAnalysis::default())
-            .with_fitter(ThreePoint::<Lorentzian<_>>::default());
+            .with_fitter(ThreePoint::<Lorentzian<f64>, _>::default());
     }
 }

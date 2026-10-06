@@ -1,11 +1,12 @@
 use crate::fitting::Fit;
 use crate::peak_finding::Peak;
+use crate::util::noise::{GaussianNoise, NoiseLevel};
 use num_traits::Float;
 use std::marker::PhantomData;
 use zeenmr_peakshape::batch_superposition::{Standard, SuperpositionKernel};
 use zeenmr_peakshape::{DefaultSupport, Gaussian, Lorentzian, PeakShape};
 use zeenmr_spectrum::SpectrumView1D;
-use zeenmr_spectrum::axis::range::FiniteBounds;
+use zeenmr_spectrum::axis::range::{FiniteBounds, RelativeRange};
 use zeenmr_spectrum::dimension::DimIndex;
 use zeenmr_spectrum::intensity_array::index;
 
@@ -242,35 +243,41 @@ where
 /// using a 3-point peak stencil.
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct ThreePoint<P> {
+pub struct ThreePoint<P, N> {
     /// Number of iterations to refine the peak parameters.
     pub iterations: usize,
+    /// Type determining the noise level of the input spectrum.
+    pub noise_finder: N,
     /// Marker for the peak shape type.
     #[cfg_attr(feature = "serde", serde(skip))]
     peak_shape: PhantomData<fn() -> P>,
 }
 
 // manual impls to avoid `P: Copy`, which isn't necessary with PhantomData.
-impl<P> Copy for ThreePoint<P> {}
+impl<P, N> Copy for ThreePoint<P, N> where N: Copy {}
 
-impl<P> Clone for ThreePoint<P> {
+impl<P, N> Clone for ThreePoint<P, N>
+where
+    N: Copy,
+{
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<T, P> Fit<T, P> for ThreePoint<P>
+impl<T, P, N> Fit<T, P> for ThreePoint<P, N>
 where
     T: Float + Send + Sync,
     P: PeakShape<T> + ThreePointStencil<T>,
+    N: NoiseLevel<T>,
 {
     type Error = std::convert::Infallible;
 
     fn fit(&self, spectrum: SpectrumView1D<T, T>, peaks: &[Peak]) -> Result<Vec<P>, Self::Error> {
-        let mut reduced = ReducedSpectrum::new(spectrum, peaks);
+        let mut reduced = ReducedSpectrum::new(spectrum.view(), peaks);
         let support = P::Support::from(DefaultSupport {
             width: reduced.grid_step,
-            intensity: T::one(),
+            intensity: self.noise_finder.noise_level(spectrum.view()).0,
         });
         let mut stencils = reduced.stencils().collect::<Vec<_>>();
         let mut peak_shapes = stencils
@@ -317,10 +324,11 @@ where
 }
 
 #[cfg(feature = "rayon")]
-impl<T, P> ParFit<T, P> for ThreePoint<P>
+impl<T, P, N> ParFit<T, P> for ThreePoint<P, N>
 where
     T: Float + Send + Sync,
     P: PeakShape<T> + ThreePointStencil<T> + Send + Sync,
+    N: NoiseLevel<T>,
 {
     type Error = std::convert::Infallible;
 
@@ -329,10 +337,10 @@ where
         spectrum: SpectrumView1D<T, T>,
         peaks: &[Peak],
     ) -> Result<Vec<P>, Self::Error> {
-        let mut reduced = ReducedSpectrum::new(spectrum, peaks);
+        let mut reduced = ReducedSpectrum::new(spectrum.view(), peaks);
         let support = P::Support::from(DefaultSupport {
             width: reduced.grid_step,
-            intensity: T::one(),
+            intensity: self.noise_finder.noise_level(spectrum.view()).0,
         });
         let mut stencils = reduced.stencils().collect::<Vec<_>>();
         let mut peak_shapes = stencils
@@ -379,17 +387,25 @@ where
     }
 }
 
-impl<P> Default for ThreePoint<P> {
+impl<T, P> Default for ThreePoint<P, GaussianNoise<T, RelativeRange<T>>>
+where
+    T: Float,
+{
     fn default() -> Self {
-        Self::new(10)
+        Self {
+            iterations: 10,
+            noise_finder: GaussianNoise::default(),
+            peak_shape: PhantomData,
+        }
     }
 }
 
-impl<P> ThreePoint<P> {
+impl<P, N> ThreePoint<P, N> {
     /// Creates a new `ThreePoint` fitter.
-    pub fn new(iterations: usize) -> Self {
+    pub fn new(iterations: usize, noise_level: N) -> Self {
         Self {
             iterations,
+            noise_finder: noise_level,
             peak_shape: PhantomData,
         }
     }
