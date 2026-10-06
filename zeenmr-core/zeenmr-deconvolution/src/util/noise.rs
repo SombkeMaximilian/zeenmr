@@ -6,9 +6,15 @@ use zeenmr_spectrum::SpectrumView1D;
 use zeenmr_spectrum::axis::range::RelativeRange;
 use zeenmr_spectrum::dimension::DimIndex;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 /// Intensity noise level.
 ///
 /// Any intensity value of a lower magnitude cannot be discerned from noise.
+#[derive(Copy, Clone, PartialEq, PartialOrd, Debug)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize), serde(transparent))]
+#[repr(transparent)]
 pub struct Noise<T>(pub T);
 
 /// Trait for estimating the noise level of a spectrum.
@@ -22,6 +28,8 @@ pub trait NoiseLevel<T> {
 ///
 /// The computed noise-level is the mean plus a multiple of the standard
 /// deviation.
+#[derive(Copy, Clone, PartialEq, Debug)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub struct GaussianNoise<T, S> {
     /// Multiple of the standard deviation.
     threshold: T,
