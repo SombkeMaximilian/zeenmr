@@ -6,4 +6,4 @@ pub use fit::Fit;
 pub use fit::ParFit;
 
 mod three_point;
-pub use three_point::{ThreePoint, ThreePointStencil};
+pub use three_point::{ThreePoint, ThreePointModel, ThreePointStencil};
