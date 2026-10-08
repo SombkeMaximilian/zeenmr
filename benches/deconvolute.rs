@@ -18,7 +18,7 @@ use zeenmr::{
     peak_shape::Lorentzian,
     spectrum::{
         Spectrum1D,
-        axis::range::{FiniteBounds, FrequencyRange},
+        axis::range::{FiniteBounds, FrequencyRange, ShiftRange},
         axis::{FrequencyAxis, Larmor, ShiftReference, frequency_axes},
         intensity_array::{Array1D, shape},
     },
@@ -92,7 +92,8 @@ fn single_and_batch(c: &mut Criterion) {
     let deconvoluter = Deconvoluter::new()
         .with_fitter(ThreePoint::<Lorentzian<f32>, _>::default())
         .with_finder(CurvatureAnalysis::default())
-        .with_smoother(MovingAverage::default());
+        .with_smoother(MovingAverage::default())
+        .ignore(ShiftRange::new(4.7, 4.9).unwrap());
 
     c.bench_function("f32_deconvolute_blood_single", |b| {
         b.iter(|| {
@@ -122,7 +123,8 @@ fn single_and_batch(c: &mut Criterion) {
     let deconvoluter = Deconvoluter::new()
         .with_fitter(ThreePoint::<Lorentzian<f64>, _>::default())
         .with_finder(CurvatureAnalysis::default())
-        .with_smoother(MovingAverage::default());
+        .with_smoother(MovingAverage::default())
+        .ignore(ShiftRange::new(4.7, 4.9).unwrap());
 
     c.bench_function("f64_deconvolute_blood_single", |b| {
         b.iter(|| {
