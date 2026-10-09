@@ -73,14 +73,16 @@ where
             .axis(DimIndex(0))
             .expect("1D spectrum always has a first dimension");
         let range = axis.freq_range().normalized();
-        let start = axis
+        let lower = axis
             .freq_to_rel(self.lower().clamp(range.start(), range.end()))
             .and_then(|rel| (rel * len).ceil().to_usize())
             .expect("clamped inside the axis range");
-        let end = axis
+        let upper = axis
             .freq_to_rel(self.upper().clamp(range.start(), range.end()))
             .and_then(|rel| (rel * len).floor().to_usize())
             .expect("clamped inside the axis range");
+        let start = lower.min(upper);
+        let end = lower.max(upper);
 
         debug_assert!(start <= end);
 
@@ -99,14 +101,16 @@ where
             .axis(DimIndex(0))
             .expect("1D spectrum always has a first dimension");
         let range = axis.shift_range().normalized();
-        let start = axis
+        let lower = axis
             .shift_to_rel(self.lower().clamp(range.start(), range.end()))
             .and_then(|rel| (rel * len).ceil().to_usize())
             .expect("clamped inside the axis range");
-        let end = axis
+        let upper = axis
             .shift_to_rel(self.upper().clamp(range.start(), range.end()))
             .and_then(|rel| (rel * len).floor().to_usize())
             .expect("clamped inside the axis range");
+        let start = lower.min(upper);
+        let end = lower.max(upper);
 
         debug_assert!(start <= end);
 
