@@ -26,10 +26,7 @@ pub trait Deconvolute<T, P> {
     /// Deconvolutes the provided `Spectrum` into its constituent signals.
     ///
     /// Each signal is modeled as a peak shape.
-    fn deconvolute(
-        &self,
-        spectrum: SpectrumView1D<T, T>,
-    ) -> Result<Deconvolution<P>, Self::Error>;
+    fn deconvolute(&self, spectrum: SpectrumView1D<T, T>) -> Result<Deconvolution<P>, Self::Error>;
 }
 
 /// Trait for deconvoluting a spectrum into its constituent signals in
@@ -155,10 +152,7 @@ where
 {
     type Error = Error<C1::Error, C2::Error, C3::Error>;
 
-    fn deconvolute(
-        &self,
-        spectrum: SpectrumView1D<T, T>,
-    ) -> Result<Deconvolution<P>, Self::Error> {
+    fn deconvolute(&self, spectrum: SpectrumView1D<T, T>) -> Result<Deconvolution<P>, Self::Error> {
         let intensities = spectrum.intensities();
         let mut intensities = intensities
             .lane_at(DimIndex(0), &index([0]))
