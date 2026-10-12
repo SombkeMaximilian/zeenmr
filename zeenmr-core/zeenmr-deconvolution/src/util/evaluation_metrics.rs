@@ -8,6 +8,11 @@ use zeenmr_peakshape::batch_superposition::SuperpositionKernel;
 use zeenmr_spectrum::SpectrumView1D;
 use zeenmr_spectrum::dimension::DimIndex;
 
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
+#[cfg(feature = "rayon")]
+use zeenmr_peakshape::batch_superposition::ParSuperpositionKernel;
+
 /// Bundled fitting context.
 pub struct FitContext<'s, 'p, T, P, K> {
     /// Base spectrum.
@@ -73,24 +78,19 @@ where
         P: PeakShape<T>,
     {
         self.included_bounds.get_or_init(|| {
-            let &FitContext {
-                ref spectrum,
-                peak_shapes,
-                grid_offset,
-                grid_step,
-                ref ignore,
-                ..
-            } = context;
-            let len = spectrum.len();
-            let (min, max) = peak_shapes
+            let len = context.spectrum.len();
+            let (min, max) = context
+                .peak_shapes
                 .iter()
                 .map(|p| (p.center(), p.full_width()))
                 .fold(
                     (T::infinity(), T::neg_infinity()),
-                    |acc, (center, width)| ((center - width).min(acc.0), (center + width).max(acc.1)),
+                    |acc, (center, width)| {
+                        ((center - width).min(acc.0), (center + width).max(acc.1))
+                    },
                 );
-            let min_frac_index = (min - grid_offset) / grid_step;
-            let max_frac_index = (max - grid_offset) / grid_step;
+            let min_frac_index = (min - context.grid_offset) / context.grid_step;
+            let max_frac_index = (max - context.grid_offset) / context.grid_step;
             let start = min_frac_index
                 .min(max_frac_index)
                 .floor()
@@ -105,7 +105,8 @@ where
             let signal = start..end;
             let iter = std::iter::once(signal.start)
                 .chain(
-                    ignore
+                    context
+                        .ignore
                         .iter()
                         .map(|r| r.start.max(signal.start)..r.end.min(signal.end))
                         .filter(|r| r.start < r.end)
@@ -128,31 +129,32 @@ where
         K: SuperpositionKernel<T, P>,
     {
         self.superposition.get_or_init(|| {
-            let &FitContext {
-                peak_shapes,
-                grid_offset,
-                grid_step,
-                ref kernel,
-                ..
-            } = context;
             let bounds = self.included_bounds(context);
-            let len = bounds
-                .iter()
-                .map(|range| range.len())
-                .sum();
-            let mut grid = Vec::<T>::with_capacity(bounds.iter().map(|range| range.len()).max().unwrap_or(0));
+            let len = bounds.iter().map(|range| range.len()).sum();
+            let mut grid = Vec::<T>::with_capacity(
+                bounds
+                    .iter()
+                    .map(|range| range.len())
+                    .max()
+                    .unwrap_or(0),
+            );
             let mut superposition = vec![T::zero(); len];
             let mut filled = 0;
             let index_to_grid = |index| {
-                grid_offset + grid_step
-                    * T::from(index).expect("conversion from usize to T must never fail")
+                context.grid_offset
+                    + context.grid_step
+                        * T::from(index).expect("conversion from usize to T must never fail")
             };
             for range in bounds {
                 let end = filled + range.len();
                 grid.extend(range.clone().map(index_to_grid));
-                kernel.accumulate(peak_shapes, &grid, &mut superposition[filled..end]);
+                context.kernel.accumulate(
+                    context.peak_shapes,
+                    &grid,
+                    &mut superposition[filled..end],
+                );
                 filled = end;
-                grid.truncate(0);
+                grid.clear();
             }
 
             superposition
@@ -166,28 +168,93 @@ where
         K: SuperpositionKernel<T, P>,
     {
         self.residuals.get_or_init(|| {
-            let &FitContext {
-                ref spectrum,
-                ..
-            } = context;
+            let bounds = self.included_bounds(context);
             let superposition = self.superposition(context);
             let mut residuals = Vec::<T>::with_capacity(superposition.len());
             let mut filled = 0;
-            let bounds = self.included_bounds(context);
             for range in bounds {
                 let end = filled + range.len();
                 residuals.extend(
-                    spectrum.intensities()
+                    context
+                        .spectrum
+                        .intensities()
                         .cropped(DimIndex(0), range.clone())
                         .expect("1D spectrum always has a first dimension")
                         .elem()
                         .zip(superposition[filled..end].iter())
-                        .map(|(&raw, &sup)| raw - sup)
+                        .map(|(&raw, &sup)| raw - sup),
                 );
                 filled = residuals.len();
             }
 
             residuals
+        })
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl<T> IntermediateCache<T>
+where
+    T: Float + Send + Sync,
+{
+    /// Returns the concatenated superposition within the included bounds.
+    pub fn par_superposition<P, K>(&self, context: &FitContext<T, P, K>) -> &[T]
+    where
+        P: PeakShape<T>,
+        K: ParSuperpositionKernel<T, P>,
+    {
+        self.superposition.get_or_init(|| {
+            let bounds = self.included_bounds(context);
+            let index_to_grid = |index| {
+                context.grid_offset
+                    + context.grid_step
+                        * T::from(index).expect("conversion from usize to T must never fail")
+            };
+            let grid = bounds
+                .iter()
+                .flat_map(|range| range.clone().map(index_to_grid))
+                .collect::<Vec<T>>();
+
+            context
+                .kernel
+                .par_superposition(context.peak_shapes, &grid)
+        })
+    }
+
+    /// Returns the concatenated residuals within the included bounds.
+    pub fn par_residuals<P, K>(&self, context: &FitContext<T, P, K>) -> &[T]
+    where
+        P: PeakShape<T>,
+        K: ParSuperpositionKernel<T, P>,
+    {
+        self.residuals.get_or_init(|| {
+            let included_bounds = self.included_bounds(context);
+            let superposition = self.par_superposition(context);
+            let concatenated_bounds = included_bounds
+                .iter()
+                .scan(0, |filled, range| {
+                    let end = *filled + range.len();
+                    let range = *filled..end;
+                    *filled = end;
+
+                    Some(range)
+                })
+                .collect::<Vec<Range<usize>>>();
+            let intensities = context.spectrum.intensities();
+
+            included_bounds
+                .par_iter()
+                .zip(concatenated_bounds.par_iter().cloned())
+                .flat_map(|(included, concatenated)| {
+                    intensities
+                        .cropped(DimIndex(0), included.clone())
+                        .expect("1D spectrum always has a first dimension")
+                        .par_elem()
+                        .zip(superposition[concatenated].par_iter())
+                        .map(|(&raw, &sup)| raw - sup)
+                        .collect::<Vec<T>>()
+                })
+                .collect()
         })
     }
 }
@@ -203,7 +270,7 @@ pub trait Metric {
     where
         T: Float,
         P: PeakShape<T>,
-        K: SuperpositionKernel<T, P>,;
+        K: SuperpositionKernel<T, P>;
 }
 
 /// Evaluation metric for deconvolution quality that can be computed in
@@ -211,7 +278,7 @@ pub trait Metric {
 #[cfg(feature = "rayon")]
 pub trait ParMetric {
     /// Returns the value of the metric for fitted spectrum.
-    fn evaluate_fit<T, P, K>(
+    fn par_evaluate_fit<T, P, K>(
         &self,
         context: &FitContext<T, P, K>,
         cache: &IntermediateCache<T>,
@@ -219,7 +286,7 @@ pub trait ParMetric {
     where
         T: Float + Send + Sync,
         P: PeakShape<T> + Send + Sync,
-        K: SuperpositionKernel<T, P> + Send + Sync,;
+        K: ParSuperpositionKernel<T, P> + Send + Sync;
 }
 
 /// Mean squared error.
@@ -238,9 +305,34 @@ impl Metric for Mse {
         K: SuperpositionKernel<T, P>,
     {
         let residuals = cache.residuals(context);
-        let len = T::from(residuals.len())
-            .expect("conversion from usize to T must never fail");
+        let len = T::from(residuals.len()).expect("conversion from usize to T must never fail");
 
-        residuals.iter().fold(T::zero(), |acc, res| acc + res.powi(2)) / len
+        residuals
+            .iter()
+            .fold(T::zero(), |acc, res| acc + res.powi(2))
+            / len
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl ParMetric for Mse {
+    fn par_evaluate_fit<T, P, K>(
+        &self,
+        context: &FitContext<T, P, K>,
+        cache: &IntermediateCache<T>,
+    ) -> T
+    where
+        T: Float + Send + Sync,
+        P: PeakShape<T> + Send + Sync,
+        K: ParSuperpositionKernel<T, P> + Send + Sync,
+    {
+        let residuals = cache.par_residuals(context);
+        let len = T::from(residuals.len()).expect("conversion from usize to T must never fail");
+
+        residuals
+            .par_iter()
+            .fold(|| T::zero(), |acc, res| acc + res.powi(2))
+            .reduce(|| T::zero(), |a, b| a + b)
+            / len
     }
 }
