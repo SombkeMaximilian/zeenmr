@@ -433,7 +433,7 @@ impl ParMetric for MeanAbsoluteError {
     }
 }
 
-/// Coeffcient of determination.
+/// Coefficient of determination.
 pub struct CoefficientOfDetermination;
 
 impl Metric for CoefficientOfDetermination {
