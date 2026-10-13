@@ -1,6 +1,7 @@
 use crate::axis::Axis;
 use crate::axis::iter::AxisValues;
 use num_traits::Float;
+use std::ops::Deref;
 
 #[cfg(feature = "rayon")]
 use crate::axis::iter::ParAxisValues;
@@ -112,6 +113,20 @@ pub struct TimeGrid<'a, T> {
     axis: &'a TimeAxis<T>,
     /// Length of the 1D grid.
     len: usize,
+}
+
+impl<T> AsRef<TimeAxis<T>> for TimeGrid<'_, T> {
+    fn as_ref(&self) -> &TimeAxis<T> {
+        self.axis
+    }
+}
+
+impl<T> Deref for TimeGrid<'_, T> {
+    type Target = TimeAxis<T>;
+
+    fn deref(&self) -> &Self::Target {
+        self.axis
+    }
 }
 
 impl<'a, T> IntoIterator for TimeGrid<'a, T>

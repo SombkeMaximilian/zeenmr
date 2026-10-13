@@ -170,8 +170,8 @@ where
             .ignore
             .iter()
             .filter_map(|range| {
-                let start = grid.axis().shift_to_rel(range.start())? * len_as_t;
-                let end = grid.axis().shift_to_rel(range.end())? * len_as_t;
+                let start = grid.shift_to_rel(range.start())? * len_as_t;
+                let end = grid.shift_to_rel(range.end())? * len_as_t;
                 let min = start.min(end).ceil().to_usize()?;
                 let max = start.max(end).ceil().to_usize()?;
 
@@ -225,8 +225,8 @@ where
             .ignore
             .iter()
             .filter_map(|range| {
-                let start = grid.axis().shift_to_rel(range.start())? * len_as_t;
-                let end = grid.axis().shift_to_rel(range.end())? * len_as_t;
+                let start = grid.shift_to_rel(range.start())? * len_as_t;
+                let end = grid.shift_to_rel(range.end())? * len_as_t;
                 let min = start.min(end).ceil().to_usize()?;
                 let max = start.max(end).ceil().to_usize()?;
 

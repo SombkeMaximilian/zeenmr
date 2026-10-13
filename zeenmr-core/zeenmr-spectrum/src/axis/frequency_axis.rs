@@ -3,6 +3,7 @@ use crate::axis::iter::AxisValues;
 use crate::axis::range::{FiniteBounds, FrequencyRange, ShiftRange, SpectralRange};
 use num_traits::Float;
 use std::cmp::Ordering;
+use std::ops::Deref;
 
 #[cfg(feature = "rayon")]
 use crate::axis::iter::ParAxisValues;
@@ -588,6 +589,20 @@ pub struct FrequencyGrid<'a, T> {
     axis: &'a FrequencyAxis<T>,
     /// Length of the 1D grid.
     len: usize,
+}
+
+impl<T> AsRef<FrequencyAxis<T>> for FrequencyGrid<'_, T> {
+    fn as_ref(&self) -> &FrequencyAxis<T> {
+        self.axis
+    }
+}
+
+impl<T> Deref for FrequencyGrid<'_, T> {
+    type Target = FrequencyAxis<T>;
+
+    fn deref(&self) -> &Self::Target {
+        self.axis
+    }
 }
 
 impl<'a, T> FrequencyGrid<'a, T>
