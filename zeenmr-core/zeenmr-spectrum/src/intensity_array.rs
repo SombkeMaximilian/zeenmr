@@ -247,8 +247,10 @@ pub mod iter;
 
 mod array;
 pub use array::{
-    Array, Array1D, Array2D, Array3D, ArrayArc, ArrayCow, ArrayCowSlice, ArrayDyn, ArrayOwned,
-    ArrayRc, ArraySliceView, ArraySliceViewMut, ArrayView, ArrayViewMut,
+    Array, Array1D, Array2D, Array3D, ArrayArc, ArrayCow, ArrayCow1D, ArrayCow2D, ArrayCow3D,
+    ArrayCowDyn, ArrayCowSlice, ArrayDyn, ArrayOwned, ArrayRc, ArraySliceView, ArraySliceViewMut,
+    ArrayView, ArrayView1D, ArrayView2D, ArrayView3D, ArrayViewDyn, ArrayViewMut, ArrayViewMut1D,
+    ArrayViewMut2D, ArrayViewMut3D, ArrayViewMutDyn,
 };
 
 mod storage;

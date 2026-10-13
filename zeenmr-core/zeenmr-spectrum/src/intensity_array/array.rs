@@ -60,14 +60,50 @@ pub type ArrayArc<T, D> = Array<Arc<[T]>, D>;
 /// Array of rank 1.
 pub type Array1D<S> = Array<S, StaticDim<usize, 1>>;
 
+/// Array of rank 1 borrowing its storage immutably.
+pub type ArrayView1D<'s, T> = Array<Access<'s, T>, StaticDim<usize, 1>>;
+
+/// Array of rank 1 borrowing its storage mutably.
+pub type ArrayViewMut1D<'s, T> = Array<AccessMut<'s, T>, StaticDim<usize, 1>>;
+
+/// Array of rank 1 using clone-on-write storage.
+pub type ArrayCow1D<'s, T> = Array<CowAccess<'s, T>, StaticDim<usize, 1>>;
+
 /// Array of rank 2.
 pub type Array2D<S> = Array<S, StaticDim<usize, 2>>;
+
+/// Array of rank 2 borrowing its storage immutably.
+pub type ArrayView2D<'s, T> = Array<Access<'s, T>, StaticDim<usize, 2>>;
+
+/// Array of rank 2 borrowing its storage mutably.
+pub type ArrayViewMut2D<'s, T> = Array<AccessMut<'s, T>, StaticDim<usize, 2>>;
+
+/// Array of rank 2 using clone-on-write storage.
+pub type ArrayCow2D<'s, T> = Array<CowAccess<'s, T>, StaticDim<usize, 2>>;
 
 /// Array of rank 3.
 pub type Array3D<S> = Array<S, StaticDim<usize, 3>>;
 
+/// Array of rank 3 borrowing its storage immutably.
+pub type ArrayView3D<'s, T> = Array<Access<'s, T>, StaticDim<usize, 3>>;
+
+/// Array of rank 3 borrowing its storage mutably.
+pub type ArrayViewMut3D<'s, T> = Array<AccessMut<'s, T>, StaticDim<usize, 3>>;
+
+/// Array of rank 3 using clone-on-write storage.
+pub type ArrayCow3D<'s, T> = Array<CowAccess<'s, T>, StaticDim<usize, 3>>;
+
 /// Array of a rank determined at runtime.
 pub type ArrayDyn<S> = Array<S, DynDim<usize>>;
+
+/// Array of a rank determined at runtime borrowing its storage immutably.
+pub type ArrayViewDyn<'s, T> = Array<Access<'s, T>, DynDim<usize>>;
+
+/// Array of a rank determined at runtime borrowing its storage mutably.
+pub type ArrayViewMutDyn<'s, T> = Array<AccessMut<'s, T>, DynDim<usize>>;
+
+/// Array of a rank determined at runtime using clone-on-write storage.
+pub type ArrayCowDyn<'s, T> = Array<CowAccess<'s, T>, DynDim<usize>>;
 
 /// Array type with arbitrary dimensions.
 #[derive(Clone, Debug)]
