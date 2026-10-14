@@ -10,7 +10,7 @@ criterion = { workspace = true }
 rand = { workspace = true }
 num-traits = { workspace = true }
 rayon = { workspace = true }
-zeenmr = { workspace = true, features = ["rayon"] }
+zeenmr = { workspace = true, features = ["rayon", "detect-cpu-features"] }
 
 [lints]
 workspace = true
@@ -23,4 +23,9 @@ harness = false
 [[bench]]
 name = "deconvolute"
 path = "deconvolute.rs"
+harness = false
+
+[[bench]]
+name = "smoothing"
+path = "smoothing.rs"
 harness = false
