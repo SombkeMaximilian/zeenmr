@@ -21,6 +21,24 @@ pub unsafe trait SplitAt: Sized {
     fn split_at(self, index: usize) -> (Self, Self);
 }
 
+// SAFETY: reuses standard library implementations.
+unsafe impl<T> SplitAt for std::slice::Iter<'_, T> {
+    fn split_at(self, index: usize) -> (Self, Self) {
+        let (left, right) = self.as_slice().split_at(index);
+
+        (left.iter(), right.iter())
+    }
+}
+
+// SAFETY: reuses standard library implementations.
+unsafe impl<T> SplitAt for std::slice::IterMut<'_, T> {
+    fn split_at(self, index: usize) -> (Self, Self) {
+        let (left, right) = self.into_slice().split_at_mut(index);
+
+        (left.iter_mut(), right.iter_mut())
+    }
+}
+
 /// Generalized parallel wrapper for the iterators of this module.
 #[cfg(feature = "rayon")]
 #[derive(Clone, Debug)]
@@ -68,6 +86,19 @@ where
         CB: ProducerCallback<Self::Item>,
     {
         callback.callback(ParProducer(self.0))
+    }
+}
+
+// SAFETY: if the inner iterator can be split safely, so can this wrapper.
+#[cfg(feature = "rayon")]
+unsafe impl<I> SplitAt for Par<I>
+where
+    I: SplitAt,
+{
+    fn split_at(self, index: usize) -> (Self, Self) {
+        let (left, right) = self.0.split_at(index);
+
+        (Self(left), Self(right))
     }
 }
 

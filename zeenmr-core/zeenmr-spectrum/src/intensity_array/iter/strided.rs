@@ -1,3 +1,4 @@
+use crate::iter::SplitAt;
 use std::iter::FusedIterator;
 
 #[cfg(feature = "rayon")]
@@ -153,6 +154,34 @@ where
     S1: FusedIterator,
     SN: FusedIterator<Item = S1::Item>,
 {
+}
+
+// SAFETY: since both contained iterators can safely be split, so can this one.
+unsafe impl<S1, SN> SplitAt for StridedIterKind<S1, SN>
+where
+    S1: SplitAt,
+    SN: SplitAt,
+{
+    fn split_at(self, index: usize) -> (Self, Self) {
+        match self {
+            StridedIterKind::Contiguous(iter) => {
+                let (left, right) = iter.split_at(index);
+
+                (
+                    StridedIterKind::Contiguous(left),
+                    StridedIterKind::Contiguous(right),
+                )
+            }
+            StridedIterKind::Strided(iter) => {
+                let (left, right) = iter.split_at(index);
+
+                (
+                    StridedIterKind::Strided(left),
+                    StridedIterKind::Strided(right),
+                )
+            }
+        }
+    }
 }
 
 #[cfg(feature = "rayon")]
