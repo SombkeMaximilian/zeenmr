@@ -1,5 +1,5 @@
-use std::fmt::Display;
 use std::env;
+use std::fmt::Display;
 
 #[cfg(feature = "detect-cpu-features")]
 use hwlocality::{

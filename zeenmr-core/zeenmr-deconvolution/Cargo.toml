@@ -31,6 +31,7 @@ detect-cpu-features = ["zeenmr-peakshape/detect-cpu-features"]
 [dependencies]
 zeenmr-spectrum = { workspace = true }
 zeenmr-peakshape = { workspace = true }
+zeenmr-util = { workspace = true }
 
 num-traits = { workspace = true }
 rayon = { workspace = true, optional = true }
@@ -38,6 +39,9 @@ serde = { workspace = true, optional = true }
 
 [dev-dependencies]
 float-cmp = { workspace = true }
+
+[build-dependencies]
+zeenmr-util-build = { workspace = true }
 
 [lints]
 workspace = true
