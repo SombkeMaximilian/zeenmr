@@ -273,7 +273,7 @@ impl MovingAverage {
         let mut full_len = 1;
         for _ in 0..iterations {
             let new_full_len = full_len + window - 1;
-            let new_half_len = (new_full_len + 1) / 2;
+            let new_half_len = new_full_len.div_ceil(2);
             let count_at = |idx: usize| half_counts[idx.min(full_len - 1 - idx)];
             let mut new_half = Vec::with_capacity(new_half_len);
             let mut window_sum = 0_u128;
