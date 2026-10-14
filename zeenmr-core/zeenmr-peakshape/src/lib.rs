@@ -5,8 +5,6 @@
 
 mod util;
 
-pub mod approximations;
-
 pub mod batch_superposition;
 
 mod peak_shape;

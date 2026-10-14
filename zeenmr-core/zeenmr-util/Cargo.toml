@@ -1,0 +1,21 @@
+[package]
+name = "zeenmr-util"
+version = "0.1.0"
+authors = ["Maximilian Sombke <sombkemaximilian@gmail.com>"]
+edition = "2024"
+rust-version = "1.85.0"
+description = """
+    Shared utility crate.
+"""
+readme = "README.md"
+repository = "https://github.com/SombkeMaximilian/zeenmr"
+license = "MIT"
+
+[features]
+default = []
+
+[dependencies]
+num-traits = { workspace = true }
+
+[lints]
+workspace = true

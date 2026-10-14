@@ -1,4 +1,5 @@
 use num_traits::Float;
+use zeenmr_util::fma;
 
 /// Fuses two `num` and `den` pairs into a combined `num` and `den`.
 ///
@@ -26,22 +27,4 @@ where
     }
 
     acc
-}
-
-/// Performs the fused multiply-add operation `(a * b) + c`.
-///
-/// Defers to the regular two-stage operation if there is no hardware fma.
-#[inline(always)]
-pub(crate) fn fma<T>(a: T, b: T, c: T) -> T
-where
-    T: Float,
-{
-    #[cfg(any(target_feature = "fma", target_arch = "aarch64"))]
-    {
-        a.mul_add(b, c)
-    }
-    #[cfg(not(any(target_feature = "fma", target_arch = "aarch64")))]
-    {
-        a * b + c
-    }
 }

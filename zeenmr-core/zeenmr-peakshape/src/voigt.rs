@@ -1,7 +1,6 @@
-use crate::approximations::Exp2;
-use crate::util::fma;
 use crate::{Evaluate, LorentzianSupport, PeakShape};
 use num_traits::{Float, FloatConst};
+use zeenmr_util::{Exp2, fma};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};

@@ -30,10 +30,9 @@ detect-cpu-features = ["dep:hwlocality"]
 num-traits = { workspace = true }
 rayon = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
+zeenmr-util = { workspace = true }
 
 [dev-dependencies]
-float-cmp = { workspace = true }
-static_assertions = { workspace = true }
 
 [build-dependencies]
 hwlocality = { workspace = true, optional = true }

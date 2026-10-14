@@ -1,6 +1,4 @@
-//! Numerical approximations non-elementary functions.
-
-use crate::util::fma;
+use crate::fma;
 use num_traits::Float;
 
 /// Approximation for `2^(self)`.

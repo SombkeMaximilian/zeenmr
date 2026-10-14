@@ -1,6 +1,6 @@
-use crate::util::fma;
 use crate::{DefaultSupport, Evaluate, EvaluateParts, FromArray, PeakShape};
 use num_traits::{Float, FloatConst};
+use zeenmr_util::fma;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
