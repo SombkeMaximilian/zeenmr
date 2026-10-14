@@ -1,5 +1,5 @@
 use crate::error::EitherError;
-use std::borrow::Cow;
+use zeenmr_spectrum::intensity_array::{ArrayCow1D, ArrayView1D, ArrayViewMut1D};
 
 /// Trait for smoothing algorithms that process a sequence of values.
 ///
@@ -19,15 +19,15 @@ where
     type Error;
 
     /// Smooth the provided data in place.
-    fn smooth_in_place(&self, data: &mut [T]) -> Result<(), Self::Error>;
+    fn smooth_in_place(&self, data: ArrayViewMut1D<T>) -> Result<(), Self::Error>;
 
     /// Smooth the provided data and return an owned instance of the smoothed
     /// values.
-    fn smooth<'a>(&self, data: &'a [T]) -> Result<Cow<'a, [T]>, Self::Error> {
-        let mut data = data.to_owned();
-        self.smooth_in_place(&mut data)?;
+    fn smooth<'s>(&self, data: ArrayView1D<'s, T>) -> Result<ArrayCow1D<'s, T>, Self::Error> {
+        let mut data = data.to_owned_storage();
+        self.smooth_in_place(data.to_mut())?;
 
-        Ok(data.into())
+        Ok(data)
     }
 
     /// Returns a smoother that first applies this smoother and then the other.
@@ -53,7 +53,7 @@ where
 {
     type Error = std::convert::Infallible;
 
-    fn smooth_in_place(&self, _: &mut [T]) -> Result<(), Self::Error> {
+    fn smooth_in_place(&self, _: ArrayViewMut1D<T>) -> Result<(), Self::Error> {
         Ok(())
     }
 }
@@ -82,12 +82,12 @@ where
 {
     type Error = EitherError<S1::Error, S2::Error>;
 
-    fn smooth_in_place(&self, data: &mut [T]) -> Result<(), Self::Error> {
+    fn smooth_in_place(&self, mut data: ArrayViewMut1D<T>) -> Result<(), Self::Error> {
         self.first
-            .smooth_in_place(data)
+            .smooth_in_place(data.view_mut())
             .map_err(EitherError::First)?;
         self.second
-            .smooth_in_place(data)
+            .smooth_in_place(data.view_mut())
             .map_err(EitherError::Second)?;
         Ok(())
     }

@@ -1,5 +1,8 @@
 use crate::smoothing::Smooth;
 use num_traits::Float;
+use std::mem::MaybeUninit;
+use zeenmr_spectrum::dimension::DimIndex;
+use zeenmr_spectrum::intensity_array::{ArrayViewMut1D, index};
 
 /// Least squares filter.
 ///
@@ -15,42 +18,61 @@ use num_traits::Float;
 ///
 /// To handle edges, the filter uses an asymmetric moving average until the full
 /// window width is available.
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub struct LeastSquares<T> {
+#[derive(Clone, PartialEq, Debug)]
+pub struct LeastSquares {
     /// Number of iterations to apply the filter.
-    pub iterations: usize,
+    iterations: usize,
     /// Coefficient vector for the window.
-    pub coeff: Box<[T]>,
+    coefficients: Box<[f64]>,
 }
 
-impl<T> Smooth<T> for LeastSquares<T>
+impl<T> Smooth<T> for LeastSquares
 where
     T: Float,
 {
     type Error = std::convert::Infallible;
 
-    fn smooth_in_place(&self, data: &mut [T]) -> Result<(), Self::Error> {
-        if data.len() < 2 || data.len() < self.coeff.len() || self.iterations == 0 {
+    fn smooth_in_place(&self, mut data: ArrayViewMut1D<T>) -> Result<(), Self::Error> {
+        if data.len() < 2 || data.len() < self.coefficients.len() || self.iterations == 0 {
             return Ok(());
         }
 
-        let half_window = self.coeff.len() / 2;
+        let coefficients = self
+            .coefficients
+            .iter()
+            .map(|&weight| T::from(weight).expect("conversion from f64 to T must never fail"))
+            .collect::<Vec<T>>();
+
+        let half_window = self.coefficients.len() / 2;
         let len = data.len();
-        let mut next = vec![T::zero(); len];
+        let mut lane = data
+            .lane_at_mut(DimIndex(0), &index([0]))
+            .expect("1D array always has a first dimension");
+        let mut gathered = MaybeUninit::<Vec<T>>::uninit();
+        let (values, is_gathered) = match lane.as_mut_slice() {
+            Some(lane) => (lane, false),
+            None => (
+                gathered
+                    .write(lane.iter().copied().collect::<Vec<T>>())
+                    .as_mut(),
+                true,
+            ),
+        };
+        let mut scratch = vec![T::zero(); len];
         for _ in 0..self.iterations {
             for curr in 0..half_window {
                 // asymmetric moving average at the edges
                 let div = T::from(curr + half_window + 1)
                     .expect("conversion from usize to T must never fail");
-                next[curr] = data[0..curr + half_window + 1]
+                scratch[curr] = values[0..curr + half_window + 1]
                     .iter()
                     .fold(T::zero(), |acc, &x| acc + x)
                     / div;
             }
             for curr in half_window..(len - half_window) {
-                next[curr] = data[curr - half_window..curr + half_window + 1]
+                scratch[curr] = values[curr - half_window..curr + half_window + 1]
                     .iter()
-                    .zip(self.coeff.iter())
+                    .zip(coefficients.iter())
                     .map(|(&x, &c)| x * c)
                     .fold(T::zero(), |acc, x| acc + x);
             }
@@ -58,34 +80,35 @@ where
                 // asymmetric moving average at the edges
                 let div = T::from(len - curr + half_window)
                     .expect("conversion from usize to T must never fail");
-                next[curr] = data[curr - half_window..]
+                scratch[curr] = values[curr - half_window..]
                     .iter()
                     .fold(T::zero(), |acc, &x| acc + x)
                     / div;
             }
-            data.swap_with_slice(&mut next);
+            values.swap_with_slice(&mut scratch);
+        }
+        if is_gathered {
+            // SAFETY: this can only be reached if the lane was gathered
+            let gathered = unsafe { gathered.assume_init() };
+            lane.iter_mut()
+                .zip(gathered)
+                .for_each(|(value, new)| *value = new);
         }
 
         Ok(())
     }
 }
 
-impl<T> Default for LeastSquares<T>
-where
-    T: Float,
-{
+impl Default for LeastSquares {
     fn default() -> Self {
         Self {
             iterations: 2,
-            coeff: coefficients(7, 2, 0),
+            coefficients: coefficients(7, 2, 0),
         }
     }
 }
 
-impl<T> LeastSquares<T>
-where
-    T: Float,
-{
+impl LeastSquares {
     /// Creates a new `Polynomial` filter based on Savitzky-Golay coefficients.
     ///
     /// Returns `None` if
@@ -99,19 +122,15 @@ where
         } else {
             Some(Self {
                 iterations,
-                coeff: coefficients(window, order, 0),
+                coefficients: coefficients(window, order, 0),
             })
         }
     }
 }
 
 /// Computes the SG coefficients using L D L^T decomposition.
-pub(crate) fn coefficients<T>(window: usize, order: u32, unit: usize) -> Box<[T]>
-where
-    T: Float,
-{
+pub(crate) fn coefficients(window: usize, order: u32, unit: usize) -> Box<[f64]> {
     let half_window = window as i32 / 2;
-    let half_window_t = T::from(half_window).expect("conversion from i32 to T must never fail");
     let window_range = -half_window..half_window + 1;
     let n = order as usize + 1;
     let order_range = 0..n as i32;
@@ -123,11 +142,10 @@ where
         .map(|(i, j)| {
             window_range
                 .clone()
-                .map(|k| T::from(k).expect("conversion from i32 to T must never fail"))
-                .map(move |k| (k / half_window_t).powi(i + j))
-                .fold(T::zero(), |acc, x| acc + x)
+                .map(move |k| ((k as f64) / (half_window as f64)).powi(i + j))
+                .fold(0_f64, |acc, x| acc + x)
         })
-        .collect::<Box<[T]>>();
+        .collect::<Box<[f64]>>();
 
     // L D L^T decomposition in-place, lower triangle only
     for j in 0..n {
@@ -146,8 +164,8 @@ where
     }
 
     // forward substitution L y = e_0
-    let mut y = vec![T::zero(); n];
-    y[unit] = T::one();
+    let mut y = vec![0_f64; n];
+    y[unit] = 1_f64;
     for i in 0..n {
         if i == unit {
             continue;
@@ -155,16 +173,16 @@ where
 
         y[i] = (0..i)
             .map(|k| -m[i * n + k] * y[k])
-            .fold(T::zero(), |acc, x| acc + x);
+            .fold(0_f64, |acc, x| acc + x);
     }
 
     // diagonal solve D w = y
     let w = (0..n)
         .map(|i| y[i] / m[i * n + i])
-        .collect::<Vec<T>>();
+        .collect::<Vec<f64>>();
 
     // back substitution L^T z = w
-    let mut z = vec![T::zero(); n];
+    let mut z = vec![0_f64; n];
     for i in (0..n).rev() {
         z[i] = ((i + 1)..n)
             .map(|k| -m[k * n + i] * z[k])
@@ -172,19 +190,16 @@ where
     }
 
     // scale correction for derivatives
-    let correction = (1..=unit).product::<usize>();
-    let scale = T::from(correction).expect("conversion from usize to T must never fail")
-        / half_window_t.powi(unit as i32);
+    let scale = ((1..=unit).product::<usize>() as f64) / (half_window.pow(unit as u32) as f64);
 
     // project c_k = sum_(j = 0)^n (half_window - k)^j * z[j]
     window_range
-        .map(|k| T::from(k).expect("conversion from i32 to T must never fail"))
         .map(|k| {
             scale
                 * order_range
                     .clone()
-                    .map(|j| (k / half_window_t).powi(j) * z[j as usize])
-                    .fold(T::zero(), |acc, x| acc + x)
+                    .map(|j| ((k as f64) / (half_window as f64)).powi(j) * z[j as usize])
+                    .fold(0_f64, |acc, x| acc + x)
         })
         .collect()
 }
@@ -193,6 +208,8 @@ where
 mod tests {
     use super::*;
     use float_cmp::assert_approx_eq;
+    use zeenmr_spectrum::dimension::DimIndex;
+    use zeenmr_spectrum::intensity_array::{ArrayOwned, shape};
 
     fn compare<const N: usize>(computed: [Box<[f64]>; N], expected: [Box<[f64]>; N]) {
         computed
@@ -335,32 +352,41 @@ mod tests {
     #[test]
     fn constant_signal() {
         let window = 11;
-        let data = std::iter::repeat_n(69.0, 2_usize.pow(8)).collect::<Box<[f64]>>();
+        let data = ArrayOwned::new(
+            std::iter::repeat_n(69.0, 2_usize.pow(8)).collect::<Box<[f64]>>(),
+            shape([2_usize.pow(8)]),
+        )
+        .expect("hand verified");
         let smoother = LeastSquares::new(1, window, 4).unwrap();
-        let smoothed = smoother
-            .smooth(&data)
-            .expect("infallible")
-            .into_owned()
-            .into_boxed_slice();
+        let smoothed = smoother.smooth(data.view()).expect("infallible");
 
-        compare([data], [smoothed]);
+        data.elem()
+            .zip(smoothed.elem())
+            .for_each(|(&raw, &smoothed)| assert_approx_eq!(f64, raw, smoothed));
     }
 
     #[test]
     fn linear_ramp() {
         let window = 11;
-        let data = (0..2_usize.pow(8))
-            .map(|x| x as f64)
-            .collect::<Box<[f64]>>();
+        let data = ArrayOwned::new(
+            (0..2_usize.pow(8))
+                .map(|x| x as f64)
+                .collect::<Box<[f64]>>(),
+            shape([2_usize.pow(8)]),
+        )
+        .expect("hand verified");
         let smoother = LeastSquares::new(1, window, 4).unwrap();
-        let smoothed = smoother.smooth(&data).expect("infallible")
-            [window / 2..data.len() - window / 2]
-            .to_vec()
-            .into_boxed_slice();
-        let data = data[window / 2..data.len() - window / 2]
-            .to_vec()
-            .into_boxed_slice();
+        let smoothed = smoother
+            .smooth(data.view())
+            .ok()
+            .and_then(|array| array.cropped(DimIndex(0), (window / 2)..(data.len() - window / 2)))
+            .expect("infallible");
+        let data = data
+            .cropped(DimIndex(0), (window / 2)..(data.len() - window / 2))
+            .expect("hand verified");
 
-        compare([data], [smoothed]);
+        data.elem()
+            .zip(smoothed.elem())
+            .for_each(|(&raw, &smoothed)| assert_approx_eq!(f64, raw, smoothed));
     }
 }

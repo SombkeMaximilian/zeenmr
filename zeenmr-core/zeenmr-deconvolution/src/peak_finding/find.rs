@@ -1,5 +1,6 @@
 use std::ops::Range;
 use zeenmr_spectrum::SpectrumView1D;
+use zeenmr_spectrum::intensity_array::ArrayView1D;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -22,7 +23,7 @@ pub trait Find<T> {
     fn find(
         &self,
         spectrum: SpectrumView1D<T, T>,
-        smoothed: &[T],
+        smoothed: ArrayView1D<T>,
         ignore: &[Range<usize>],
     ) -> Result<Vec<Peak>, Self::Error>;
 }

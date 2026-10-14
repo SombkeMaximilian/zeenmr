@@ -3,10 +3,9 @@ use crate::util::signal_boundaries::SignalBoundaries;
 use num_traits::Float;
 use std::ops::Range;
 use zeenmr_spectrum::SpectrumView1D;
-
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
 use zeenmr_spectrum::axis::range::RelativeRange;
+use zeenmr_spectrum::dimension::DimIndex;
+use zeenmr_spectrum::intensity_array::{ArrayView1D, index};
 
 /// An error that occurred during the curvature analysis based peak finding.
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
@@ -262,12 +261,11 @@ where
 /// The score is computed as the minimum of the sums of the absolute second
 /// derivative values within bounds on both sides of the peak center.
 #[derive(Copy, Clone, PartialEq, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CurvatureAnalysis<T, S> {
     /// Score threshold for peak filtering.
-    pub threshold: Option<T>,
+    threshold: Option<T>,
     /// Type determining the signal boundaries of the input spectrum.
-    pub signal_finder: S,
+    signal_finder: S,
 }
 
 impl<T, S> Find<T> for CurvatureAnalysis<T, S>
@@ -280,14 +278,37 @@ where
     fn find(
         &self,
         spectrum: SpectrumView1D<T, T>,
-        smoothed: &[T],
+        smoothed: ArrayView1D<T>,
         ignore: &[Range<usize>],
     ) -> Result<Vec<Peak>, Self::Error> {
         let signal = self.signal_finder.signal_boundaries(spectrum);
-        let mut second_derivative = smoothed
-            .windows(3)
-            .map(|w| w[0] - w[1] - w[1] + w[2])
-            .collect::<Vec<T>>();
+        let lane = smoothed
+            .lane_at(DimIndex(0), &index([0]))
+            .expect("1D array always has a first dimension");
+        let mut second_derivative = match lane.as_slice() {
+            Some(lane) => lane
+                .windows(3)
+                .map(|w| w[0] - w[1] - w[1] + w[2])
+                .collect::<Vec<T>>(),
+            None => {
+                let mut scratch = vec![T::zero(); lane.len().saturating_sub(2)];
+                // TODO: maybe rewrite this with custom windows iterator.
+                scratch
+                    .iter_mut()
+                    .zip(lane.iter())
+                    .for_each(|(value, &left)| *value = *value + left);
+                scratch
+                    .iter_mut()
+                    .zip(lane.iter().skip(2))
+                    .for_each(|(value, &right)| *value = *value + right);
+                scratch
+                    .iter_mut()
+                    .zip(lane.iter().skip(1))
+                    .for_each(|(value, &center)| *value = *value - center - center);
+
+                scratch
+            }
+        };
         let mut peaks = CurvatureDetector(&second_derivative).detect_peaks()?;
         peaks.retain(|peak| {
             !ignore
@@ -346,7 +367,7 @@ where
 }
 
 impl<T, S> CurvatureAnalysis<T, S> {
-    /// Creates a new `CurvatureAnalysis`.
+    /// Creates a new curvature-analysis-based peak finder.
     pub fn new(threshold: Option<T>, signal_finder: S) -> Self {
         Self {
             threshold,

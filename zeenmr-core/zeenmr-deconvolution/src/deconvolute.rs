@@ -9,7 +9,6 @@ use zeenmr_peakshape::PeakShape;
 use zeenmr_spectrum::SpectrumView1D;
 use zeenmr_spectrum::axis::range::{FiniteBounds, ShiftRange};
 use zeenmr_spectrum::dimension::DimIndex;
-use zeenmr_spectrum::intensity_array::index;
 
 #[cfg(feature = "rayon")]
 use crate::fitting::ParFit;
@@ -153,18 +152,14 @@ where
     type Error = Error<C1::Error, C2::Error, C3::Error>;
 
     fn deconvolute(&self, spectrum: SpectrumView1D<T, T>) -> Result<Deconvolution<P>, Self::Error> {
-        let intensities = spectrum.intensities();
-        let mut intensities = intensities
-            .lane_at(DimIndex(0), &index([0]))
-            .map(|lane| lane.to_vec())
-            .expect("1D spectrum always has a first dimension");
-        let len = intensities.len();
+        let len = spectrum.len();
         let len_as_t = T::from(len).expect("conversion from usize to T must never fail");
         let grid = spectrum
             .grid_axis(DimIndex(0))
             .expect("1D spectrum always has a first dimension");
-        self.smoother
-            .smooth_in_place(&mut intensities)
+        let smoothed = self
+            .smoother
+            .smooth(spectrum.intensities())
             .map_err(Error::smoothing)?;
         let ignore = self
             .ignore
@@ -175,14 +170,12 @@ where
                 let min = start.min(end).ceil().to_usize()?;
                 let max = start.max(end).ceil().to_usize()?;
 
-                // no need to check against len because relative coordinates
-                // returned by `FrequencyAxis` are always in `[0, 1]`
                 Some(min..max)
             })
             .collect::<Vec<Range<usize>>>();
         let peaks = self
             .finder
-            .find(spectrum.view(), &intensities, &ignore)
+            .find(spectrum.view(), smoothed.view(), &ignore)
             .map_err(Error::finding)?;
         let peak_shapes = self
             .fitter
@@ -208,18 +201,14 @@ where
         &self,
         spectrum: SpectrumView1D<T, T>,
     ) -> Result<Deconvolution<P>, Self::Error> {
-        let intensities = spectrum.intensities();
-        let mut intensities = intensities
-            .lane_at(DimIndex(0), &index([0]))
-            .map(|lane| lane.to_vec())
-            .expect("1D spectrum always has a first dimension");
-        let len = intensities.len();
+        let len = spectrum.len();
         let len_as_t = T::from(len).expect("conversion from usize to T must never fail");
         let grid = spectrum
             .grid_axis(DimIndex(0))
             .expect("1D spectrum always has a first dimension");
-        self.smoother
-            .smooth_in_place(&mut intensities)
+        let smoothed = self
+            .smoother
+            .smooth(spectrum.intensities())
             .map_err(Error::smoothing)?;
         let ignore = self
             .ignore
@@ -230,14 +219,12 @@ where
                 let min = start.min(end).ceil().to_usize()?;
                 let max = start.max(end).ceil().to_usize()?;
 
-                // no need to check against len because relative coordinates
-                // returned by `FrequencyAxis` are always in `[0, 1]`
                 Some(min..max)
             })
             .collect::<Vec<Range<usize>>>();
         let peaks = self
             .finder
-            .find(spectrum.view(), &intensities, &ignore)
+            .find(spectrum.view(), smoothed.view(), &ignore)
             .map_err(Error::finding)?;
         let peak_shapes = self
             .fitter
