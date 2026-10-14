@@ -27,7 +27,6 @@ rayon = ["dep:rayon"]
 serde = ["dep:serde", "dep:serde_arrays", "uom/serde"]
 
 [dependencies]
-num-complex = { workspace = true }
 num-traits = { workspace = true }
 uom = { workspace = true }
 rayon = { workspace = true, optional = true }

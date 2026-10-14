@@ -1,0 +1,22 @@
+[package]
+name = "zeenmr-util-build"
+version = "0.1.0"
+authors = ["Maximilian Sombke <sombkemaximilian@gmail.com>"]
+edition = "2024"
+rust-version = "1.85.0"
+description = """
+    Build script utility crate.
+"""
+readme = "README.md"
+repository = "https://github.com/SombkeMaximilian/zeenmr"
+license = "MIT"
+
+[features]
+default = []
+detect-cpu-features = ["dep:hwlocality"]
+
+[dependencies]
+hwlocality = { workspace = true, optional = true }
+
+[lints]
+workspace = true

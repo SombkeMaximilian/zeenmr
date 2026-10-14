@@ -24,18 +24,18 @@ categories = [
 default = []
 rayon = ["dep:rayon"]
 serde = ["dep:serde"]
-detect-cpu-features = ["dep:hwlocality"]
+detect-cpu-features = ["zeenmr-util-build/detect-cpu-features"]
 
 [dependencies]
 num-traits = { workspace = true }
+zeenmr-util = { workspace = true }
 rayon = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
-zeenmr-util = { workspace = true }
 
 [dev-dependencies]
 
 [build-dependencies]
-hwlocality = { workspace = true, optional = true }
+zeenmr-util-build = { workspace = true }
 
 [lints]
 workspace = true
