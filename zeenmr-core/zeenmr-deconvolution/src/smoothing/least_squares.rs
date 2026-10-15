@@ -13,11 +13,6 @@ use zeenmr_spectrum::intensity_array::{ArrayViewMut1D, index};
 ///
 /// Reference: Numerical Recipes The Art of Scientific Computing (3rd Edition)
 /// p. 766 f.
-///
-/// # Edge Handling
-///
-/// To handle edges, the filter uses an asymmetric moving average until the full
-/// window width is available.
 #[derive(Clone, PartialEq, Debug)]
 pub struct LeastSquares {
     /// Number of iterations to apply the filter.
@@ -109,7 +104,7 @@ impl Default for LeastSquares {
 }
 
 impl LeastSquares {
-    /// Creates a new `Polynomial` filter based on Savitzky-Golay coefficients.
+    /// Creates a new least squares filter.
     ///
     /// Returns `None` if
     /// - `iterations` is `0`, or
@@ -118,13 +113,13 @@ impl LeastSquares {
     /// - `window <= order`
     pub fn new(iterations: usize, window: usize, order: u32) -> Option<Self> {
         if iterations == 0 || window < 3 || window % 2 != 1 || window <= order as usize {
-            None
-        } else {
-            Some(Self {
-                iterations,
-                coefficients: coefficients(window, order, 0),
-            })
+            return None;
         }
+
+        Some(Self {
+            iterations,
+            coefficients: coefficients(window, order, 0),
+        })
     }
 }
 

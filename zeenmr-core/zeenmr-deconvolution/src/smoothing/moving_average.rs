@@ -23,7 +23,7 @@ pub struct MovingAverage {
     /// Size of the sliding window.
     window: usize,
     /// Convoluted coefficients, if they can be computed.
-    coefficients: Option<Box<[f64]>>,
+    coefficients: Box<[f64]>,
 }
 
 impl<T> Smooth<T> for MovingAverage
@@ -60,10 +60,13 @@ impl Default for MovingAverage {
 impl MovingAverage {
     /// Creates a new moving average filter.
     pub fn new(iterations: usize, window: usize) -> Self {
+        let coefficients = Self::convolution_coefficients(iterations, window)
+            .unwrap_or(Box::new([]));
+
         Self {
             iterations,
             window,
-            coefficients: Self::convolution_coefficients(iterations, window),
+            coefficients,
         }
     }
 
@@ -79,7 +82,7 @@ impl MovingAverage {
         let kernel_size = self.iterations * (self.window - 1);
         if len >= kernel_size {
             if self.is_convolution() {
-                self.convolve(values, kernel_size);
+                self.convolve(values);
             } else {
                 let mut scratch = vec![T::zero(); len];
                 self.iterative_fallback(values, &mut scratch);
@@ -93,7 +96,9 @@ impl MovingAverage {
     /// Returns `true` if the moving average filter can be applied as one-pass
     /// convolution.
     fn is_convolution(&self) -> bool {
-        self.coefficients.is_some()
+        self.iterations > 1
+            && !self.coefficients.is_empty()
+            && self.coefficients.len() > self.window
     }
 
     /// Computes the moving average in a single pass using the coefficients.
@@ -101,18 +106,17 @@ impl MovingAverage {
     /// # Panics
     ///
     /// Panics if the convoluted coefficients weren't calculated.
-    fn convolve<T>(&self, values: &mut [T], kernel_size: usize)
+    fn convolve<T>(&self, values: &mut [T])
     where
         T: Float,
     {
         let coefficients = self
             .coefficients
-            .as_deref()
-            .expect("coefficients should be Some")
             .iter()
             .map(|&weight| T::from(weight).expect("conversion from f64 to T must never fail"))
             .collect::<Box<[T]>>();
         let len = values.len();
+        let kernel_size = self.iterations * (self.window - 1);
         let head = self.iterations * ((self.window - 1) / 2);
         let tail = self.iterations * (self.window / 2);
 
