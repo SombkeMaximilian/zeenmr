@@ -1,8 +1,17 @@
 use crate::smoothing::Smooth;
 use num_traits::Float;
-use std::mem::MaybeUninit;
 use zeenmr_spectrum::dimension::DimIndex;
 use zeenmr_spectrum::intensity_array::{ArrayViewMut1D, index};
+use zeenmr_util::fma;
+
+mod cache_topology {
+    //! Contains cache size constants in bytes.
+
+    include!(concat!(env!("OUT_DIR"), "/cache.rs"));
+}
+
+/// Chunk size in elements.
+const CHUNK: usize = 16;
 
 /// Least squares filter.
 ///
@@ -17,6 +26,8 @@ use zeenmr_spectrum::intensity_array::{ArrayViewMut1D, index};
 pub struct LeastSquares {
     /// Number of iterations to apply the filter.
     iterations: usize,
+    /// Size of the window.
+    window: usize,
     /// Coefficient vector for the window.
     coefficients: Box<[f64]>,
 }
@@ -28,66 +39,18 @@ where
     type Error = std::convert::Infallible;
 
     fn smooth_in_place(&self, mut data: ArrayViewMut1D<T>) -> Result<(), Self::Error> {
-        if data.len() < 2 || data.len() < self.coefficients.len() || self.iterations == 0 {
-            return Ok(());
-        }
-
-        let coefficients = self
-            .coefficients
-            .iter()
-            .map(|&weight| T::from(weight).expect("conversion from f64 to T must never fail"))
-            .collect::<Vec<T>>();
-
-        let half_window = self.coefficients.len() / 2;
-        let len = data.len();
         let mut lane = data
             .lane_at_mut(DimIndex(0), &index([0]))
             .expect("1D array always has a first dimension");
-        let mut gathered = MaybeUninit::<Vec<T>>::uninit();
-        let (values, is_gathered) = match lane.as_mut_slice() {
-            Some(lane) => (lane, false),
-            None => (
-                gathered
-                    .write(lane.iter().copied().collect::<Vec<T>>())
-                    .as_mut(),
-                true,
-            ),
-        };
-        let mut scratch = vec![T::zero(); len];
-        for _ in 0..self.iterations {
-            for curr in 0..half_window {
-                // asymmetric moving average at the edges
-                let div = T::from(curr + half_window + 1)
-                    .expect("conversion from usize to T must never fail");
-                scratch[curr] = values[0..curr + half_window + 1]
-                    .iter()
-                    .fold(T::zero(), |acc, &x| acc + x)
-                    / div;
+        match lane.as_mut_slice() {
+            Some(slice) => self.smooth_slice(slice),
+            None => {
+                let mut values = lane.iter().copied().collect::<Vec<T>>();
+                self.smooth_slice(&mut values);
+                lane.iter_mut()
+                    .zip(values)
+                    .for_each(|(value, new)| *value = new);
             }
-            for curr in half_window..(len - half_window) {
-                scratch[curr] = values[curr - half_window..curr + half_window + 1]
-                    .iter()
-                    .zip(coefficients.iter())
-                    .map(|(&x, &c)| x * c)
-                    .fold(T::zero(), |acc, x| acc + x);
-            }
-            for curr in (len - half_window)..len {
-                // asymmetric moving average at the edges
-                let div = T::from(len - curr + half_window)
-                    .expect("conversion from usize to T must never fail");
-                scratch[curr] = values[curr - half_window..]
-                    .iter()
-                    .fold(T::zero(), |acc, &x| acc + x)
-                    / div;
-            }
-            values.swap_with_slice(&mut scratch);
-        }
-        if is_gathered {
-            // SAFETY: this can only be reached if the lane was gathered
-            let gathered = unsafe { gathered.assume_init() };
-            lane.iter_mut()
-                .zip(gathered)
-                .for_each(|(value, new)| *value = new);
         }
 
         Ok(())
@@ -98,7 +61,8 @@ impl Default for LeastSquares {
     fn default() -> Self {
         Self {
             iterations: 2,
-            coefficients: coefficients(7, 2, 0),
+            window: 5,
+            coefficients: Self::coefficients(5, 2, 0),
         }
     }
 }
@@ -118,85 +82,169 @@ impl LeastSquares {
 
         Some(Self {
             iterations,
-            coefficients: coefficients(window, order, 0),
+            window,
+            coefficients: Self::coefficients(window, order, 0),
         })
     }
-}
 
-/// Computes the SG coefficients using L D L^T decomposition.
-pub(crate) fn coefficients(window: usize, order: u32, unit: usize) -> Box<[f64]> {
-    let half_window = window as i32 / 2;
-    let window_range = -half_window..half_window + 1;
-    let n = order as usize + 1;
-    let order_range = 0..n as i32;
-
-    // matrix A^T A
-    let mut m = order_range
-        .clone()
-        .flat_map(|i| order_range.clone().map(move |j| (i, j)))
-        .map(|(i, j)| {
-            window_range
-                .clone()
-                .map(move |k| ((k as f64) / (half_window as f64)).powi(i + j))
-                .fold(0_f64, |acc, x| acc + x)
-        })
-        .collect::<Box<[f64]>>();
-
-    // L D L^T decomposition in-place, lower triangle only
-    for j in 0..n {
-        // D[j] = M[j][j] - sum_(k < j) L[j][k]^2 * D[k]
-        m[j * n + j] = (0..j)
-            .map(|k| -m[j * n + k].powi(2) * m[k * n + k])
-            .fold(m[j * n + j], |acc, x| acc + x);
-
-        for i in (j + 1)..n {
-            // L[i][j] = (M[i][j] - sum_(k < j) L[i][k] * L[j][k] * D[k]) / D[j]
-            m[i * n + j] = (0..j)
-                .map(|k| -m[i * n + k] * m[j * n + k] * m[k * n + k])
-                .fold(m[i * n + j], |acc, x| acc + x)
-                / m[j * n + j];
+    fn smooth_slice<T>(&self, values: &mut [T])
+    where
+        T: Float,
+    {
+        let len = values.len();
+        if len < 2 || len < self.coefficients.len() || self.iterations == 0 {
+            return;
+        }
+        let kernel_size = self.iterations * (self.window - 1);
+        if len >= kernel_size && self.is_convolution() {
+            self.convolve_single_pass(values);
+        } else {
+            let mut scratch = vec![T::zero(); len];
+            self.convolve_iterative(values, &mut scratch);
         }
     }
 
-    // forward substitution L y = e_0
-    let mut y = vec![0_f64; n];
-    y[unit] = 1_f64;
-    for i in 0..n {
-        if i == unit {
-            continue;
+    fn is_convolution(&self) -> bool {
+        self.iterations > 1 && self.coefficients.len() > self.window
+    }
+
+    /// Applies the filter in a single pass using the convoluted coefficients.
+    fn convolve_single_pass<T>(&self, _: &mut [T])
+    where
+        T: Float,
+    {
+        todo!()
+    }
+
+    /// Iteratively applies the filter, accumulating into `values`.
+    ///
+    /// This is around 2-5x slower than using the pre-convoluted coefficients.
+    fn convolve_iterative<T>(&self, values: &mut [T], scratch: &mut [T])
+    where
+        T: Float,
+    {
+        let coefficients = self
+            .coefficients
+            .iter()
+            .map(|&weight| T::from(weight).expect("conversion from f64 to T must never fail"))
+            .collect::<Box<[T]>>();
+        let len = values.len();
+        let back = (self.window - 1) / 2;
+        let forward = self.window / 2;
+        let last_mid = len - self.window + 1;
+        for _ in 0..self.iterations {
+            let mid = &mut scratch[back..(back + last_mid)];
+            let mut chunks = mid.chunks_exact_mut(CHUNK);
+            let mut chunk_offset = 0;
+            for out_chunk in &mut chunks {
+                let mut sum = [T::zero(); CHUNK];
+                for (shift, &weight) in coefficients.iter().enumerate() {
+                    sum.iter_mut()
+                        .zip(values[(chunk_offset + shift)..(chunk_offset + shift + CHUNK)].iter())
+                        .for_each(|(acc, &new)| *acc = fma(weight, new, *acc));
+                }
+                out_chunk.copy_from_slice(&sum);
+                chunk_offset += CHUNK;
+            }
+            let rem = chunks.into_remainder();
+            if !rem.is_empty() {
+                let rem_len = rem.len();
+                for (shift, &weight) in coefficients.iter().enumerate() {
+                    rem.iter_mut()
+                        .zip(
+                            values[(chunk_offset + shift)..(chunk_offset + shift + rem_len)].iter(),
+                        )
+                        .for_each(|(value, &new)| *value = fma(weight, new, *value));
+                }
+            }
+            for center in (0..back).chain((back + last_mid)..len) {
+                let left = center.saturating_sub(back);
+                let right = (center + forward + 1).min(len);
+                let sum = values[left..right]
+                    .iter()
+                    .fold(T::zero(), |acc, &new| acc + new);
+                scratch[center] =
+                    sum / T::from(right - left).expect("conversion from usize to T must not fail");
+            }
+            values.swap_with_slice(scratch);
         }
-
-        y[i] = (0..i)
-            .map(|k| -m[i * n + k] * y[k])
-            .fold(0_f64, |acc, x| acc + x);
     }
 
-    // diagonal solve D w = y
-    let w = (0..n)
-        .map(|i| y[i] / m[i * n + i])
-        .collect::<Vec<f64>>();
+    /// Computes the SG coefficients using L D L^T decomposition.
+    fn coefficients(window: usize, order: u32, unit: usize) -> Box<[f64]> {
+        let half_window = window as i32 / 2;
+        let window_range = -half_window..half_window + 1;
+        let n = order as usize + 1;
+        let order_range = 0..n as i32;
 
-    // back substitution L^T z = w
-    let mut z = vec![0_f64; n];
-    for i in (0..n).rev() {
-        z[i] = ((i + 1)..n)
-            .map(|k| -m[k * n + i] * z[k])
-            .fold(w[i], |acc, x| acc + x);
-    }
-
-    // scale correction for derivatives
-    let scale = ((1..=unit).product::<usize>() as f64) / (half_window.pow(unit as u32) as f64);
-
-    // project c_k = sum_(j = 0)^n (half_window - k)^j * z[j]
-    window_range
-        .map(|k| {
-            scale
-                * order_range
+        // matrix A^T A
+        let mut m = order_range
+            .clone()
+            .flat_map(|i| order_range.clone().map(move |j| (i, j)))
+            .map(|(i, j)| {
+                window_range
                     .clone()
-                    .map(|j| ((k as f64) / (half_window as f64)).powi(j) * z[j as usize])
+                    .map(move |k| ((k as f64) / (half_window as f64)).powi(i + j))
                     .fold(0_f64, |acc, x| acc + x)
-        })
-        .collect()
+            })
+            .collect::<Box<[f64]>>();
+
+        // L D L^T decomposition in-place, lower triangle only
+        for j in 0..n {
+            // D[j] = M[j][j] - sum_(k < j) L[j][k]^2 * D[k]
+            m[j * n + j] = (0..j)
+                .map(|k| -m[j * n + k].powi(2) * m[k * n + k])
+                .fold(m[j * n + j], |acc, x| acc + x);
+
+            for i in (j + 1)..n {
+                // L[i][j] = (M[i][j] - sum_(k < j) L[i][k] * L[j][k] * D[k]) / D[j]
+                m[i * n + j] = (0..j)
+                    .map(|k| -m[i * n + k] * m[j * n + k] * m[k * n + k])
+                    .fold(m[i * n + j], |acc, x| acc + x)
+                    / m[j * n + j];
+            }
+        }
+
+        // forward substitution L y = e_0
+        let mut y = vec![0_f64; n];
+        y[unit] = 1_f64;
+        for i in 0..n {
+            if i == unit {
+                continue;
+            }
+
+            y[i] = (0..i)
+                .map(|k| -m[i * n + k] * y[k])
+                .fold(0_f64, |acc, x| acc + x);
+        }
+
+        // diagonal solve D w = y
+        let w = (0..n)
+            .map(|i| y[i] / m[i * n + i])
+            .collect::<Vec<f64>>();
+
+        // back substitution L^T z = w
+        let mut z = vec![0_f64; n];
+        for i in (0..n).rev() {
+            z[i] = ((i + 1)..n)
+                .map(|k| -m[k * n + i] * z[k])
+                .fold(w[i], |acc, x| acc + x);
+        }
+
+        // scale correction for derivatives
+        let scale = ((1..=unit).product::<usize>() as f64) / (half_window.pow(unit as u32) as f64);
+
+        // project c_k = sum_(j = 0)^n (half_window - k)^j * z[j]
+        window_range
+            .map(|k| {
+                scale
+                    * order_range
+                        .clone()
+                        .map(|j| ((k as f64) / (half_window as f64)).powi(j) * z[j as usize])
+                        .fold(0_f64, |acc, x| acc + x)
+            })
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -223,11 +271,11 @@ mod tests {
     #[test]
     fn smoothing_coefficients() {
         let computed = [
-            coefficients(5, 2, 0),
-            coefficients(7, 2, 0),
-            coefficients(9, 2, 0),
-            coefficients(7, 4, 0),
-            coefficients(9, 4, 0),
+            LeastSquares::coefficients(5, 2, 0),
+            LeastSquares::coefficients(7, 2, 0),
+            LeastSquares::coefficients(9, 2, 0),
+            LeastSquares::coefficients(7, 4, 0),
+            LeastSquares::coefficients(9, 4, 0),
         ];
         let expected: [Box<[f64]>; 5] = [
             [-3.0, 12.0, 17.0, 12.0, -3.0]
@@ -258,13 +306,13 @@ mod tests {
     #[test]
     fn first_derivative_coefficients() {
         let computed = [
-            coefficients(3, 1, 1),
-            coefficients(5, 1, 1),
-            coefficients(7, 1, 1),
-            coefficients(9, 1, 1),
-            coefficients(5, 3, 1),
-            coefficients(7, 3, 1),
-            coefficients(9, 3, 1),
+            LeastSquares::coefficients(3, 1, 1),
+            LeastSquares::coefficients(5, 1, 1),
+            LeastSquares::coefficients(7, 1, 1),
+            LeastSquares::coefficients(9, 1, 1),
+            LeastSquares::coefficients(5, 3, 1),
+            LeastSquares::coefficients(7, 3, 1),
+            LeastSquares::coefficients(9, 3, 1),
         ];
         let expected: [Box<[f64]>; 7] = [
             [-1.0, 0.0, 1.0]
@@ -305,12 +353,12 @@ mod tests {
     #[test]
     fn second_derivative_coefficients() {
         let computed = [
-            coefficients(5, 2, 2),
-            coefficients(7, 2, 2),
-            coefficients(9, 2, 2),
-            coefficients(5, 4, 2),
-            coefficients(7, 4, 2),
-            coefficients(9, 4, 2),
+            LeastSquares::coefficients(5, 2, 2),
+            LeastSquares::coefficients(7, 2, 2),
+            LeastSquares::coefficients(9, 2, 2),
+            LeastSquares::coefficients(5, 4, 2),
+            LeastSquares::coefficients(7, 4, 2),
+            LeastSquares::coefficients(9, 4, 2),
         ];
         let expected: [Box<[f64]>; 6] = [
             [2.0, -1.0, -2.0, -1.0, 2.0]

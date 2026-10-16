@@ -60,8 +60,8 @@ impl Default for MovingAverage {
 impl MovingAverage {
     /// Creates a new moving average filter.
     pub fn new(iterations: usize, window: usize) -> Self {
-        let coefficients = Self::convolution_coefficients(iterations, window)
-            .unwrap_or(Box::new([]));
+        let coefficients =
+            Self::convolution_coefficients(iterations, window).unwrap_or(Box::new([]));
 
         Self {
             iterations,
@@ -110,6 +110,8 @@ impl MovingAverage {
     where
         T: Float,
     {
+        assert!(!self.coefficients.is_empty());
+
         let coefficients = self
             .coefficients
             .iter()
@@ -147,7 +149,7 @@ impl MovingAverage {
                 let mut sum = [T::zero(); CHUNK];
                 for (shift, &weight) in coefficients.iter().enumerate() {
                     sum.iter_mut()
-                        .zip(&tile[(chunk_offset + shift)..(chunk_offset + shift + CHUNK)])
+                        .zip(tile[(chunk_offset + shift)..(chunk_offset + shift + CHUNK)].iter())
                         .for_each(|(acc, &new)| *acc = fma(weight, new, *acc));
                 }
                 out_chunk.copy_from_slice(&sum);
@@ -156,7 +158,7 @@ impl MovingAverage {
             for (shift, value) in chunks.into_remainder().iter_mut().enumerate() {
                 *value = coefficients
                     .iter()
-                    .zip(&tile[(chunk_offset + shift)..])
+                    .zip(tile[(chunk_offset + shift)..].iter())
                     .fold(T::zero(), |acc, (&weight, &new)| fma(weight, new, acc));
             }
             done += tile_len;
@@ -174,7 +176,7 @@ impl MovingAverage {
 
     /// Iteratively computes the moving average, accumulating it into `values`.
     ///
-    /// This is around 2-5x slower than the convoluted coefficients.
+    /// This is around 2-5x slower than using the convoluted coefficients.
     fn iterative_fallback<T>(&self, values: &mut [T], scratch: &mut [T])
     where
         T: Float,
@@ -209,7 +211,9 @@ impl MovingAverage {
                 rem.copy_from_slice(&values[chunk_offset..(chunk_offset + rem_len)]);
                 for shift in 1..self.window {
                     rem.iter_mut()
-                        .zip(&values[(chunk_offset + shift)..(chunk_offset + shift + rem_len)])
+                        .zip(
+                            values[(chunk_offset + shift)..(chunk_offset + shift + rem_len)].iter(),
+                        )
                         .for_each(|(value, &new)| *value = *value + new);
                 }
                 rem.iter_mut()
