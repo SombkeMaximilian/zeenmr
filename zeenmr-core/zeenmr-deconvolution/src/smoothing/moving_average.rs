@@ -105,12 +105,14 @@ impl MovingAverage {
     ///
     /// # Panics
     ///
-    /// Panics if the convoluted coefficients weren't calculated.
+    /// Panics if the convoluted coefficients weren't calculated, or if values
+    /// contains fewer elements than there are coefficients.
     fn convolve<T>(&self, values: &mut [T])
     where
         T: Float,
     {
         assert!(!self.coefficients.is_empty());
+        assert!(self.coefficients.len() <= values.len());
 
         let coefficients = self
             .coefficients
@@ -122,17 +124,40 @@ impl MovingAverage {
         let head = self.iterations * ((self.window - 1) / 2);
         let tail = self.iterations * (self.window / 2);
 
-        let edge_len = kernel_size.max(self.window + 1).min(len);
-        let mut edge_scratch = vec![T::zero(); 2 * edge_len + head + tail];
-        let (edge_curr, rest) = edge_scratch.split_at_mut(edge_len);
-        let (edge_next, rest) = rest.split_at_mut(edge_len);
+        let edge_len = kernel_size + head.max(tail);
+        let mut edge_scratch = vec![T::zero(); edge_len + head + tail];
+        let (extension, rest) = edge_scratch.split_at_mut(edge_len);
         let (head_values, tail_values) = rest.split_at_mut(head);
-        edge_curr.copy_from_slice(&values[..edge_len]);
-        self.iterative_small(edge_curr, edge_next);
-        head_values.copy_from_slice(&edge_curr[..head]);
-        edge_curr.copy_from_slice(&values[(len - edge_len)..]);
-        self.iterative_small(edge_curr, edge_next);
-        tail_values.copy_from_slice(&edge_curr[(edge_len - tail)..]);
+        let (mirror, body) = extension.split_at_mut(head);
+        mirror
+            .iter_mut()
+            .zip(values[..head].iter().rev())
+            .for_each(|(value, &new)| {
+                *value = new;
+            });
+        body[..kernel_size].copy_from_slice(&values[..kernel_size]);
+        head_values
+            .iter_mut()
+            .zip(extension[..(head + kernel_size)].windows(kernel_size + 1))
+            .for_each(|(value, window)| {
+                *value = coefficients
+                    .iter()
+                    .zip(window.iter())
+                    .fold(T::zero(), |acc, (&new, &weight)| fma(weight, new, acc));
+            });
+        extension[..kernel_size].copy_from_slice(&values[(len - kernel_size)..]);
+        extension[kernel_size..(kernel_size + tail)].iter_mut().zip(values[(len - tail)..].iter().rev()).for_each(|(value, &new)| {
+            *value = new;
+        });
+        tail_values
+            .iter_mut()
+            .zip(extension[..(kernel_size + tail)].windows(kernel_size + 1))
+            .for_each(|(value, window)| {
+                *value = coefficients
+                    .iter()
+                    .zip(window.iter())
+                    .fold(T::zero(), |acc, (&new, &weight)| fma(weight, new, acc));
+            });
 
         let tile_len = tile_len::<T>();
         let mid_len = len - head - tail;

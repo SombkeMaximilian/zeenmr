@@ -1,11 +1,11 @@
-use criterion::{Criterion, Throughput, criterion_group, criterion_main, BenchmarkId};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use num_traits::Float;
 use rand::distr::Uniform;
 use rand::distr::uniform::SampleUniform;
 use rand::prelude::*;
 use std::hint::black_box;
 use std::time::Duration;
-use zeenmr::deconvolution::smoothing::{MovingAverage, LeastSquares, Smooth};
+use zeenmr::deconvolution::smoothing::{LeastSquares, MovingAverage, Smooth};
 use zeenmr::spectrum::intensity_array::{ArrayOwned, shape};
 
 const SEED: u64 = 0xC0FF_EE15_600D;
@@ -55,7 +55,10 @@ fn benchmarks(c: &mut Criterion) {
         .zip(std::iter::repeat([3, 5, 7]))
         .flat_map(|(&iterations, windows)| {
             windows.map(|window| {
-                (format!("{iterations}iter_{window}window"), MovingAverage::new(iterations, window))
+                (
+                    format!("{iterations}iter_{window}window"),
+                    MovingAverage::new(iterations, window),
+                )
             })
         })
         .collect::<Vec<_>>();
