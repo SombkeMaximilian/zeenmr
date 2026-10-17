@@ -1,4 +1,4 @@
-use crate::smoothing::Smooth;
+use crate::smoothing::{CoefficientWindow, MirrorCorrection, Smooth};
 use num_traits::Float;
 use zeenmr_spectrum::dimension::DimIndex;
 use zeenmr_spectrum::intensity_array::{ArrayViewMut1D, index};
@@ -23,7 +23,7 @@ pub struct MovingAverage {
     /// Size of the sliding window.
     window: usize,
     /// Convoluted coefficients, if they can be computed.
-    coefficients: Box<[f64]>,
+    convolution: Option<CoefficientWindow<MirrorCorrection>>,
 }
 
 impl<T> Smooth<T> for MovingAverage
@@ -33,17 +33,27 @@ where
     type Error = std::convert::Infallible;
 
     fn smooth_in_place(&self, mut data: ArrayViewMut1D<T>) -> Result<(), Self::Error> {
-        let mut lane = data
-            .lane_at_mut(DimIndex(0), &index([0]))
-            .expect("1D array always has a first dimension");
-        match lane.as_mut_slice() {
-            Some(slice) => self.smooth_slice(slice),
-            None => {
-                let mut values = lane.iter().copied().collect::<Vec<T>>();
-                self.smooth_slice(&mut values);
-                lane.iter_mut()
-                    .zip(values)
-                    .for_each(|(value, new)| *value = new);
+        if data.len() < 2 || data.len() < self.window || self.iterations == 0 || self.window == 1 {
+            return Ok(());
+        }
+
+        if let Some(convolution) = self.convolution.as_ref() {
+            convolution
+                .smooth_in_place(data)
+                .expect("coefficient convolution is infallible");
+        } else {
+            let mut lane = data
+                .lane_at_mut(DimIndex(0), &index([0]))
+                .expect("1D array always has a first dimension");
+            match lane.as_mut_slice() {
+                Some(values) => self.iterative_fallback(values),
+                None => {
+                    let mut values = lane.iter().copied().collect::<Vec<T>>();
+                    self.iterative_fallback(&mut values);
+                    lane.iter_mut()
+                        .zip(values)
+                        .for_each(|(value, new)| *value = new);
+                }
             }
         }
 
@@ -60,149 +70,20 @@ impl Default for MovingAverage {
 impl MovingAverage {
     /// Creates a new moving average filter.
     pub fn new(iterations: usize, window: usize) -> Self {
-        let coefficients =
-            Self::convolution_coefficients(iterations, window).unwrap_or(Box::new([]));
+        let convolution = Self::convolution_coefficients(iterations, window)
+            .map(|coefficients| CoefficientWindow::new(coefficients, MirrorCorrection));
 
         Self {
             iterations,
             window,
-            coefficients,
+            convolution,
         }
-    }
-
-    /// Smooths a slice in-place.
-    fn smooth_slice<T>(&self, values: &mut [T])
-    where
-        T: Float,
-    {
-        let len = values.len();
-        if len < 2 || len < self.window || self.iterations == 0 || self.window == 1 {
-            return;
-        }
-        let kernel_size = self.iterations * (self.window - 1);
-        if len >= kernel_size {
-            if self.is_convolution() {
-                self.convolve(values);
-            } else {
-                let mut scratch = vec![T::zero(); len];
-                self.iterative_fallback(values, &mut scratch);
-            }
-        } else {
-            let mut scratch = vec![T::zero(); len];
-            self.iterative_small(values, &mut scratch);
-        };
-    }
-
-    /// Returns `true` if the moving average filter can be applied as one-pass
-    /// convolution.
-    fn is_convolution(&self) -> bool {
-        self.iterations > 1
-            && !self.coefficients.is_empty()
-            && self.coefficients.len() > self.window
-    }
-
-    /// Computes the moving average in a single pass using the coefficients.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the convoluted coefficients weren't calculated, or if values
-    /// contains fewer elements than there are coefficients.
-    fn convolve<T>(&self, values: &mut [T])
-    where
-        T: Float,
-    {
-        assert!(!self.coefficients.is_empty());
-        assert!(self.coefficients.len() <= values.len());
-
-        let coefficients = self
-            .coefficients
-            .iter()
-            .map(|&weight| T::from(weight).expect("conversion from f64 to T must never fail"))
-            .collect::<Box<[T]>>();
-        let len = values.len();
-        let kernel_size = self.iterations * (self.window - 1);
-        let head = self.iterations * ((self.window - 1) / 2);
-        let tail = self.iterations * (self.window / 2);
-
-        let edge_len = kernel_size + head.max(tail);
-        let mut edge_scratch = vec![T::zero(); edge_len + head + tail];
-        let (extension, rest) = edge_scratch.split_at_mut(edge_len);
-        let (head_values, tail_values) = rest.split_at_mut(head);
-        let (mirror, body) = extension.split_at_mut(head);
-        mirror
-            .iter_mut()
-            .zip(values[..head].iter().rev())
-            .for_each(|(value, &new)| {
-                *value = new;
-            });
-        body[..kernel_size].copy_from_slice(&values[..kernel_size]);
-        head_values
-            .iter_mut()
-            .zip(extension[..(head + kernel_size)].windows(kernel_size + 1))
-            .for_each(|(value, window)| {
-                *value = coefficients
-                    .iter()
-                    .zip(window.iter())
-                    .fold(T::zero(), |acc, (&new, &weight)| fma(weight, new, acc));
-            });
-        extension[..kernel_size].copy_from_slice(&values[(len - kernel_size)..]);
-        extension[kernel_size..(kernel_size + tail)].iter_mut().zip(values[(len - tail)..].iter().rev()).for_each(|(value, &new)| {
-            *value = new;
-        });
-        tail_values
-            .iter_mut()
-            .zip(extension[..(kernel_size + tail)].windows(kernel_size + 1))
-            .for_each(|(value, window)| {
-                *value = coefficients
-                    .iter()
-                    .zip(window.iter())
-                    .fold(T::zero(), |acc, (&new, &weight)| fma(weight, new, acc));
-            });
-
-        let tile_len = tile_len::<T>();
-        let mid_len = len - head - tail;
-        let mut tile = vec![T::zero(); tile_len + kernel_size];
-        let first = tile_len.min(mid_len) + kernel_size;
-        tile[..first].copy_from_slice(&values[..first]);
-        let mut done = 0;
-        while done < mid_len {
-            let tile_len = tile_len.min(mid_len - done);
-            let mut chunks =
-                values[(head + done)..(head + done + tile_len)].chunks_exact_mut(CHUNK);
-            let mut chunk_offset = 0;
-            for out_chunk in &mut chunks {
-                let mut sum = [T::zero(); CHUNK];
-                for (shift, &weight) in coefficients.iter().enumerate() {
-                    sum.iter_mut()
-                        .zip(tile[(chunk_offset + shift)..(chunk_offset + shift + CHUNK)].iter())
-                        .for_each(|(acc, &new)| *acc = fma(weight, new, *acc));
-                }
-                out_chunk.copy_from_slice(&sum);
-                chunk_offset += CHUNK;
-            }
-            for (shift, value) in chunks.into_remainder().iter_mut().enumerate() {
-                *value = coefficients
-                    .iter()
-                    .zip(tile[(chunk_offset + shift)..].iter())
-                    .fold(T::zero(), |acc, (&weight, &new)| fma(weight, new, acc));
-            }
-            done += tile_len;
-            if done < mid_len {
-                let next_tile_len = tile_len.min(mid_len - done);
-                tile.copy_within(tile_len..(tile_len + kernel_size), 0);
-                tile[kernel_size..(kernel_size + next_tile_len)].copy_from_slice(
-                    &values[(done + kernel_size)..(done + kernel_size + next_tile_len)],
-                );
-            }
-        }
-        values[..head].copy_from_slice(head_values);
-        values[(len - tail)..].copy_from_slice(tail_values);
     }
 
     /// Iteratively computes the moving average, accumulating it into `values`.
     ///
-    /// This is around 2-5x slower than using the convoluted coefficients.
-    fn iterative_fallback<T>(&self, values: &mut [T], scratch: &mut [T])
+    /// This is around 2-5x slower than the convolution.
+    fn iterative_fallback<T>(&self, values: &mut [T])
     where
         T: Float,
     {
@@ -210,9 +91,10 @@ impl MovingAverage {
         let back = (self.window - 1) / 2;
         let forward = self.window / 2;
         let last_mid = len - self.window + 1;
-        let full_div = T::from(self.window)
+        let div = T::from(self.window)
             .expect("conversion from usize to T must never fail")
             .recip();
+        let mut scratch = vec![T::zero(); len];
         for _ in 0..self.iterations {
             let mid = &mut scratch[back..(back + last_mid)];
             let mut chunks = mid.chunks_exact_mut(CHUNK);
@@ -222,77 +104,30 @@ impl MovingAverage {
                 for shift in 0..self.window {
                     sum.iter_mut()
                         .zip(values[(chunk_offset + shift)..(chunk_offset + shift + CHUNK)].iter())
-                        .for_each(|(acc, &new)| *acc = *acc + new);
+                        .for_each(|(acc, &new)| *acc = fma(div, new, *acc));
                 }
-                out_chunk
-                    .iter_mut()
-                    .zip(sum)
-                    .for_each(|(value, acc)| *value = acc * full_div);
+                out_chunk.copy_from_slice(&sum);
                 chunk_offset += CHUNK;
             }
             let rem = chunks.into_remainder();
             if !rem.is_empty() {
-                let rem_len = rem.len();
-                rem.copy_from_slice(&values[chunk_offset..(chunk_offset + rem_len)]);
-                for shift in 1..self.window {
-                    rem.iter_mut()
-                        .zip(
-                            values[(chunk_offset + shift)..(chunk_offset + shift + rem_len)].iter(),
-                        )
-                        .for_each(|(value, &new)| *value = *value + new);
+                for (shift, value) in rem.iter_mut().enumerate() {
+                    *value = values[(chunk_offset + shift)..(chunk_offset + shift + self.window)]
+                        .iter()
+                        .fold(T::zero(), |acc, &new| fma(div, new, acc));
                 }
-                rem.iter_mut()
-                    .for_each(|value| *value = *value * full_div);
             }
             for center in (0..back).chain((back + last_mid)..len) {
                 let left = center.saturating_sub(back);
                 let right = (center + forward + 1).min(len);
-                let sum = values[left..right]
+                let div = T::from(right - left)
+                    .expect("conversion from usize to T must not fail")
+                    .recip();
+                scratch[center] = values[left..right]
                     .iter()
-                    .fold(T::zero(), |acc, &new| acc + new);
-                scratch[center] =
-                    sum / T::from(right - left).expect("conversion from usize to T must not fail");
+                    .fold(T::zero(), |acc, &new| fma(div, new, acc));
             }
-            values.swap_with_slice(scratch);
-        }
-    }
-
-    /// Iteratively computes the moving average, accumulating it into `values`.
-    ///
-    /// Faster for small inputs.
-    fn iterative_small<T>(&self, values: &mut [T], scratch: &mut [T])
-    where
-        T: Float,
-    {
-        let len = values.len();
-        let back = (self.window - 1) / 2;
-        let forward = self.window / 2;
-        let last_mid = len - self.window + 1;
-        let full_div = T::from(self.window)
-            .expect("conversion from usize to T must never fail")
-            .recip();
-        for _ in 0..self.iterations {
-            let mid = &mut scratch[back..(back + last_mid)];
-            mid.copy_from_slice(&values[..last_mid]);
-            for shift in 1..self.window {
-                mid.iter_mut()
-                    .zip(values[shift..].iter())
-                    .for_each(|(value, &new)| {
-                        *value = *value + new;
-                    });
-            }
-            mid.iter_mut()
-                .for_each(|value| *value = *value * full_div);
-            for center in (0..back).chain((back + last_mid)..len) {
-                let left = center.saturating_sub(back);
-                let right = (center + forward + 1).min(len);
-                let sum = values[left..right]
-                    .iter()
-                    .fold(T::zero(), |acc, &new| acc + new);
-                scratch[center] =
-                    sum / T::from(right - left).expect("conversion from usize to T must not fail");
-            }
-            values.swap_with_slice(scratch);
+            values.swap_with_slice(&mut scratch);
         }
     }
 
@@ -310,12 +145,12 @@ impl MovingAverage {
             let count_at = |idx: usize| half_counts[idx.min(full_len - 1 - idx)];
             let mut new_half = Vec::with_capacity(new_half_len);
             let mut window_sum = 0_u128;
-            for idx in 0..new_half_len {
-                if idx < full_len {
-                    window_sum += count_at(idx);
+            for index in 0..new_half_len {
+                if index < full_len {
+                    window_sum += count_at(index);
                 }
-                if idx >= window {
-                    window_sum -= count_at(idx - window);
+                if index >= window {
+                    window_sum -= count_at(index - window);
                 }
                 new_half.push(window_sum);
             }
@@ -330,13 +165,4 @@ impl MovingAverage {
                 .collect(),
         )
     }
-}
-
-/// Computes tile length that optimally uses the L1 cache.
-const fn tile_len<T>() -> usize {
-    let t = size_of::<T>();
-    let usable = cache_topology::L1D_PER_THREAD.saturating_mul(4) / 5;
-    let tile = usable / (2 * t) / CHUNK * CHUNK;
-
-    if tile < 4 * CHUNK { 4 * CHUNK } else { tile }
 }

@@ -1,17 +1,8 @@
-use crate::smoothing::Smooth;
+use crate::smoothing::{CoefficientWindow, MirrorCorrection, Smooth};
 use num_traits::Float;
-use zeenmr_spectrum::dimension::DimIndex;
-use zeenmr_spectrum::intensity_array::{ArrayViewMut1D, index};
-use zeenmr_util::fma;
+use zeenmr_spectrum::intensity_array::ArrayViewMut1D;
 
-mod cache_topology {
-    //! Contains cache size constants in bytes.
-
-    include!(concat!(env!("OUT_DIR"), "/cache.rs"));
-}
-
-/// Chunk size in elements.
-const CHUNK: usize = 16;
+const PRECISION: f64 = 100_f64 * f64::EPSILON;
 
 /// Least squares filter.
 ///
@@ -26,10 +17,8 @@ const CHUNK: usize = 16;
 pub struct LeastSquares {
     /// Number of iterations to apply the filter.
     iterations: usize,
-    /// Size of the window.
-    window: usize,
-    /// Coefficient vector for the window.
-    coefficients: Box<[f64]>,
+    /// Convoluted coefficients.
+    convolution: CoefficientWindow<MirrorCorrection>,
 }
 
 impl<T> Smooth<T> for LeastSquares
@@ -39,18 +28,10 @@ where
     type Error = std::convert::Infallible;
 
     fn smooth_in_place(&self, mut data: ArrayViewMut1D<T>) -> Result<(), Self::Error> {
-        let mut lane = data
-            .lane_at_mut(DimIndex(0), &index([0]))
-            .expect("1D array always has a first dimension");
-        match lane.as_mut_slice() {
-            Some(slice) => self.smooth_slice(slice),
-            None => {
-                let mut values = lane.iter().copied().collect::<Vec<T>>();
-                self.smooth_slice(&mut values);
-                lane.iter_mut()
-                    .zip(values)
-                    .for_each(|(value, new)| *value = new);
-            }
+        for _ in 0..self.iterations {
+            self.convolution
+                .smooth_in_place(data.view_mut())
+                .expect("coefficient convolution is infallible");
         }
 
         Ok(())
@@ -59,10 +40,23 @@ where
 
 impl Default for LeastSquares {
     fn default() -> Self {
-        Self {
-            iterations: 2,
-            window: 5,
-            coefficients: Self::coefficients(5, 2, 0),
+        let iterations = 2;
+        let window = 5;
+        let order = 2;
+        let coefficients = Self::coefficients(window, order, 0);
+
+        if let Some(coefficients) =
+            Self::convolve(&coefficients, iterations, 100_f64 * f64::EPSILON)
+        {
+            Self {
+                iterations: 1,
+                convolution: CoefficientWindow::new(coefficients, MirrorCorrection),
+            }
+        } else {
+            Self {
+                iterations,
+                convolution: CoefficientWindow::new(coefficients, MirrorCorrection),
+            }
         }
     }
 }
@@ -80,93 +74,18 @@ impl LeastSquares {
             return None;
         }
 
-        Some(Self {
-            iterations,
-            window,
-            coefficients: Self::coefficients(window, order, 0),
-        })
-    }
+        let coefficients = Self::coefficients(window, order, 0);
 
-    fn smooth_slice<T>(&self, values: &mut [T])
-    where
-        T: Float,
-    {
-        let len = values.len();
-        if len < 2 || len < self.coefficients.len() || self.iterations == 0 {
-            return;
-        }
-        let kernel_size = self.iterations * (self.window - 1);
-        if len >= kernel_size && self.is_convolution() {
-            self.convolve_single_pass(values);
+        if let Some(coefficients) = Self::convolve(&coefficients, iterations, PRECISION) {
+            Some(Self {
+                iterations: 1,
+                convolution: CoefficientWindow::new(coefficients, MirrorCorrection),
+            })
         } else {
-            let mut scratch = vec![T::zero(); len];
-            self.convolve_iterative(values, &mut scratch);
-        }
-    }
-
-    fn is_convolution(&self) -> bool {
-        self.iterations > 1 && self.coefficients.len() > self.window
-    }
-
-    /// Applies the filter in a single pass using the convoluted coefficients.
-    fn convolve_single_pass<T>(&self, _: &mut [T])
-    where
-        T: Float,
-    {
-        todo!()
-    }
-
-    /// Iteratively applies the filter, accumulating into `values`.
-    ///
-    /// This is around 2-5x slower than using the pre-convoluted coefficients.
-    fn convolve_iterative<T>(&self, values: &mut [T], scratch: &mut [T])
-    where
-        T: Float,
-    {
-        let coefficients = self
-            .coefficients
-            .iter()
-            .map(|&weight| T::from(weight).expect("conversion from f64 to T must never fail"))
-            .collect::<Box<[T]>>();
-        let len = values.len();
-        let back = (self.window - 1) / 2;
-        let forward = self.window / 2;
-        let last_mid = len - self.window + 1;
-        for _ in 0..self.iterations {
-            let mid = &mut scratch[back..(back + last_mid)];
-            let mut chunks = mid.chunks_exact_mut(CHUNK);
-            let mut chunk_offset = 0;
-            for out_chunk in &mut chunks {
-                let mut sum = [T::zero(); CHUNK];
-                for (shift, &weight) in coefficients.iter().enumerate() {
-                    sum.iter_mut()
-                        .zip(values[(chunk_offset + shift)..(chunk_offset + shift + CHUNK)].iter())
-                        .for_each(|(acc, &new)| *acc = fma(weight, new, *acc));
-                }
-                out_chunk.copy_from_slice(&sum);
-                chunk_offset += CHUNK;
-            }
-            let rem = chunks.into_remainder();
-            if !rem.is_empty() {
-                let rem_len = rem.len();
-                for (shift, &weight) in coefficients.iter().enumerate() {
-                    rem.iter_mut()
-                        .zip(
-                            values[(chunk_offset + shift)..(chunk_offset + shift + rem_len)].iter(),
-                        )
-                        .for_each(|(value, &new)| *value = fma(weight, new, *value));
-                }
-            }
-            for center in (0..back).chain((back + last_mid)..len) {
-                let left = center.saturating_sub(back);
-                let right = (center + forward + 1).min(len);
-                let sum = values[left..right]
-                    .iter()
-                    .fold(T::zero(), |acc, &new| acc + new);
-                scratch[center] =
-                    sum / T::from(right - left).expect("conversion from usize to T must not fail");
-            }
-            values.swap_with_slice(scratch);
+            Some(Self {
+                iterations,
+                convolution: CoefficientWindow::new(coefficients, MirrorCorrection),
+            })
         }
     }
 
@@ -244,6 +163,42 @@ impl LeastSquares {
                         .fold(0_f64, |acc, x| acc + x)
             })
             .collect()
+    }
+
+    /// Computes the convolution of `coefficients` with itself `num - 1` times.
+    ///
+    /// Returns `None` if the estimated rounding error exceeds `precision`.
+    fn convolve(coefficients: &[f64], num: usize, precision: f64) -> Option<Box<[f64]>> {
+        if coefficients.is_empty() || num == 0 {
+            return None;
+        }
+
+        let l1 = coefficients.iter().map(|c| c.abs()).sum::<f64>();
+        let bound = f64::EPSILON * l1.powi(num as i32) * coefficients.len() as f64;
+        if !bound.is_finite() || bound > precision {
+            return None;
+        }
+
+        let init_len = coefficients.len();
+        let full_len = num * (init_len - 1) + 1;
+        let mut curr_len = init_len;
+        let mut scratch = vec![0_f64; 2 * full_len];
+        let (curr, next) = scratch.split_at_mut(full_len);
+        curr[..init_len].copy_from_slice(coefficients);
+        for _ in 1..num.saturating_sub(1) {
+            for (i, &a) in curr[..curr_len].iter().enumerate() {
+                for (j, &b) in coefficients.iter().enumerate() {
+                    next[i + j] = a.mul_add(b, next[i + j]);
+                }
+            }
+
+            curr_len += init_len - 1;
+            curr[..curr_len].copy_from_slice(&next[..curr_len]);
+            next[..curr_len].fill(0_f64);
+        }
+        scratch.truncate(full_len);
+
+        Some(scratch.into_boxed_slice())
     }
 }
 

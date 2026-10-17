@@ -1,5 +1,8 @@
 //! Smoothing algorithms for the deconvolution process.
 
+mod coefficient_window;
+pub use coefficient_window::{CoefficientWindow, CorrectEdges, MirrorCorrection};
+
 mod moving_average;
 pub use moving_average::MovingAverage;
 
