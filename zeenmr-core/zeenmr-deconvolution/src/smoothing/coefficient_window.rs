@@ -163,11 +163,13 @@ where
         let tile_len = tile_len::<T>();
         let mid_len = len - head - tail;
         let mut tile = vec![T::zero(); tile_len + kernel_size];
-        let first = tile_len.min(mid_len) + kernel_size;
-        tile[..first].copy_from_slice(&values[..first]);
+        tile[..kernel_size].copy_from_slice(&values[..kernel_size]);
         let mut done = 0;
         while done < mid_len {
             let curr_len = tile_len.min(mid_len - done);
+            tile[kernel_size..(kernel_size + curr_len)].copy_from_slice(
+                &values[(done + kernel_size)..(done + kernel_size + curr_len)]
+            );
             let mut chunks =
                 values[(head + done)..(head + done + curr_len)].chunks_exact_mut(CHUNK);
             let mut chunk_offset = 0;
@@ -187,14 +189,8 @@ where
                     .zip(tile[(chunk_offset + shift)..].iter())
                     .fold(T::zero(), |acc, (&weight, &new)| fma(weight, new, acc));
             }
+            tile.copy_within(curr_len..(curr_len + kernel_size), 0);
             done += curr_len;
-            if done < mid_len {
-                let next_tile_len = curr_len.min(mid_len - done);
-                tile.copy_within(curr_len..(curr_len + kernel_size), 0);
-                tile[kernel_size..(kernel_size + next_tile_len)].copy_from_slice(
-                    &values[(done + kernel_size)..(done + kernel_size + next_tile_len)],
-                );
-            }
         }
 
         let (head_values, tail_values) = edges.split_at(edge_split);
