@@ -29,3 +29,8 @@ harness = false
 name = "smoothing"
 path = "smoothing.rs"
 harness = false
+
+[[bench]]
+name = "peak_finding"
+path = "peak_finding.rs"
+harness = false
