@@ -272,6 +272,11 @@ impl<S, D> Array<S, D>
 where
     D: Dimension<Elem = usize>,
 {
+    /// Returns the storage and layout of the array.
+    pub fn into_parts(self) -> (S, Layout<D>) {
+        (self.storage, self.layout)
+    }
+
     /// Returns the rank of `self`.
     pub fn rank(&self) -> usize {
         self.layout.rank()
