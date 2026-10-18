@@ -101,20 +101,8 @@ where
 {
     type Error = std::convert::Infallible;
 
-    fn smooth_in_place(&self, mut data: ArrayViewMut1D<T>) -> Result<(), Self::Error> {
-        let mut lane = data
-            .lane_at_mut(DimIndex(0), &index([0]))
-            .expect("1D array always has a first dimension");
-        match lane.as_mut_slice() {
-            Some(slice) => self.smooth_slice(slice),
-            None => {
-                let mut values = lane.iter().copied().collect::<Vec<T>>();
-                self.smooth_slice(&mut values);
-                lane.iter_mut()
-                    .zip(values)
-                    .for_each(|(value, new)| *value = new);
-            }
-        }
+    fn smooth_in_place(&self, data: ArrayViewMut1D<T>) -> Result<(), Self::Error> {
+        self.apply(data);
 
         Ok(())
     }
@@ -134,8 +122,28 @@ impl<C> CoefficientWindow<C>
 where
     C: CorrectEdges,
 {
+    /// Applies the coefficient window filter to an array-view in-place.
+    pub fn apply<T>(&self, mut values: ArrayViewMut1D<T>)
+    where
+        T: Float,
+    {
+        let mut lane = values
+            .lane_at_mut(DimIndex(0), &index([0]))
+            .expect("1D array always has a first dimension");
+        match lane.as_mut_slice() {
+            Some(slice) => self.apply_slice(slice),
+            None => {
+                let mut values = lane.iter().copied().collect::<Vec<T>>();
+                self.apply_slice(&mut values);
+                lane.iter_mut()
+                    .zip(values)
+                    .for_each(|(value, new)| *value = new);
+            }
+        }
+    }
+
     /// Applies the coefficient window filter to a slice in-place.
-    fn smooth_slice<T>(&self, values: &mut [T])
+    pub fn apply_slice<T>(&self, values: &mut [T])
     where
         T: Float,
     {
@@ -167,9 +175,8 @@ where
         let mut done = 0;
         while done < mid_len {
             let curr_len = tile_len.min(mid_len - done);
-            tile[kernel_size..(kernel_size + curr_len)].copy_from_slice(
-                &values[(done + kernel_size)..(done + kernel_size + curr_len)]
-            );
+            tile[kernel_size..(kernel_size + curr_len)]
+                .copy_from_slice(&values[(done + kernel_size)..(done + kernel_size + curr_len)]);
             let mut chunks =
                 values[(head + done)..(head + done + curr_len)].chunks_exact_mut(CHUNK);
             let mut chunk_offset = 0;
