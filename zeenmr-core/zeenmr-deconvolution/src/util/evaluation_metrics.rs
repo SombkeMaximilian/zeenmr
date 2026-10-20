@@ -14,7 +14,7 @@ use rayon::prelude::*;
 use zeenmr_peakshape::batch_superposition::ParSuperpositionKernel;
 
 /// Bundled fitting context.
-pub struct FitContext<'s, 'p, T, P, K> {
+pub struct FitContext<'s, 'p, 'i, T, P, K> {
     /// Base spectrum.
     pub spectrum: SpectrumView1D<'s, T, T>,
     /// Fitted peak shapes.
@@ -33,7 +33,7 @@ pub struct FitContext<'s, 'p, T, P, K> {
     /// Superposition kernel.
     pub kernel: K,
     /// Regions that were ignored during deconvolution.
-    pub ignore: Vec<Range<usize>>,
+    pub ignore: &'i [Range<usize>],
 }
 
 /// Useful intermediate results of metrics.
