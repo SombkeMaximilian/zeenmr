@@ -275,8 +275,7 @@ where
             .map(|stencil| P::estimate_parameters(stencil.positions, stencil.intensities))
             .collect::<Vec<_>>();
         let superposition = vec![[T::zero(); 3]; peak_shapes.len()];
-
-        Self {
+        let mut model = Self {
             reduced,
             stencils,
             peak_shapes,
@@ -285,7 +284,10 @@ where
             grid_step,
             shift_scale,
             shift_offset,
-        }
+        };
+        model.prune();
+
+        model
     }
 
     /// Undoes the scaled grid transformation and extracts the peak shapes
@@ -531,7 +533,6 @@ where
     fn fit(&self, spectrum: SpectrumView1D<T, T>, peaks: &[Peak]) -> Result<Vec<P>, Self::Error> {
         let noise = self.noise_finder.noise_level(spectrum.view());
         let mut model = ThreePointModel::new(spectrum, noise, peaks);
-        model.prune();
         for _ in 0..self.iterations {
             model.refine();
         }
@@ -556,7 +557,6 @@ where
     ) -> Result<Vec<P>, Self::Error> {
         let noise = self.noise_finder.noise_level(spectrum.view());
         let mut model = ThreePointModel::new(spectrum, noise, peaks);
-        model.prune();
         for _ in 0..self.iterations {
             model.par_refine();
         }
