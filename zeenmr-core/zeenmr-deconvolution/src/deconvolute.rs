@@ -179,7 +179,7 @@ where
             .map_err(Error::finding)?;
         let peak_shapes = self
             .fitter
-            .fit(spectrum.view(), &peaks)
+            .fit(spectrum.view(), smoothed.view(), &peaks, &ignore)
             .map_err(Error::fitting)?;
 
         Ok(Deconvolution::new(peak_shapes))
@@ -228,7 +228,7 @@ where
             .map_err(Error::finding)?;
         let peak_shapes = self
             .fitter
-            .par_fit(spectrum.view(), &peaks)
+            .par_fit(spectrum.view(), smoothed.view(), &peaks, &ignore)
             .map_err(Error::fitting)?;
 
         Ok(Deconvolution::new(peak_shapes))

@@ -1,22 +1,26 @@
-use crate::fitting::Fit;
+use crate::fitting::{Fit, FitModel, IterativeFit};
 use crate::peak_finding::Peak;
 use crate::util::noise::{GaussianNoise, Noise, NoiseLevel};
 use num_traits::Float;
 use std::marker::PhantomData;
+use std::ops::Range;
 use zeenmr_peakshape::batch_superposition::{Standard, SuperpositionKernel};
 use zeenmr_peakshape::{DefaultSupport, Gaussian, Lorentzian, PeakShape};
 use zeenmr_spectrum::SpectrumView1D;
 use zeenmr_spectrum::axis::range::{FiniteBounds, RelativeRange};
 use zeenmr_spectrum::dimension::DimIndex;
-use zeenmr_spectrum::intensity_array::index;
+use zeenmr_spectrum::intensity_array::{ArrayView1D, index};
 
 #[cfg(feature = "rayon")]
-use crate::fitting::ParFit;
+use crate::fitting::{ParFit, ParFitModel, ParIterativeFit};
+#[cfg(feature = "rayon")]
+use crate::util::evaluation_metrics::ParMetric;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 #[cfg(feature = "rayon")]
 use zeenmr_peakshape::batch_superposition::ParSuperpositionKernel;
 
+use crate::util::evaluation_metrics::{FitContext, IntermediateCache, Metric};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -211,8 +215,10 @@ where
 }
 
 /// Three point fitting model.
-#[derive(Clone, PartialEq, Debug)]
-pub struct ThreePointModel<T, P, S> {
+#[derive(Clone, Debug)]
+pub struct ThreePointModel<'s, T, P, S> {
+    /// View of the spectrum to fit.
+    spectrum: SpectrumView1D<'s, T, T>,
     /// Reduced spectrum containing raw data points used for fitting.
     reduced: ReducedSpectrum<T>,
     /// Stencils used for fitting.
@@ -229,9 +235,99 @@ pub struct ThreePointModel<T, P, S> {
     shift_scale: T,
     /// Shift from grid coordinates to chemical shifts.
     shift_offset: T,
+    /// Ranges in the spectrum to ignore during fitting.
+    ignore: Vec<Range<usize>>,
 }
 
-impl<T, P, S> ThreePointModel<T, P, S> {
+impl<T, P> FitModel<T, P> for ThreePointModel<'_, T, P, P::Support>
+where
+    T: Float,
+    P: PeakShape<T> + ThreePointStencil<T>,
+{
+    type Error = std::convert::Infallible;
+
+    fn step(&mut self) -> Result<(), Self::Error> {
+        if self.is_empty() {
+            return Ok(());
+        }
+        self.update_superposition();
+        self.update_peak_shapes();
+        self.prune();
+
+        Ok(())
+    }
+
+    fn extract(mut self) -> Vec<P> {
+        let mut peak_shapes = std::mem::take(&mut self.peak_shapes);
+        let inverse = self.inverse_transform();
+        peak_shapes.iter_mut().for_each(inverse);
+
+        peak_shapes
+    }
+
+    fn peak_shapes(&self) -> &[P] {
+        &self.peak_shapes
+    }
+
+    fn inverse_transform(&self) -> impl Fn(&mut P) {
+        let offset = self.shift_offset;
+        let scale = self.shift_scale;
+
+        move |p: &mut P| p.affine_transform(offset, scale)
+    }
+
+    fn apply_metric<M>(&self, metric: M, cache: &IntermediateCache<T>) -> T
+    where
+        M: Metric,
+    {
+        let context = FitContext {
+            spectrum: self.spectrum.view(),
+            peak_shapes: &self.peak_shapes,
+            grid_offset: T::zero(),
+            grid_step: self.grid_step,
+            kernel: SUPERPOSITION,
+            ignore: &self.ignore,
+        };
+
+        metric.evaluate_fit(&context, cache)
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl<T, P> ParFitModel<T, P> for ThreePointModel<'_, T, P, P::Support>
+where
+    T: Float + Send + Sync,
+    P: PeakShape<T> + ThreePointStencil<T> + Send + Sync,
+{
+    fn par_step(&mut self) -> Result<(), Self::Error> {
+        if self.is_empty() {
+            return Ok(());
+        }
+        self.par_update_superposition();
+        self.par_update_peak_shapes();
+        self.prune();
+
+        Ok(())
+    }
+
+    fn par_apply_metric<M>(&self, metric: M, cache: &IntermediateCache<T>) -> T
+    where
+        M: ParMetric,
+    {
+        let context = FitContext {
+            spectrum: self.spectrum.view(),
+            peak_shapes: &self.peak_shapes,
+            grid_offset: T::zero(),
+            grid_step: self.grid_step,
+            kernel: SUPERPOSITION,
+            ignore: &self.ignore,
+        };
+
+        metric.par_evaluate_fit(&context, cache)
+    }
+}
+
+impl<T, P, S> ThreePointModel<'_, T, P, S> {
     /// Returns the number of components of the model.
     pub fn len(&self) -> usize {
         self.peak_shapes.len()
@@ -243,13 +339,18 @@ impl<T, P, S> ThreePointModel<T, P, S> {
     }
 }
 
-impl<T, P> ThreePointModel<T, P, P::Support>
+impl<'s, T, P> ThreePointModel<'s, T, P, P::Support>
 where
     T: Float,
     P: PeakShape<T> + ThreePointStencil<T>,
 {
     /// Creates a new three-point model.
-    pub fn new(spectrum: SpectrumView1D<T, T>, noise: Noise<T>, peaks: &[Peak]) -> Self {
+    pub fn new(
+        spectrum: SpectrumView1D<'s, T, T>,
+        noise: Noise<T>,
+        peaks: &[Peak],
+        ignore: &[Range<usize>],
+    ) -> Self {
         let len = spectrum.len();
         let shift_range = spectrum
             .axis(DimIndex(0))
@@ -276,6 +377,7 @@ where
             .collect::<Vec<_>>();
         let superposition = vec![[T::zero(); 3]; peak_shapes.len()];
         let mut model = Self {
+            spectrum,
             reduced,
             stencils,
             peak_shapes,
@@ -284,28 +386,11 @@ where
             grid_step,
             shift_scale,
             shift_offset,
+            ignore: ignore.to_vec(),
         };
         model.prune();
 
         model
-    }
-
-    /// Undoes the scaled grid transformation and extracts the peak shapes
-    pub fn extract(mut self) -> Vec<P> {
-        let mut peak_shapes = std::mem::take(&mut self.peak_shapes);
-        self.undo_grid(&mut peak_shapes);
-
-        peak_shapes
-    }
-
-    /// Performs one iteration of the fitting algorithm.
-    pub fn refine(&mut self) {
-        if self.is_empty() {
-            return;
-        }
-        self.update_superposition();
-        self.update_peak_shapes();
-        self.prune();
     }
 
     /// Returns the position triplets used to fit the peak shapes.
@@ -316,32 +401,6 @@ where
     /// Returns the intensity triplets used to fit the peak shapes.
     pub fn intensities(&self) -> &[[T; 3]] {
         &self.reduced.intensities
-    }
-
-    /// Returns the fitted superpositions at the position triplets.
-    pub fn superposition(&self) -> &[[T; 3]] {
-        &self.superposition
-    }
-
-    /// Returns the fitted peak shapes.
-    ///
-    /// Note that positions and lengths are in units of the fitting grid step
-    /// size. Use [`ThreePointModel::restored_peak_shapes`] for units of
-    /// chemical shift.
-    pub fn peak_shapes(&self) -> &[P] {
-        &self.peak_shapes
-    }
-
-    /// Returns the fitted peak shapes with positions and lengths in units of
-    /// chemical shift.
-    pub fn restored_peak_shapes(&self) -> Vec<P>
-    where
-        P: Clone,
-    {
-        let mut peak_shapes = self.peak_shapes.clone();
-        self.undo_grid(&mut peak_shapes);
-
-        peak_shapes
     }
 
     /// Returns the step size of the grid.
@@ -424,31 +483,14 @@ where
             *peak_shape = P::estimate_parameters(stencil.positions, stencil.intensities);
         }
     }
-
-    /// Undoes the grid transformation.
-    fn undo_grid(&self, peak_shapes: &mut [P]) {
-        let map = |p: &mut P| p.affine_transform(self.shift_offset, self.shift_scale);
-        peak_shapes.iter_mut().for_each(map);
-    }
 }
 
 #[cfg(feature = "rayon")]
-impl<T, P> ThreePointModel<T, P, P::Support>
+impl<T, P> ThreePointModel<'_, T, P, P::Support>
 where
     T: Float + Send + Sync,
     P: PeakShape<T> + ThreePointStencil<T> + Send + Sync,
 {
-    /// Performs one iteration of the fitting algorithm using a parallelized
-    /// implementation.
-    pub fn par_refine(&mut self) {
-        if self.is_empty() {
-            return;
-        }
-        self.par_update_superposition();
-        self.par_update_peak_shapes();
-        self.prune();
-    }
-
     /// Recomputes the superposition with the current peak shapes in parallel.
     ///
     /// # Panics
@@ -530,14 +572,42 @@ where
 {
     type Error = std::convert::Infallible;
 
-    fn fit(&self, spectrum: SpectrumView1D<T, T>, peaks: &[Peak]) -> Result<Vec<P>, Self::Error> {
+    fn fit(
+        &self,
+        spectrum: SpectrumView1D<T, T>,
+        _: ArrayView1D<T>,
+        peaks: &[Peak],
+        ignore: &[Range<usize>],
+    ) -> Result<Vec<P>, Self::Error> {
         let noise = self.noise_finder.noise_level(spectrum.view());
-        let mut model = ThreePointModel::new(spectrum, noise, peaks);
-        for _ in 0..self.iterations {
-            model.refine();
-        }
+        let mut model = ThreePointModel::new(spectrum, noise, peaks, ignore);
+        model.step_n(self.iterations)?;
 
         Ok(model.extract())
+    }
+}
+
+impl<T, P, N> IterativeFit<T, P> for ThreePoint<P, N>
+where
+    T: Float,
+    P: PeakShape<T> + ThreePointStencil<T>,
+    N: NoiseLevel<T>,
+{
+    type Model<'s>
+        = ThreePointModel<'s, T, P, P::Support>
+    where
+        T: 's;
+
+    fn model<'s>(
+        &self,
+        spectrum: SpectrumView1D<'s, T, T>,
+        _: ArrayView1D<T>,
+        peaks: &[Peak],
+        ignore: &[Range<usize>],
+    ) -> Result<Self::Model<'s>, Self::Error> {
+        let noise = self.noise_finder.noise_level(spectrum.view());
+
+        Ok(ThreePointModel::new(spectrum, noise, peaks, ignore))
     }
 }
 
@@ -553,15 +623,40 @@ where
     fn par_fit(
         &self,
         spectrum: SpectrumView1D<T, T>,
+        _: ArrayView1D<T>,
         peaks: &[Peak],
+        ignore: &[Range<usize>],
     ) -> Result<Vec<P>, Self::Error> {
         let noise = self.noise_finder.noise_level(spectrum.view());
-        let mut model = ThreePointModel::new(spectrum, noise, peaks);
-        for _ in 0..self.iterations {
-            model.par_refine();
-        }
+        let mut model = ThreePointModel::new(spectrum, noise, peaks, ignore);
+        model.par_step_n(self.iterations)?;
 
         Ok(model.extract())
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl<T, P, N> ParIterativeFit<T, P> for ThreePoint<P, N>
+where
+    T: Float + Send + Sync,
+    P: PeakShape<T> + ThreePointStencil<T> + Send + Sync,
+    N: NoiseLevel<T>,
+{
+    type ParModel<'s>
+        = ThreePointModel<'s, T, P, P::Support>
+    where
+        T: 's;
+
+    fn par_model<'s>(
+        &self,
+        spectrum: SpectrumView1D<'s, T, T>,
+        _: ArrayView1D<T>,
+        peaks: &[Peak],
+        ignore: &[Range<usize>],
+    ) -> Result<Self::ParModel<'s>, Self::Error> {
+        let noise = self.noise_finder.noise_level(spectrum.view());
+
+        Ok(ThreePointModel::new(spectrum, noise, peaks, ignore))
     }
 }
 
