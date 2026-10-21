@@ -21,11 +21,6 @@ path = "superposition.rs"
 harness = false
 
 [[bench]]
-name = "deconvolute"
-path = "deconvolute.rs"
-harness = false
-
-[[bench]]
 name = "smoothing"
 path = "smoothing.rs"
 harness = false
@@ -33,4 +28,14 @@ harness = false
 [[bench]]
 name = "peak_finding"
 path = "peak_finding.rs"
+harness = false
+
+[[bench]]
+name = "fitting"
+path = "fitting.rs"
+harness = false
+
+[[bench]]
+name = "deconvolute"
+path = "deconvolute.rs"
 harness = false

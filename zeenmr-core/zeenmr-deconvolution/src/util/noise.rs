@@ -23,6 +23,15 @@ pub trait NoiseLevel<T> {
     fn noise_level(&self, spectrum: SpectrumView1D<T, T>) -> Noise<T>;
 }
 
+impl<T> NoiseLevel<T> for Noise<T>
+where
+    T: Clone,
+{
+    fn noise_level(&self, _: SpectrumView1D<T, T>) -> Noise<T> {
+        self.clone()
+    }
+}
+
 /// Estimates Gaussian distribution parameters from the non-signal part of the
 /// spectrum.
 ///
