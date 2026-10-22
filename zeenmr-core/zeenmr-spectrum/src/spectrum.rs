@@ -16,51 +16,157 @@ use serde::ser::SerializeStruct;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+/// 1D Spectrum.
+pub type Spectrum1D<T, S> = Spectrum<StaticDim<FrequencyAxis<T>, 1>, S, StaticDim<usize, 1>>;
+
+/// 2D Spectrum.
+pub type Spectrum2D<T, S> = Spectrum<StaticDim<FrequencyAxis<T>, 2>, S, StaticDim<usize, 2>>;
+
+/// 3D Spectrum.
+pub type Spectrum3D<T, S> = Spectrum<StaticDim<FrequencyAxis<T>, 3>, S, StaticDim<usize, 3>>;
+
+/// Spectrum of a rank determined at runtime.
+pub type SpectrumDyn<T, S> = Spectrum<DynDim<FrequencyAxis<T>>, S, DynDim<usize>>;
+
 /// Spectrum borrowing its intensities.
 pub type SpectrumView<'s, A, T, D> = Spectrum<A, Access<'s, T>, D>;
+
+/// 1D Spectrum borrowing its intensities.
+pub type SpectrumView1D<'s, F, T> =
+    Spectrum<StaticDim<FrequencyAxis<F>, 1>, Access<'s, T>, StaticDim<usize, 1>>;
+
+/// 2D Spectrum borrowing its intensities.
+pub type SpectrumView2D<'s, F, T> =
+    Spectrum<StaticDim<FrequencyAxis<F>, 2>, Access<'s, T>, StaticDim<usize, 2>>;
+
+/// 3D Spectrum borrowing its intensities.
+pub type SpectrumView3D<'s, F, T> =
+    Spectrum<StaticDim<FrequencyAxis<F>, 3>, Access<'s, T>, StaticDim<usize, 3>>;
+
+/// Spectrum of a rank determined at runtime borrowing its intensities.
+pub type SpectrumViewDyn<'s, F, T> =
+    Spectrum<DynDim<FrequencyAxis<F>>, Access<'s, T>, DynDim<usize>>;
 
 /// Spectrum borrowing its intensities as a slice.
 pub type SpectrumSliceView<'s, A, T, D> = Spectrum<A, &'s [T], D>;
 
+/// 1D Spectrum borrowing its intensities as a slice.
+pub type SpectrumSliceView1D<'s, F, T> =
+    Spectrum<StaticDim<FrequencyAxis<F>, 1>, &'s [T], StaticDim<usize, 1>>;
+
+/// 2D Spectrum borrowing its intensities as a slice.
+pub type SpectrumSliceView2D<'s, F, T> =
+    Spectrum<StaticDim<FrequencyAxis<F>, 2>, &'s [T], StaticDim<usize, 2>>;
+
+/// 3D Spectrum borrowing its intensities as a slice.
+pub type SpectrumSliceView3D<'s, F, T> =
+    Spectrum<StaticDim<FrequencyAxis<F>, 3>, &'s [T], StaticDim<usize, 3>>;
+
+/// Spectrum of a rank determined at runtime borrowing its intensities as a
+/// slice.
+pub type SpectrumSliceViewDyn<'s, F, T> =
+    Spectrum<DynDim<FrequencyAxis<F>>, &'s [T], DynDim<usize>>;
+
 /// Spectrum owning the storage of its intensities.
 pub type SpectrumOwned<A, T, D> = Spectrum<A, Box<[T]>, D>;
 
+/// 1D Spectrum owning the storage of its intensities.
+pub type SpectrumOwned1D<F, T> =
+    Spectrum<StaticDim<FrequencyAxis<F>, 1>, Box<[T]>, StaticDim<usize, 1>>;
+
+/// 2D Spectrum owning the storage of its intensities.
+pub type SpectrumOwned2D<F, T> =
+    Spectrum<StaticDim<FrequencyAxis<F>, 2>, Box<[T]>, StaticDim<usize, 2>>;
+
+/// 3D Spectrum owning the storage of its intensities.
+pub type SpectrumOwned3D<F, T> =
+    Spectrum<StaticDim<FrequencyAxis<F>, 3>, Box<[T]>, StaticDim<usize, 3>>;
+
+/// Spectrum of a rank determined at runtime owning the storage of its
+/// intensities.
+pub type SpectrumOwnedDyn<F, T> = Spectrum<DynDim<FrequencyAxis<F>>, Box<[T]>, DynDim<usize>>;
+
 /// Spectrum using clone-on-write storage for its intensities.
 pub type SpectrumCow<'s, A, T, D> = Spectrum<A, CowAccess<'s, T>, D>;
+
+/// 1D Spectrum using clone-on-write storage for its intensities.
+pub type SpectrumCow1D<'s, F, T> =
+    Spectrum<StaticDim<FrequencyAxis<F>, 1>, CowAccess<'s, T>, StaticDim<usize, 1>>;
+
+/// 2D Spectrum using clone-on-write storage for its intensities.
+pub type SpectrumCow2D<'s, F, T> =
+    Spectrum<StaticDim<FrequencyAxis<F>, 2>, CowAccess<'s, T>, StaticDim<usize, 2>>;
+
+/// 3D Spectrum using clone-on-write storage for its intensities.
+pub type SpectrumCow3D<'s, F, T> =
+    Spectrum<StaticDim<FrequencyAxis<F>, 3>, CowAccess<'s, T>, StaticDim<usize, 3>>;
+
+/// Spectrum of a rank determined at runtime using clone-on-write storage for
+/// its intensities.
+pub type SpectrumCowDyn<'s, F, T> =
+    Spectrum<DynDim<FrequencyAxis<F>>, CowAccess<'s, T>, DynDim<usize>>;
 
 /// Spectrum using the standard library's clone-on-write pointer as storage for
 /// its intensities.
 pub type SpectrumCowSlice<'s, A, T, D> = Spectrum<A, Cow<'s, [T]>, D>;
 
+/// 1D Spectrum using the standard library's clone-on-write pointer as storage
+/// for its intensities.
+pub type SpectrumCowSlice1D<'s, F, T> =
+    Spectrum<StaticDim<FrequencyAxis<F>, 1>, Cow<'s, [T]>, StaticDim<usize, 1>>;
+
+/// 2D Spectrum using the standard library's clone-on-write pointer as storage
+/// for its intensities.
+pub type SpectrumCowSlice2D<'s, F, T> =
+    Spectrum<StaticDim<FrequencyAxis<F>, 2>, Cow<'s, [T]>, StaticDim<usize, 2>>;
+
+/// 3D Spectrum using the standard library's clone-on-write pointer as storage
+/// for its intensities.
+pub type SpectrumCowSlice3D<'s, F, T> =
+    Spectrum<StaticDim<FrequencyAxis<F>, 3>, Cow<'s, [T]>, StaticDim<usize, 3>>;
+
+/// Spectrum of a rank determined at runtime using the standard library's
+/// clone-on-write pointer as storage for its intensities.
+pub type SpectrumCowSliceDyn<'s, F, T> =
+    Spectrum<DynDim<FrequencyAxis<F>>, Cow<'s, [T]>, DynDim<usize>>;
+
 /// Spectrum using reference counted storage for its intensities.
 pub type SpectrumRc<A, T, D> = Spectrum<A, Rc<[T]>, D>;
+
+/// 1D Spectrum using reference counted storage for its intensities.
+pub type SpectrumRc1D<'s, F, T> =
+    Spectrum<StaticDim<FrequencyAxis<F>, 1>, Rc<[T]>, StaticDim<usize, 1>>;
+
+/// 2D Spectrum using reference counted storage for its intensities.
+pub type SpectrumRc2D<'s, F, T> =
+    Spectrum<StaticDim<FrequencyAxis<F>, 2>, Rc<[T]>, StaticDim<usize, 2>>;
+
+/// 3D Spectrum using reference counted storage for its intensities.
+pub type SpectrumRc3D<'s, F, T> =
+    Spectrum<StaticDim<FrequencyAxis<F>, 3>, Rc<[T]>, StaticDim<usize, 3>>;
+
+/// Spectrum of a rank determined at runtime using reference counted storage for
+/// its intensities.
+pub type SpectrumRcDyn<'s, F, T> = Spectrum<DynDim<FrequencyAxis<F>>, Rc<[T]>, DynDim<usize>>;
 
 /// Spectrum using reference atomic counted storage for its intensities.
 pub type SpectrumArc<A, T, D> = Spectrum<A, Arc<[T]>, D>;
 
-/// 1D Spectrum.
-pub type Spectrum1D<F, S> = Spectrum<StaticDim<FrequencyAxis<F>, 1>, S, StaticDim<usize, 1>>;
+/// 1D Spectrum using reference atomic counted storage for its intensities.
+pub type SpectrumArc1D<'s, F, T> =
+    Spectrum<StaticDim<FrequencyAxis<F>, 1>, Arc<[T]>, StaticDim<usize, 1>>;
 
-/// 1D Spectrum that borrows its intensities.
-pub type SpectrumView1D<'s, F, T> =
-    Spectrum<StaticDim<FrequencyAxis<F>, 1>, Access<'s, T>, StaticDim<usize, 1>>;
+/// 2D Spectrum using reference atomic counted storage for its intensities.
+pub type SpectrumArc2D<'s, F, T> =
+    Spectrum<StaticDim<FrequencyAxis<F>, 2>, Arc<[T]>, StaticDim<usize, 2>>;
 
-/// 2D Spectrum.
-pub type Spectrum2D<F, S> = Spectrum<StaticDim<FrequencyAxis<F>, 2>, S, StaticDim<usize, 2>>;
+/// 3D Spectrum using reference atomic counted storage for its intensities.
+pub type SpectrumArc3D<'s, F, T> =
+    Spectrum<StaticDim<FrequencyAxis<F>, 3>, Arc<[T]>, StaticDim<usize, 3>>;
 
-/// 2D Spectrum that borrows its intensities.
-pub type SpectrumView2D<'s, F, T> =
-    Spectrum<StaticDim<FrequencyAxis<F>, 2>, Access<'s, T>, StaticDim<usize, 2>>;
-
-/// 3D Spectrum.
-pub type Spectrum3D<F, S> = Spectrum<StaticDim<FrequencyAxis<F>, 3>, S, StaticDim<usize, 3>>;
-
-/// 3D Spectrum that borrows its intensities.
-pub type SpectrumView3D<'s, F, T> =
-    Spectrum<StaticDim<FrequencyAxis<F>, 3>, Access<'s, T>, StaticDim<usize, 3>>;
-
-/// Spectrum of a rank determined at runtime.
-pub type SpectrumDyn<F, S> = Spectrum<DynDim<FrequencyAxis<F>>, S, DynDim<usize>>;
+/// Spectrum of a rank determined at runtime using reference atomic counted
+/// storage for its intensities.
+pub type SpectrumArcDyn<'s, F, T> = Spectrum<DynDim<FrequencyAxis<F>>, Arc<[T]>, DynDim<usize>>;
 
 /// Spectrum type with arbitrary dimensions.
 #[derive(Clone, Debug)]

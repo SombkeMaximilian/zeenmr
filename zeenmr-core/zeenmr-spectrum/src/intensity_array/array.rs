@@ -27,20 +27,94 @@ use serde::ser::SerializeStruct;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+/// Array of rank 1.
+pub type Array1D<S> = Array<S, StaticDim<usize, 1>>;
+
+/// Array of rank 2.
+pub type Array2D<S> = Array<S, StaticDim<usize, 2>>;
+
+/// Array of rank 3.
+pub type Array3D<S> = Array<S, StaticDim<usize, 3>>;
+
+/// Array of a rank determined at runtime.
+pub type ArrayDyn<S> = Array<S, DynDim<usize>>;
+
 /// Array borrowing its storage immutably.
 pub type ArrayView<'s, T, D> = Array<Access<'s, T>, D>;
+
+/// Array of rank 1 borrowing its storage immutably.
+pub type ArrayView1D<'s, T> = Array<Access<'s, T>, StaticDim<usize, 1>>;
+
+/// Array of rank 2 borrowing its storage immutably.
+pub type ArrayView2D<'s, T> = Array<Access<'s, T>, StaticDim<usize, 2>>;
+
+/// Array of rank 3 borrowing its storage immutably.
+pub type ArrayView3D<'s, T> = Array<Access<'s, T>, StaticDim<usize, 3>>;
+
+/// Array of a rank determined at runtime borrowing its storage immutably.
+pub type ArrayViewDyn<'s, T> = Array<Access<'s, T>, DynDim<usize>>;
 
 /// Array borrowing its storage mutably.
 pub type ArrayViewMut<'s, T, D> = Array<AccessMut<'s, T>, D>;
 
+/// Array of rank 1 borrowing its storage mutably.
+pub type ArrayViewMut1D<'s, T> = Array<AccessMut<'s, T>, StaticDim<usize, 1>>;
+
+/// Array of rank 2 borrowing its storage mutably.
+pub type ArrayViewMut2D<'s, T> = Array<AccessMut<'s, T>, StaticDim<usize, 2>>;
+
+/// Array of rank 3 borrowing its storage mutably.
+pub type ArrayViewMut3D<'s, T> = Array<AccessMut<'s, T>, StaticDim<usize, 3>>;
+
+/// Array of a rank determined at runtime borrowing its storage mutably.
+pub type ArrayViewMutDyn<'s, T> = Array<AccessMut<'s, T>, DynDim<usize>>;
+
 /// Array borrowing its storage as an immutable slice.
 pub type ArraySliceView<'s, T, D> = Array<&'s [T], D>;
+
+/// Array of rank 1 borrowing its storage as an immutable slice.
+pub type ArraySliceView1D<'s, T> = Array<&'s [T], StaticDim<usize, 1>>;
+
+/// Array of rank 2 borrowing its storage as an immutable slice.
+pub type ArraySliceView2D<'s, T> = Array<&'s [T], StaticDim<usize, 2>>;
+
+/// Array of rank 3 borrowing its storage as an immutable slice.
+pub type ArraySliceView3D<'s, T> = Array<&'s [T], StaticDim<usize, 3>>;
+
+/// Array of a rank determined at runtime borrowing its storage as an immutable
+/// slice.
+pub type ArraySliceViewDyn<'s, T> = Array<&'s [T], DynDim<usize>>;
 
 /// Array borrowing its storage as a mutable slice.
 pub type ArraySliceViewMut<'s, T, D> = Array<&'s mut [T], D>;
 
+/// Array of rank 1 borrowing its storage as a mutable slice.
+pub type ArraySliceViewMut1D<'s, T> = Array<&'s mut [T], StaticDim<usize, 1>>;
+
+/// Array of rank 2 borrowing its storage as a mutable slice.
+pub type ArraySliceViewMut2D<'s, T> = Array<&'s mut [T], StaticDim<usize, 2>>;
+
+/// Array of rank 3 borrowing its storage as a mutable slice.
+pub type ArraySliceViewMut3D<'s, T> = Array<&'s mut [T], StaticDim<usize, 3>>;
+
+/// Array of a rank determined at runtime borrowing its storage as a mutable
+/// slice.
+pub type ArraySliceViewMutDyn<'s, T> = Array<&'s mut [T], DynDim<usize>>;
+
 /// Array owning its storage.
 pub type ArrayOwned<T, D> = Array<Box<[T]>, D>;
+
+/// Array of rank 1 owning its storage.
+pub type ArrayOwned1D<T> = Array<Box<[T]>, StaticDim<usize, 1>>;
+
+/// Array of rank 2 owning its storage.
+pub type ArrayOwned2D<T> = Array<Box<[T]>, StaticDim<usize, 2>>;
+
+/// Array of rank 3 owning its storage.
+pub type ArrayOwned3D<T> = Array<Box<[T]>, StaticDim<usize, 3>>;
+
+/// Array of a rank determined at runtime owning its storage.
+pub type ArrayOwnedDyn<T> = Array<Box<[T]>, DynDim<usize>>;
 
 /// Array using clone-on-write storage.
 ///
@@ -48,62 +122,79 @@ pub type ArrayOwned<T, D> = Array<Box<[T]>, D>;
 /// mutate its storage.
 pub type ArrayCow<'s, T, D> = Array<CowAccess<'s, T>, D>;
 
+/// Array of rank 1 using clone-on-write storage.
+///
+/// Requires acquiring a mutable view via [`ArrayCow::to_mut`] in order to
+/// mutate its storage.
+pub type ArrayCow1D<'s, T> = Array<CowAccess<'s, T>, StaticDim<usize, 1>>;
+
+/// Array of rank 2 using clone-on-write storage.
+///
+/// Requires acquiring a mutable view via [`ArrayCow::to_mut`] in order to
+/// mutate its storage.
+pub type ArrayCow2D<'s, T> = Array<CowAccess<'s, T>, StaticDim<usize, 2>>;
+
+/// Array of rank 3 using clone-on-write storage.
+///
+/// Requires acquiring a mutable view via [`ArrayCow::to_mut`] in order to
+/// mutate its storage.
+pub type ArrayCow3D<'s, T> = Array<CowAccess<'s, T>, StaticDim<usize, 3>>;
+
+/// Array of a rank determined at runtime using clone-on-write storage.
+///
+/// Requires acquiring a mutable view via [`ArrayCow::to_mut`] in order to
+/// mutate its storage.
+pub type ArrayCowDyn<'s, T> = Array<CowAccess<'s, T>, DynDim<usize>>;
+
 /// Array using the standard library's clone-on-write pointer as storage.
 pub type ArrayCowSlice<'s, T, D> = Array<Cow<'s, [T]>, D>;
+
+/// Array of rank 1 using the standard library's clone-on-write pointer as
+/// storage.
+pub type ArrayCowSlice1D<'s, T> = Array<Cow<'s, [T]>, StaticDim<usize, 1>>;
+
+/// Array of rank 2 using the standard library's clone-on-write pointer as
+/// storage.
+pub type ArrayCowSlice2D<'s, T> = Array<Cow<'s, [T]>, StaticDim<usize, 2>>;
+
+/// Array of rank 3 using the standard library's clone-on-write pointer as
+/// storage.
+pub type ArrayCowSlice3D<'s, T> = Array<Cow<'s, [T]>, StaticDim<usize, 3>>;
+
+/// Array of a rank determined at runtime using the standard library's
+/// clone-on-write pointer as storage.
+pub type ArrayCowSliceDyn<'s, T> = Array<Cow<'s, [T]>, DynDim<usize>>;
 
 /// Array using referencing counted storage.
 pub type ArrayRc<T, D> = Array<Rc<[T]>, D>;
 
+/// Array of rank 1 using referencing counted storage.
+pub type ArrayRc1D<T> = Array<Rc<[T]>, StaticDim<usize, 1>>;
+
+/// Array of rank 2 using referencing counted storage.
+pub type ArrayRc2D<T> = Array<Rc<[T]>, StaticDim<usize, 2>>;
+
+/// Array of rank 3 using referencing counted storage.
+pub type ArrayRc3D<T> = Array<Rc<[T]>, StaticDim<usize, 3>>;
+
+/// Array of a rank determined at runtime using referencing counted storage.
+pub type ArrayRcDyn<T> = Array<Rc<[T]>, DynDim<usize>>;
+
 /// Array using atomic reference counted storage.
 pub type ArrayArc<T, D> = Array<Arc<[T]>, D>;
 
-/// Array of rank 1.
-pub type Array1D<S> = Array<S, StaticDim<usize, 1>>;
+/// Array of rank 1 using atomic reference counted storage.
+pub type ArrayArc1D<T> = Array<Rc<[T]>, StaticDim<usize, 1>>;
 
-/// Array of rank 1 borrowing its storage immutably.
-pub type ArrayView1D<'s, T> = Array<Access<'s, T>, StaticDim<usize, 1>>;
+/// Array of rank 2 using atomic reference counted storage.
+pub type ArrayArc2D<T> = Array<Rc<[T]>, StaticDim<usize, 2>>;
 
-/// Array of rank 1 borrowing its storage mutably.
-pub type ArrayViewMut1D<'s, T> = Array<AccessMut<'s, T>, StaticDim<usize, 1>>;
+/// Array of rank 3 using atomic reference counted storage.
+pub type ArrayArc3D<T> = Array<Rc<[T]>, StaticDim<usize, 3>>;
 
-/// Array of rank 1 using clone-on-write storage.
-pub type ArrayCow1D<'s, T> = Array<CowAccess<'s, T>, StaticDim<usize, 1>>;
-
-/// Array of rank 2.
-pub type Array2D<S> = Array<S, StaticDim<usize, 2>>;
-
-/// Array of rank 2 borrowing its storage immutably.
-pub type ArrayView2D<'s, T> = Array<Access<'s, T>, StaticDim<usize, 2>>;
-
-/// Array of rank 2 borrowing its storage mutably.
-pub type ArrayViewMut2D<'s, T> = Array<AccessMut<'s, T>, StaticDim<usize, 2>>;
-
-/// Array of rank 2 using clone-on-write storage.
-pub type ArrayCow2D<'s, T> = Array<CowAccess<'s, T>, StaticDim<usize, 2>>;
-
-/// Array of rank 3.
-pub type Array3D<S> = Array<S, StaticDim<usize, 3>>;
-
-/// Array of rank 3 borrowing its storage immutably.
-pub type ArrayView3D<'s, T> = Array<Access<'s, T>, StaticDim<usize, 3>>;
-
-/// Array of rank 3 borrowing its storage mutably.
-pub type ArrayViewMut3D<'s, T> = Array<AccessMut<'s, T>, StaticDim<usize, 3>>;
-
-/// Array of rank 3 using clone-on-write storage.
-pub type ArrayCow3D<'s, T> = Array<CowAccess<'s, T>, StaticDim<usize, 3>>;
-
-/// Array of a rank determined at runtime.
-pub type ArrayDyn<S> = Array<S, DynDim<usize>>;
-
-/// Array of a rank determined at runtime borrowing its storage immutably.
-pub type ArrayViewDyn<'s, T> = Array<Access<'s, T>, DynDim<usize>>;
-
-/// Array of a rank determined at runtime borrowing its storage mutably.
-pub type ArrayViewMutDyn<'s, T> = Array<AccessMut<'s, T>, DynDim<usize>>;
-
-/// Array of a rank determined at runtime using clone-on-write storage.
-pub type ArrayCowDyn<'s, T> = Array<CowAccess<'s, T>, DynDim<usize>>;
+/// Array of a rank determined at runtime using atomic reference counted
+/// storage.
+pub type ArrayArcDyn<T> = Array<Rc<[T]>, DynDim<usize>>;
 
 /// Array type with arbitrary dimensions.
 #[derive(Clone, Debug)]

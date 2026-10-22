@@ -3,10 +3,9 @@ use num_traits::Float;
 use std::time::Duration;
 use zeenmr::deconvolution::peak_finding::{CurvatureAnalysis, Find};
 use zeenmr::peak_shape::{Evaluate, Lorentzian};
-use zeenmr::spectrum::SpectrumOwned;
+use zeenmr::spectrum::SpectrumOwned1D;
 use zeenmr::spectrum::axis::range::{FrequencyRange, RelativeRange};
 use zeenmr::spectrum::axis::{FrequencyAxis, Larmor, ShiftReference, frequency_axes};
-use zeenmr::spectrum::dimension::StaticDim;
 use zeenmr::spectrum::intensity_array::{ArrayOwned, shape};
 
 const SAMPLES: usize = 10;
@@ -51,10 +50,7 @@ where
     .expect("bounds are in [0, 1]")
 }
 
-fn make_spectrum<T>(
-    signal: usize,
-    filtered: usize,
-) -> SpectrumOwned<StaticDim<FrequencyAxis<T>, 1>, T, StaticDim<usize, 1>>
+fn make_spectrum<T>(signal: usize, filtered: usize) -> SpectrumOwned1D<T, T>
 where
     T: Float,
 {
@@ -86,7 +82,7 @@ where
     })
     .expect("hand verified");
 
-    SpectrumOwned::new(frequency_axes([dummy_axis()]), intensities).expect("hand verified")
+    SpectrumOwned1D::new(frequency_axes([dummy_axis()]), intensities).expect("hand verified")
 }
 
 fn work<T, F>(c: &mut Criterion, group_name: &str, peak_finders: &[(String, F)])

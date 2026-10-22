@@ -6,18 +6,18 @@ use rand::prelude::*;
 use std::hint::black_box;
 use std::time::Duration;
 use zeenmr::deconvolution::smoothing::{LeastSquares, MovingAverage, Smooth};
-use zeenmr::spectrum::intensity_array::{ArrayOwned, shape};
+use zeenmr::spectrum::intensity_array::{ArrayOwned, ArrayOwned1D, shape};
 
 const SEED: u64 = 0xC0FF_EE15_600D;
 const SAMPLES: usize = 50;
 const TIME_SECONDS: u64 = 5;
 const WORK: [usize; 2] = [1 << 16, 1 << 17];
 
-fn make_arrays<T>(rng: &mut StdRng, dist: &Uniform<T>, len: usize) -> Vec<T>
+fn make_arrays<T>(rng: &mut StdRng, dist: &Uniform<T>, len: usize) -> ArrayOwned1D<T>
 where
     T: SampleUniform,
 {
-    dist.sample_iter(rng).take(len).collect()
+    ArrayOwned::new(dist.sample_iter(rng).take(len).collect(), shape([len])).expect("hand verified")
 }
 
 fn work<T, S>(c: &mut Criterion, group_name: &str, smoothers: &[(String, S)])
@@ -33,11 +33,7 @@ where
         .measurement_time(Duration::from_secs(TIME_SECONDS));
     for n in WORK {
         group.throughput(Throughput::Elements(n as u64));
-        let mut array = ArrayOwned::new(
-            make_arrays(&mut rng, &dist, n).into_boxed_slice(),
-            shape([n]),
-        )
-        .expect("hand verified");
+        let mut array = make_arrays(&mut rng, &dist, n);
         for (name, smoother) in smoothers {
             let id = n.to_string();
             group.bench_function(BenchmarkId::new(name, &id), |b| {

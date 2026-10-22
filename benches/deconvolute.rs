@@ -1,9 +1,9 @@
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use num_traits::Float;
+use rayon::ThreadPoolBuilder;
 use rayon::prelude::*;
 use std::path::Path;
 use std::time::Duration;
-use rayon::ThreadPoolBuilder;
 use zeenmr::deconvolution::fitting::ThreePoint;
 use zeenmr::deconvolution::iter::ParDeconvoluteMap;
 use zeenmr::deconvolution::peak_finding::CurvatureAnalysis;
@@ -105,8 +105,7 @@ where
     D::Error: std::error::Error + Send,
 {
     let mut group = c.benchmark_group(group_name);
-    group
-        .sample_size(SAMPLES);
+    group.sample_size(SAMPLES);
     let data_dir = workspace_dir()
         .join("data")
         .join("bruker")

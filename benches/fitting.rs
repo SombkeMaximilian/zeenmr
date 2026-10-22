@@ -8,10 +8,9 @@ use zeenmr::deconvolution::fitting::{
 use zeenmr::deconvolution::peak_finding::Peak;
 use zeenmr::deconvolution::util::noise::Noise;
 use zeenmr::peak_shape::{Evaluate, Lorentzian, PeakShape};
-use zeenmr::spectrum::SpectrumOwned;
+use zeenmr::spectrum::SpectrumOwned1D;
 use zeenmr::spectrum::axis::range::FrequencyRange;
 use zeenmr::spectrum::axis::{FrequencyAxis, Larmor, ShiftReference, frequency_axes};
-use zeenmr::spectrum::dimension::StaticDim;
 use zeenmr::spectrum::intensity_array::{ArrayOwned, shape};
 
 const SAMPLES: usize = 10;
@@ -40,12 +39,7 @@ where
     FrequencyAxis::new(range, larmor, shift_reference).expect("hand verified")
 }
 
-fn make_spectrum<T>(
-    count: usize,
-) -> (
-    SpectrumOwned<StaticDim<FrequencyAxis<T>, 1>, T, StaticDim<usize, 1>>,
-    Vec<Peak>,
-)
+fn make_spectrum<T>(count: usize) -> (SpectrumOwned1D<T, T>, Vec<Peak>)
 where
     T: Float,
 {
@@ -64,7 +58,7 @@ where
     })
     .expect("hand verified");
     let spectrum =
-        SpectrumOwned::new(frequency_axes([dummy_axis()]), intensities).expect("hand verified");
+        SpectrumOwned1D::new(frequency_axes([dummy_axis()]), intensities).expect("hand verified");
     let peaks = (0..count)
         .map(|i| {
             let center = (i * POINTS_PER_PEAK) + (POINTS_PER_PEAK / 2);

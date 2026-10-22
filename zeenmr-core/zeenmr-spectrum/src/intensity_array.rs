@@ -247,10 +247,14 @@ pub mod iter;
 
 mod array;
 pub use array::{
-    Array, Array1D, Array2D, Array3D, ArrayArc, ArrayCow, ArrayCow1D, ArrayCow2D, ArrayCow3D,
-    ArrayCowDyn, ArrayCowSlice, ArrayDyn, ArrayOwned, ArrayRc, ArraySliceView, ArraySliceViewMut,
-    ArrayView, ArrayView1D, ArrayView2D, ArrayView3D, ArrayViewDyn, ArrayViewMut, ArrayViewMut1D,
-    ArrayViewMut2D, ArrayViewMut3D, ArrayViewMutDyn,
+    Array, Array1D, Array2D, Array3D, ArrayArc, ArrayArc1D, ArrayArc2D, ArrayArc3D, ArrayArcDyn,
+    ArrayCow, ArrayCow1D, ArrayCow2D, ArrayCow3D, ArrayCowDyn, ArrayCowSlice, ArrayCowSlice1D,
+    ArrayCowSlice2D, ArrayCowSlice3D, ArrayCowSliceDyn, ArrayDyn, ArrayOwned, ArrayOwned1D,
+    ArrayOwned2D, ArrayOwned3D, ArrayOwnedDyn, ArrayRc, ArrayRc1D, ArrayRc2D, ArrayRc3D,
+    ArrayRcDyn, ArraySliceView, ArraySliceView1D, ArraySliceView2D, ArraySliceView3D,
+    ArraySliceViewDyn, ArraySliceViewMut, ArraySliceViewMut1D, ArraySliceViewMut2D,
+    ArraySliceViewMut3D, ArraySliceViewMutDyn, ArrayView, ArrayView1D, ArrayView2D, ArrayView3D,
+    ArrayViewDyn, ArrayViewMut, ArrayViewMut1D, ArrayViewMut2D, ArrayViewMut3D, ArrayViewMutDyn,
 };
 
 mod storage;
