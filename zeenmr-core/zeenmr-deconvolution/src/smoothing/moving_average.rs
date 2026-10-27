@@ -4,12 +4,6 @@ use zeenmr_spectrum::dimension::DimIndex;
 use zeenmr_spectrum::intensity_array::{ArrayViewMut1D, index};
 use zeenmr_util::fma;
 
-mod cache_topology {
-    //! Contains cache size constants in bytes.
-
-    include!(concat!(env!("OUT_DIR"), "/cache.rs"));
-}
-
 /// Chunk size in elements.
 const CHUNK: usize = 16;
 
