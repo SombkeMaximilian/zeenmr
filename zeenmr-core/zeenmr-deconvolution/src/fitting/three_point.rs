@@ -273,7 +273,7 @@ where
         let offset = self.shift_offset;
         let scale = self.shift_scale;
 
-        move |p: &mut P| p.affine_transform(offset, scale)
+        move |p: &mut P| p.grid_transform(offset, scale)
     }
 
     fn apply_metric<M>(&self, metric: M, cache: &IntermediateCache<T>) -> T

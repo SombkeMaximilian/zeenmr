@@ -141,7 +141,7 @@ where
         self.scale2 > precision.width2 && self.maximum() > precision.intensity
     }
 
-    fn affine_transform(&mut self, shift: T, scale: T) {
+    fn grid_transform(&mut self, shift: T, scale: T) {
         self.scale2 = self.scale2 * scale.powi(2);
         self.center = fma(scale, self.center, shift);
     }
