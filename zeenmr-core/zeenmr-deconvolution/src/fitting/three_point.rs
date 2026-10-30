@@ -1,5 +1,6 @@
 use crate::fitting::{Fit, FitModel, IterativeFit};
 use crate::peak_finding::Peak;
+use crate::util::evaluation_metrics::{FitContext, IntermediateCache, Metric};
 use crate::util::noise::{GaussianNoise, Noise, NoiseLevel};
 use num_traits::Float;
 use std::marker::PhantomData;
@@ -10,6 +11,7 @@ use zeenmr_spectrum::SpectrumView1D;
 use zeenmr_spectrum::axis::range::{FiniteBounds, RelativeRange};
 use zeenmr_spectrum::dimension::DimIndex;
 use zeenmr_spectrum::intensity_array::{ArrayView1D, index};
+use zeenmr_util::StableGrid;
 
 #[cfg(feature = "rayon")]
 use crate::fitting::{ParFit, ParFitModel, ParIterativeFit};
@@ -20,7 +22,6 @@ use rayon::prelude::*;
 #[cfg(feature = "rayon")]
 use zeenmr_peakshape::batch_superposition::ParSuperpositionKernel;
 
-use crate::util::evaluation_metrics::{FitContext, IntermediateCache, Metric};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -124,19 +125,16 @@ where
             .lane_at(DimIndex(0), &index([0]))
             .expect("1D spectrum always has a first dimension");
         let len = intensities.len();
-        let grid_step = grid_step::<T>(len);
-        let index_to_grid = |index: usize| {
-            T::from(index).expect("conversion from usize to T must never fail") * grid_step
-        };
+        let grid = StableGrid::new(len);
         let (positions, intensities) = peaks
             .iter()
             .filter(|peak| peak.right < len)
             .map(|peak| {
                 (
                     [
-                        index_to_grid(peak.left),
-                        index_to_grid(peak.center),
-                        index_to_grid(peak.right),
+                        grid.get(peak.left),
+                        grid.get(peak.center),
+                        grid.get(peak.right),
                     ],
                     // SAFETY: every index is less than len and therefore within
                     // bounds of the intensities.
@@ -229,8 +227,8 @@ pub struct ThreePointModel<'s, T, P, S> {
     superposition: Vec<[T; 3]>,
     /// Precision information.
     support: S,
-    /// Grid spacing between adjacent data points.
-    grid_step: T,
+    /// Fitting grid.
+    grid: StableGrid<T>,
     /// Scaling from grid coordinates to chemical shifts.
     shift_scale: T,
     /// Shift from grid coordinates to chemical shifts.
@@ -284,7 +282,7 @@ where
             spectrum: self.spectrum.view(),
             peak_shapes: &self.peak_shapes,
             grid_offset: T::zero(),
-            grid_step: self.grid_step,
+            grid_step: self.grid.step(),
             kernel: SUPERPOSITION,
             ignore: &self.ignore,
         };
@@ -318,7 +316,7 @@ where
             spectrum: self.spectrum.view(),
             peak_shapes: &self.peak_shapes,
             grid_offset: T::zero(),
-            grid_step: self.grid_step,
+            grid_step: self.grid.step(),
             kernel: SUPERPOSITION,
             ignore: &self.ignore,
         };
@@ -356,18 +354,18 @@ where
             .axis(DimIndex(0))
             .map(|axis| axis.shift_range())
             .expect("1D spectrum always has a first dimension");
-        let grid_step = grid_step::<T>(len);
+        let grid = StableGrid::new(len);
         let shift_offset = shift_range.start();
         let shift_scale = if len > 1 {
             let last = T::from(len - 1).expect("conversion from usize to T must never fail");
 
-            (shift_range.end() - shift_offset) / (last * grid_step)
+            (shift_range.end() - shift_offset) / (last * grid.step())
         } else {
             T::one()
         };
         let reduced = ReducedSpectrum::new(spectrum.view(), peaks);
         let support = P::Support::from(DefaultSupport {
-            width: grid_step,
+            width: grid.step(),
             intensity: noise.0,
         });
         let stencils = reduced.stencils().collect::<Vec<_>>();
@@ -383,7 +381,7 @@ where
             peak_shapes,
             superposition,
             support,
-            grid_step,
+            grid,
             shift_scale,
             shift_offset,
             ignore: ignore.to_vec(),
@@ -403,9 +401,9 @@ where
         &self.reduced.intensities
     }
 
-    /// Returns the step size of the grid.
-    pub fn grid_step(&self) -> T {
-        self.grid_step
+    /// Returns the fitting grid.
+    pub fn grid(&self) -> StableGrid<T> {
+        self.grid
     }
 
     /// Returns `(offset, scale)` to transform grid values into chemical shifts.
@@ -682,23 +680,6 @@ impl<P, N> ThreePoint<P, N> {
             peak_shape: PhantomData,
         }
     }
-}
-
-/// Largest power of 2 step such that `(len - 1) * step` does not exceed
-/// `clamp(len, 2^15, 2^17)`.
-fn grid_step<T>(len: usize) -> T
-where
-    T: Float,
-{
-    let span = len.saturating_sub(1).max(1);
-    let target = len.clamp(1 << 15, 1 << 17);
-    let exp = if span <= target {
-        (target / span).ilog2() as i32
-    } else {
-        -(span.div_ceil(target).next_power_of_two().ilog2() as i32)
-    };
-
-    (T::one() + T::one()).powi(exp)
 }
 
 #[cfg(test)]
