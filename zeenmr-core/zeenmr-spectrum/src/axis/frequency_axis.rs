@@ -282,13 +282,13 @@ pub struct FrequencyAxis<T> {
 }
 
 impl<T> Axis for FrequencyAxis<T> {
-    type Grid<'a>
-        = FrequencyGrid<'a, T>
+    type Discrete<'a>
+        = DiscreteFrequencyAxis<'a, T>
     where
         Self: 'a;
 
-    fn grid(&self, len: usize) -> Self::Grid<'_> {
-        FrequencyGrid { axis: self, len }
+    fn discrete(&self, len: usize) -> Self::Discrete<'_> {
+        DiscreteFrequencyAxis { axis: self, len }
     }
 }
 
@@ -580,9 +580,9 @@ where
 
 /// Convenience wrapper of an axis reference with an attached length.
 ///
-/// An instance of this type can be obtained from [`FrequencyAxis::grid`].
+/// An instance of this type can be obtained from [`FrequencyAxis::discrete`].
 #[derive(Copy, Clone, PartialEq, Debug)]
-pub struct FrequencyGrid<'a, T> {
+pub struct DiscreteFrequencyAxis<'a, T> {
     /// Reference to the original axis.
     ///
     /// This is not owned in order to enforce single source of truth.
@@ -591,13 +591,13 @@ pub struct FrequencyGrid<'a, T> {
     len: usize,
 }
 
-impl<T> AsRef<FrequencyAxis<T>> for FrequencyGrid<'_, T> {
+impl<T> AsRef<FrequencyAxis<T>> for DiscreteFrequencyAxis<'_, T> {
     fn as_ref(&self) -> &FrequencyAxis<T> {
         self.axis
     }
 }
 
-impl<T> Deref for FrequencyGrid<'_, T> {
+impl<T> Deref for DiscreteFrequencyAxis<'_, T> {
     type Target = FrequencyAxis<T>;
 
     fn deref(&self) -> &Self::Target {
@@ -605,11 +605,11 @@ impl<T> Deref for FrequencyGrid<'_, T> {
     }
 }
 
-impl<'a, T> FrequencyGrid<'a, T>
+impl<'a, T> DiscreteFrequencyAxis<'a, T>
 where
     T: Float,
 {
-    /// Sets the length of the grid.
+    /// Sets the length of the discrete axis.
     pub fn with_len(self, len: usize) -> Self {
         Self { len, ..self }
     }
@@ -619,38 +619,38 @@ where
         self.axis
     }
 
-    /// Returns the length of the grid.
+    /// Returns the length of the discrete axis.
     pub fn len(&self) -> usize {
         self.len
     }
 
-    /// Returns `true` if the grid contains no points.
+    /// Returns `true` if the discrete axis contains no points.
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
 
-    /// Returns the frequency step size of the grid.
+    /// Returns the frequency step size of the discrete axis.
     ///
     /// See [`FrequencyAxis::freq_step`] for its exact behavior.
     pub fn freq_step(&self) -> T {
         self.axis.freq_step(self.len)
     }
 
-    /// Returns the chemical shift step size of the grid.
+    /// Returns the chemical shift step size of the discrete axis.
     ///
     /// See [`FrequencyAxis::shift_step`] for its exact behavior.
     pub fn shift_step(&self) -> T {
         self.axis.shift_step(self.len)
     }
 
-    /// Returns an iterator over the frequencies in the grid.
+    /// Returns an iterator over the frequencies in the discrete axis.
     ///
     /// See [`FrequencyAxis::freqs`] for its exact behavior.
     pub fn freqs(&self) -> AxisValues<T> {
         self.axis.freqs(self.len)
     }
 
-    /// Returns an iterator over the chemical shifts in the grid.
+    /// Returns an iterator over the chemical shifts in the discrete axis.
     ///
     /// See [`FrequencyAxis::shifts`] for its exact behavior.
     pub fn shifts(&self) -> AxisValues<T> {
@@ -659,18 +659,19 @@ where
 }
 
 #[cfg(feature = "rayon")]
-impl<T> FrequencyGrid<'_, T>
+impl<T> DiscreteFrequencyAxis<'_, T>
 where
     T: Float + Send,
 {
-    /// Returns a parallel iterator over the frequencies in the grid.
+    /// Returns a parallel iterator over the frequencies in the discrete axis.
     ///
     /// See [`FrequencyAxis::par_freqs`] for its exact behavior.
     pub fn par_freqs(&self) -> ParAxisValues<T> {
         self.axis.par_freqs(self.len)
     }
 
-    /// Returns a parallel iterator over the chemical shifts in the grid.
+    /// Returns a parallel iterator over the chemical shifts in the discrete
+    /// axis.
     ///
     /// See [`FrequencyAxis::par_shifts`] for its exact behavior.
     pub fn par_shifts(&self) -> ParAxisValues<T> {

@@ -6,12 +6,12 @@ pub mod range;
 
 mod axes;
 pub use axes::{
-    Axes, Axis, DynFrequencyAxes, DynTimeAxes, GridAxes, StaticFrequencyAxes, StaticTimeAxes,
+    Axes, Axis, DiscreteAxes, DynFrequencyAxes, DynTimeAxes, StaticFrequencyAxes, StaticTimeAxes,
     frequency_axes, time_axes,
 };
 
 mod frequency_axis;
-pub use frequency_axis::{FrequencyAxis, FrequencyGrid, Larmor, ShiftReference};
+pub use frequency_axis::{DiscreteFrequencyAxis, FrequencyAxis, Larmor, ShiftReference};
 
 mod time_axis;
-pub use time_axis::{TimeAxis, TimeGrid};
+pub use time_axis::{DiscreteTimeAxis, TimeAxis};

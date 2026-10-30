@@ -9,19 +9,19 @@ use serde::{Deserialize, Serialize};
 
 /// Trait for NMR spectrum or FID axis types.
 pub trait Axis {
-    /// 1D grid type of the axis with a length attached.
-    type Grid<'a>
+    /// 1D discrete axis type with a length attached.
+    type Discrete<'a>
     where
         Self: 'a;
 
-    /// Attaches a length to the axis, producing a 1D grid.
+    /// Attaches a length to the axis, producing a 1D discrete axis.
     ///
     /// # Precision
     ///
     /// Due to floating point errors when adding and multiplying, passing a
     /// `len` that cannot be represented by `T` may lead to significant errors
     /// (e.g., `len > 2^24` for `f32`) in the downstream methods.
-    fn grid(&self, len: usize) -> Self::Grid<'_>;
+    fn discrete(&self, len: usize) -> Self::Discrete<'_>;
 }
 
 /// Frequency axes with a rank determined at runtime.
@@ -119,11 +119,13 @@ where
         self.0.as_mut_slice()
     }
 
-    /// Returns a grid over the axes.
-    pub fn grid<'a, D, G>(&'a self, shape: Shape<D>) -> Option<GridAxes<G>>
+    /// Returns discrete axes of `shape`.
+    ///
+    /// Returns `None` if `self` and `shape` have different ranks.
+    pub fn discrete<'a, D, G>(&'a self, shape: Shape<D>) -> Option<DiscreteAxes<G>>
     where
         D: Dimension<Elem = usize>,
-        G: Dimension<Elem = <A::Elem as Axis>::Grid<'a>>,
+        G: Dimension<Elem = <A::Elem as Axis>::Discrete<'a>>,
         A::Elem: 'a,
     {
         const {
@@ -137,39 +139,39 @@ where
         let axes = self.as_slice();
         let extents = shape.as_slice();
 
-        Some(GridAxes::new(G::from_fn(self.rank(), |dim| {
-            axes[dim].grid(extents[dim])
+        Some(DiscreteAxes::new(G::from_fn(self.rank(), |dim| {
+            axes[dim].discrete(extents[dim])
         })?))
     }
 }
 
 /// Grid of a spectrum or FID.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
-pub struct GridAxes<G>(G);
+pub struct DiscreteAxes<G>(G);
 
-impl<G> GridAxes<G>
+impl<G> DiscreteAxes<G>
 where
     G: Dimension,
 {
-    /// Creates a new collection of grid axes.
+    /// Creates a new collection of discrete axes.
     pub fn new(axes: G) -> Self {
         Self(axes)
     }
 
-    /// Returns the equivalent grid axes with a rank determined at runtime.
+    /// Returns the equivalent collection with a rank determined at runtime.
     pub fn to_dyn(self) -> Axes<DynDim<G::Elem>> {
         self.to_dimension()
             .expect("DynDim can represent any rank")
     }
 
-    /// Returns the equivalent grid axes of rank `N`.
+    /// Returns the equivalent collection of rank `N`.
     ///
     /// Returns `None` if `self` does not have rank `N`.
     pub fn try_to_static<const N: usize>(self) -> Option<Axes<StaticDim<G::Elem, N>>> {
         self.to_dimension()
     }
 
-    /// Returns the equivalent grid axis collection over `G2`.
+    /// Returns the equivalent collection over `G2`.
     ///
     /// Returns `None` if `G2` cannot represent the rank of `self`.
     pub fn to_dimension<G2>(&self) -> Option<Axes<G2>>
@@ -186,12 +188,12 @@ where
         self.0.rank()
     }
 
-    /// Returns a reference to the grid axis at `index`.
+    /// Returns a reference to the discrete axis at `index`.
     pub fn get(&self, index: DimIndex) -> Option<&G::Elem> {
         self.0.get(index)
     }
 
-    /// Returns a slice containing all grid axes.
+    /// Returns a slice containing all discrete axes.
     pub fn as_slice(&self) -> &[G::Elem] {
         self.0.as_slice()
     }

@@ -1,4 +1,4 @@
-use crate::axis::{Axes, Axis, FrequencyAxis, FrequencyGrid, GridAxes};
+use crate::axis::{Axes, Axis, DiscreteAxes, DiscreteFrequencyAxis, FrequencyAxis};
 use crate::dimension::{DimIndex, Dimension, DynDim, StaticDim, assert_rank_compatible};
 use crate::intensity_array::{Access, Array, ArrayView, CowAccess, RawStorage, Shape};
 use std::borrow::Cow;
@@ -255,26 +255,28 @@ where
 
     /// Returns a reference to the frequency axis of the spectrum at `index`.
     ///
-    /// Use [`Spectrum::grid_axis`] to get the axis with its extent.
+    /// Use [`Spectrum::discrete_axis`] to get the axis with its extent.
     pub fn axis(&self, index: DimIndex) -> Option<&FrequencyAxis<F>> {
         self.axes.get(index)
     }
 
-    /// Returns a frequency grid axis of the spectrum at `index`.
-    pub fn grid_axis(&self, index: DimIndex) -> Option<FrequencyGrid<'_, F>> {
+    /// Returns a discrete frequency axis of the spectrum at `index`.
+    pub fn discrete_axis(&self, index: DimIndex) -> Option<DiscreteFrequencyAxis<'_, F>> {
         let extent = self.intensities.shape().get(index)?;
 
-        self.axes.get(index).map(|axis| axis.grid(extent))
+        self.axes
+            .get(index)
+            .map(|axis| axis.discrete(extent))
     }
 
-    /// Returns the axes of the spectrum with their respective extents.
-    pub fn grid_axes<'a, G>(&'a self) -> GridAxes<G>
+    /// Returns the discrete axes of the spectrum with their respective extents.
+    pub fn discrete_axes<'a, G>(&'a self) -> DiscreteAxes<G>
     where
         F: 'a,
-        G: Dimension<Elem = FrequencyGrid<'a, F>>,
+        G: Dimension<Elem = DiscreteFrequencyAxis<'a, F>>,
     {
         self.axes
-            .grid(self.intensities.shape().clone())
+            .discrete(self.intensities.shape().clone())
             .expect("type invariant guarantees that this is valid")
     }
 }

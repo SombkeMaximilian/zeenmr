@@ -154,8 +154,8 @@ where
     fn deconvolute(&self, spectrum: SpectrumView1D<T, T>) -> Result<Deconvolution<P>, Self::Error> {
         let len = spectrum.len();
         let len_as_t = T::from(len).expect("conversion from usize to T must never fail");
-        let grid = spectrum
-            .grid_axis(DimIndex(0))
+        let axis = spectrum
+            .discrete_axis(DimIndex(0))
             .expect("1D spectrum always has a first dimension");
         let smoothed = self
             .smoother
@@ -165,8 +165,8 @@ where
             .ignore
             .iter()
             .filter_map(|range| {
-                let start = grid.shift_to_rel(range.start())? * len_as_t;
-                let end = grid.shift_to_rel(range.end())? * len_as_t;
+                let start = axis.shift_to_rel(range.start())? * len_as_t;
+                let end = axis.shift_to_rel(range.end())? * len_as_t;
                 let min = start.min(end).ceil().to_usize()?;
                 let max = start.max(end).ceil().to_usize()?;
 
@@ -203,8 +203,8 @@ where
     ) -> Result<Deconvolution<P>, Self::Error> {
         let len = spectrum.len();
         let len_as_t = T::from(len).expect("conversion from usize to T must never fail");
-        let grid = spectrum
-            .grid_axis(DimIndex(0))
+        let axis = spectrum
+            .discrete_axis(DimIndex(0))
             .expect("1D spectrum always has a first dimension");
         let smoothed = self
             .smoother
@@ -214,8 +214,8 @@ where
             .ignore
             .iter()
             .filter_map(|range| {
-                let start = grid.shift_to_rel(range.start())? * len_as_t;
-                let end = grid.shift_to_rel(range.end())? * len_as_t;
+                let start = axis.shift_to_rel(range.start())? * len_as_t;
+                let end = axis.shift_to_rel(range.end())? * len_as_t;
                 let min = start.min(end).ceil().to_usize()?;
                 let max = start.max(end).ceil().to_usize()?;
 

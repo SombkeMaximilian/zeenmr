@@ -35,13 +35,13 @@ pub struct TimeAxis<T> {
 }
 
 impl<T> Axis for TimeAxis<T> {
-    type Grid<'a>
-        = TimeGrid<'a, T>
+    type Discrete<'a>
+        = DiscreteTimeAxis<'a, T>
     where
         Self: 'a;
 
-    fn grid(&self, len: usize) -> Self::Grid<'_> {
-        TimeGrid { axis: self, len }
+    fn discrete(&self, len: usize) -> Self::Discrete<'_> {
+        DiscreteTimeAxis { axis: self, len }
     }
 }
 
@@ -104,9 +104,9 @@ where
 
 /// Convenience wrapper of an axis reference with an attached length.
 ///
-/// An instance of this type can be obtained from [`TimeAxis::grid`].
+/// An instance of this type can be obtained from [`TimeAxis::discrete`].
 #[derive(Copy, Clone, PartialEq, Debug)]
-pub struct TimeGrid<'a, T> {
+pub struct DiscreteTimeAxis<'a, T> {
     /// Reference to the original axis.
     ///
     /// This is not owned in order to enforce single source of truth.
@@ -115,13 +115,13 @@ pub struct TimeGrid<'a, T> {
     len: usize,
 }
 
-impl<T> AsRef<TimeAxis<T>> for TimeGrid<'_, T> {
+impl<T> AsRef<TimeAxis<T>> for DiscreteTimeAxis<'_, T> {
     fn as_ref(&self) -> &TimeAxis<T> {
         self.axis
     }
 }
 
-impl<T> Deref for TimeGrid<'_, T> {
+impl<T> Deref for DiscreteTimeAxis<'_, T> {
     type Target = TimeAxis<T>;
 
     fn deref(&self) -> &Self::Target {
@@ -129,7 +129,7 @@ impl<T> Deref for TimeGrid<'_, T> {
     }
 }
 
-impl<'a, T> IntoIterator for TimeGrid<'a, T>
+impl<'a, T> IntoIterator for DiscreteTimeAxis<'a, T>
 where
     T: Float,
 {
@@ -141,7 +141,7 @@ where
     }
 }
 
-impl<'a, T> IntoIterator for &TimeGrid<'a, T>
+impl<'a, T> IntoIterator for &DiscreteTimeAxis<'a, T>
 where
     T: Float,
 {
@@ -153,7 +153,7 @@ where
     }
 }
 
-impl<'a, T> IntoIterator for &mut TimeGrid<'a, T>
+impl<'a, T> IntoIterator for &mut DiscreteTimeAxis<'a, T>
 where
     T: Float,
 {
@@ -165,11 +165,11 @@ where
     }
 }
 
-impl<'a, T> TimeGrid<'a, T>
+impl<'a, T> DiscreteTimeAxis<'a, T>
 where
     T: Float,
 {
-    /// Sets the length of the grid.
+    /// Sets the length of the discrete axis.
     pub fn with_len(self, len: usize) -> Self {
         Self { len, ..self }
     }
@@ -179,17 +179,17 @@ where
         self.axis
     }
 
-    /// Returns the length of the grid.
+    /// Returns the length of the discrete axis.
     pub fn len(&self) -> usize {
         self.len
     }
 
-    /// Returns `true` if the grid contains no points.
+    /// Returns `true` if the discrete axis contains no points.
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
 
-    /// Returns an iterator over the time offsets in the grid.
+    /// Returns an iterator over the time offsets in the discrete axis.
     ///
     /// See [`TimeAxis::iter`] for its exact behavior.
     pub fn iter(&self) -> AxisValues<T> {
@@ -198,7 +198,7 @@ where
 }
 
 #[cfg(feature = "rayon")]
-impl<'a, T> IntoParallelIterator for TimeGrid<'a, T>
+impl<'a, T> IntoParallelIterator for DiscreteTimeAxis<'a, T>
 where
     T: Float + Send,
 {
@@ -211,7 +211,7 @@ where
 }
 
 #[cfg(feature = "rayon")]
-impl<'a, T> IntoParallelIterator for &TimeGrid<'a, T>
+impl<'a, T> IntoParallelIterator for &DiscreteTimeAxis<'a, T>
 where
     T: Float + Send,
 {
@@ -224,7 +224,7 @@ where
 }
 
 #[cfg(feature = "rayon")]
-impl<'a, T> IntoParallelIterator for &mut TimeGrid<'a, T>
+impl<'a, T> IntoParallelIterator for &mut DiscreteTimeAxis<'a, T>
 where
     T: Float + Send,
 {
@@ -237,11 +237,11 @@ where
 }
 
 #[cfg(feature = "rayon")]
-impl<'a, T> TimeGrid<'a, T>
+impl<'a, T> DiscreteTimeAxis<'a, T>
 where
     T: Float + Send,
 {
-    /// Returns a parallel iterator over the time offsets in the grid.
+    /// Returns a parallel iterator over the time offsets in the discrete axis.
     ///
     /// See [`TimeAxis::par_iter`] for its exact behavior.
     pub fn par_iter(&self) -> ParAxisValues<T> {
