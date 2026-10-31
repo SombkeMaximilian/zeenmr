@@ -1,12 +1,110 @@
 use crate::peak_finding::Peak;
 use crate::util::evaluation_metrics::{IntermediateCache, Metric};
+use num_traits::Float;
 use std::ops::Range;
 use zeenmr_peakshape::PeakShape;
 use zeenmr_spectrum::SpectrumView1D;
+use zeenmr_spectrum::axis::FrequencyAxis;
+use zeenmr_spectrum::axis::range::{FiniteBounds, SpectralRange};
 use zeenmr_spectrum::intensity_array::ArrayView1D;
+use zeenmr_util::StableGrid;
 
 #[cfg(feature = "rayon")]
 use crate::util::evaluation_metrics::ParMetric;
+
+/// Fitting algorithm output.
+#[derive(Clone, PartialEq, Debug)]
+pub struct FittedComponents<T, P> {
+    /// Fitted peak shapes.
+    peak_shapes: Vec<P>,
+    /// Grid used to fit them.
+    grid: StableGrid<T>,
+}
+
+impl<T, P> FittedComponents<T, P>
+where
+    T: Float,
+    P: PeakShape<T>,
+{
+    /// Creates a new collection of fitted components.
+    pub fn new(peak_shapes: Vec<P>, grid: StableGrid<T>) -> Self {
+        Self { peak_shapes, grid }
+    }
+
+    /// Returns the peak shapes in fitting grid space.
+    pub fn peak_shapes(&self) -> &[P] {
+        &self.peak_shapes
+    }
+
+    /// Returns the fitting grid.
+    pub fn grid(&self) -> StableGrid<T> {
+        self.grid
+    }
+
+    /// Returns the peak shapes in frequency space.
+    pub fn into_frequency_space(mut self, axis: &FrequencyAxis<T>) -> Vec<P> {
+        let mut peak_shapes = std::mem::take(&mut self.peak_shapes);
+        self.map_into_range(&mut peak_shapes, axis.freq_range());
+
+        peak_shapes
+    }
+
+    /// Returns the peak shapes in shift space.
+    pub fn into_shift_space(mut self, axis: &FrequencyAxis<T>) -> Vec<P> {
+        let mut peak_shapes = std::mem::take(&mut self.peak_shapes);
+        self.map_into_range(&mut peak_shapes, axis.shift_range());
+
+        peak_shapes
+    }
+
+    /// Returns the peak shapes in frequency space.
+    ///
+    /// Note that this clones the data. Prefer
+    /// [`FittedComponents::into_frequency_space`] to consume `self` instead.
+    pub fn frequency_space(&self, axis: &FrequencyAxis<T>) -> Vec<P>
+    where
+        P: Clone,
+    {
+        let mut peak_shapes = self.peak_shapes.clone();
+        self.map_into_range(&mut peak_shapes, axis.freq_range());
+
+        peak_shapes
+    }
+
+    /// Returns the peak shapes in shift space.
+    ///
+    /// Note that this clones the data. Prefer
+    /// [`FittedComponents::into_shift_space`] to consume `self` instead.
+    pub fn shift_space(&self, axis: &FrequencyAxis<T>) -> Vec<P>
+    where
+        P: Clone,
+    {
+        let mut peak_shapes = self.peak_shapes.clone();
+        self.map_into_range(&mut peak_shapes, axis.shift_range());
+
+        peak_shapes
+    }
+
+    /// Maps the peak shapes into the provided range.
+    fn map_into_range<R>(&self, peak_shapes: &mut [P], range: R)
+    where
+        R: FiniteBounds<T>,
+    {
+        let len = self.grid.len();
+        let offset = range.start();
+        let scale = if len > 1 {
+            let last = T::from(len - 1).expect("conversion from usize to T must never fail");
+
+            range.signed_width() / (last * self.grid.step())
+        } else {
+            T::one()
+        };
+
+        peak_shapes
+            .iter_mut()
+            .for_each(|p| p.grid_transform(offset, scale));
+    }
+}
 
 /// Trait for fitting peak shapes to a spectrum, given a set of detected peaks.
 ///
@@ -31,7 +129,7 @@ where
         smoothed: ArrayView1D<T>,
         peaks: &[Peak],
         ignore: &[Range<usize>],
-    ) -> Result<Vec<P>, Self::Error>;
+    ) -> Result<FittedComponents<T, P>, Self::Error>;
 }
 
 /// Fitting algorithms that iteratively improve the peak shape parameters.
@@ -92,7 +190,7 @@ where
     /// Extracts the peak shapes from the model.
     ///
     /// This undoes any transformations.
-    fn extract(self) -> Vec<P>
+    fn extract(self) -> FittedComponents<T, P>
     where
         Self: Sized;
 
@@ -102,22 +200,6 @@ where
     /// [`FitModel::inverse_transform`] provides a way to transform them back
     /// to chemical shift space.
     fn peak_shapes(&self) -> &[P];
-
-    /// Returns a function to undo the transformation applied to peak shapes.
-    fn inverse_transform(&self) -> impl Fn(&mut P);
-
-    /// Returns an owned copy of the peak shapes of the model, undoing any
-    /// transformations first.
-    fn restored_peak_shapes(&self) -> Vec<P>
-    where
-        P: Clone,
-    {
-        let mut peak_shapes = self.peak_shapes().to_vec();
-        let inverse = self.inverse_transform();
-        peak_shapes.iter_mut().for_each(inverse);
-
-        peak_shapes
-    }
 
     /// Applies an evaluation metric to the current peak shapes.
     fn apply_metric<M>(&self, metric: M, cache: &IntermediateCache<T>) -> T
@@ -145,7 +227,7 @@ where
         smoothed: ArrayView1D<T>,
         peaks: &[Peak],
         ignore: &[Range<usize>],
-    ) -> Result<Vec<P>, Self::Error>;
+    ) -> Result<FittedComponents<T, P>, Self::Error>;
 }
 
 /// Parallelized fitting algorithms that iteratively improve the peak shape

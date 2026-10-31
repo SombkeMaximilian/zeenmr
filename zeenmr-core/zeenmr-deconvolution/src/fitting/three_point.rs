@@ -1,4 +1,4 @@
-use crate::fitting::{Fit, FitModel, IterativeFit};
+use crate::fitting::{Fit, FitModel, FittedComponents, IterativeFit};
 use crate::peak_finding::Peak;
 use crate::util::evaluation_metrics::{FitContext, IntermediateCache, Metric};
 use crate::util::noise::{GaussianNoise, Noise, NoiseLevel};
@@ -8,7 +8,7 @@ use std::ops::Range;
 use zeenmr_peakshape::batch_superposition::{Standard, SuperpositionKernel};
 use zeenmr_peakshape::{DefaultSupport, Gaussian, Lorentzian, PeakShape};
 use zeenmr_spectrum::SpectrumView1D;
-use zeenmr_spectrum::axis::range::{FiniteBounds, RelativeRange};
+use zeenmr_spectrum::axis::range::RelativeRange;
 use zeenmr_spectrum::dimension::DimIndex;
 use zeenmr_spectrum::intensity_array::{ArrayView1D, index};
 use zeenmr_util::StableGrid;
@@ -229,10 +229,6 @@ pub struct ThreePointModel<'s, T, P, S> {
     support: S,
     /// Fitting grid.
     grid: StableGrid<T>,
-    /// Scaling from grid coordinates to chemical shifts.
-    shift_scale: T,
-    /// Shift from grid coordinates to chemical shifts.
-    shift_offset: T,
     /// Ranges in the spectrum to ignore during fitting.
     ignore: Vec<Range<usize>>,
 }
@@ -255,23 +251,12 @@ where
         Ok(())
     }
 
-    fn extract(mut self) -> Vec<P> {
-        let mut peak_shapes = std::mem::take(&mut self.peak_shapes);
-        let inverse = self.inverse_transform();
-        peak_shapes.iter_mut().for_each(inverse);
-
-        peak_shapes
+    fn extract(self) -> FittedComponents<T, P> {
+        FittedComponents::new(self.peak_shapes, self.grid)
     }
 
     fn peak_shapes(&self) -> &[P] {
         &self.peak_shapes
-    }
-
-    fn inverse_transform(&self) -> impl Fn(&mut P) {
-        let offset = self.shift_offset;
-        let scale = self.shift_scale;
-
-        move |p: &mut P| p.grid_transform(offset, scale)
     }
 
     fn apply_metric<M>(&self, metric: M, cache: &IntermediateCache<T>) -> T
@@ -349,20 +334,7 @@ where
         peaks: &[Peak],
         ignore: &[Range<usize>],
     ) -> Self {
-        let len = spectrum.len();
-        let shift_range = spectrum
-            .axis(DimIndex(0))
-            .map(|axis| axis.shift_range())
-            .expect("1D spectrum always has a first dimension");
-        let grid = StableGrid::new(len);
-        let shift_offset = shift_range.start();
-        let shift_scale = if len > 1 {
-            let last = T::from(len - 1).expect("conversion from usize to T must never fail");
-
-            (shift_range.end() - shift_offset) / (last * grid.step())
-        } else {
-            T::one()
-        };
+        let grid = StableGrid::new(spectrum.len());
         let reduced = ReducedSpectrum::new(spectrum.view(), peaks);
         let support = P::Support::from(DefaultSupport {
             width: grid.step(),
@@ -382,8 +354,6 @@ where
             superposition,
             support,
             grid,
-            shift_scale,
-            shift_offset,
             ignore: ignore.to_vec(),
         };
         model.prune();
@@ -404,11 +374,6 @@ where
     /// Returns the fitting grid.
     pub fn grid(&self) -> StableGrid<T> {
         self.grid
-    }
-
-    /// Returns `(offset, scale)` to transform grid values into chemical shifts.
-    pub fn shift_transform(&self) -> (T, T) {
-        (self.shift_offset, self.shift_scale)
     }
 
     /// Prunes the model components if the associated peak shape is degenerate.
@@ -576,7 +541,7 @@ where
         _: ArrayView1D<T>,
         peaks: &[Peak],
         ignore: &[Range<usize>],
-    ) -> Result<Vec<P>, Self::Error> {
+    ) -> Result<FittedComponents<T, P>, Self::Error> {
         let noise = self.noise_finder.noise_level(spectrum.view());
         let mut model = ThreePointModel::new(spectrum, noise, peaks, ignore);
         model.step_n(self.iterations)?;
@@ -624,7 +589,7 @@ where
         _: ArrayView1D<T>,
         peaks: &[Peak],
         ignore: &[Range<usize>],
-    ) -> Result<Vec<P>, Self::Error> {
+    ) -> Result<FittedComponents<T, P>, Self::Error> {
         let noise = self.noise_finder.noise_level(spectrum.view());
         let mut model = ThreePointModel::new(spectrum, noise, peaks, ignore);
         model.par_step_n(self.iterations)?;
