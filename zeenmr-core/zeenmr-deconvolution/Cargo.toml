@@ -5,7 +5,7 @@ authors = ["Maximilian Sombke <sombkemaximilian@gmail.com>"]
 edition = "2024"
 rust-version = "1.85.0"
 description = """
-    Data structures for representing and manipulating NMR peak shapes.
+    Data structures and algorithms for the deconvolution of NMR spectra into their components.
 """
 readme = "README.md"
 repository = "https://github.com/SombkeMaximilian/zeenmr"
