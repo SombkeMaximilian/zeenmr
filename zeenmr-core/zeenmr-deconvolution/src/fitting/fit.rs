@@ -196,10 +196,12 @@ where
 
     /// Returns the current peak shapes of the model.
     ///
-    /// Note that positions and widths may have been transformed.
-    /// [`FitModel::inverse_transform`] provides a way to transform them back
-    /// to chemical shift space.
+    /// Note that positions and widths may have been transformed. Use
+    /// [`FitModel::fitting_grid`] to generate points with the correct scaling.
     fn peak_shapes(&self) -> &[P];
+
+    /// Returns `(offset, step)` for generating points on the fitting grid.
+    fn fitting_grid(&self) -> (T, T);
 
     /// Applies an evaluation metric to the current peak shapes.
     fn apply_metric<M>(&self, metric: M, cache: &IntermediateCache<T>) -> T

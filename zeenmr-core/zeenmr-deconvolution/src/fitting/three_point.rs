@@ -259,6 +259,10 @@ where
         &self.peak_shapes
     }
 
+    fn fitting_grid(&self) -> (T, T) {
+        (T::zero(), self.grid.step())
+    }
+
     fn apply_metric<M>(&self, metric: M, cache: &IntermediateCache<T>) -> T
     where
         M: Metric,
