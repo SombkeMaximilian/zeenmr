@@ -25,7 +25,10 @@ pub trait Deconvolute<T, P> {
     /// Deconvolutes the provided `Spectrum` into its constituent signals.
     ///
     /// Each signal is modeled as a peak shape.
-    fn deconvolute(&self, spectrum: SpectrumView1D<T, T>) -> Result<Deconvolution<P>, Self::Error>;
+    fn deconvolute<'s>(
+        &self,
+        spectrum: SpectrumView1D<'s, T, T>,
+    ) -> Result<Deconvolution<'s, T, P>, Self::Error>;
 }
 
 /// Trait for deconvoluting a spectrum into its constituent signals in
@@ -41,25 +44,28 @@ pub trait ParDeconvolute<T, P> {
     /// parallel.
     ///
     /// Each signal is modeled as a peak shape.
-    fn par_deconvolute(
+    fn par_deconvolute<'s>(
         &self,
-        spectrum: SpectrumView1D<T, T>,
-    ) -> Result<Deconvolution<P>, Self::Error>;
+        spectrum: SpectrumView1D<'s, T, T>,
+    ) -> Result<Deconvolution<'s, T, P>, Self::Error>;
 }
 
 /// Extension trait for iterators of spectrum types to deconvolute each item
 /// using a provided deconvoluter.
-pub trait DeconvoluteMap<T, P>: Iterator {
+pub trait DeconvoluteMap<'s, T, P>: Iterator
+where
+    T: 's,
+{
     /// Applies the provided deconvoluter to each item in the iterator.
     fn deconvolute<D>(
         self,
         deconvoluter: &D,
-    ) -> impl Iterator<Item = Result<Deconvolution<P>, D::Error>>
+    ) -> impl Iterator<Item = Result<Deconvolution<'s, T, P>, D::Error>>
     where
         D: Deconvolute<T, P>;
 }
 
-impl<'s, T, I, P> DeconvoluteMap<T, P> for I
+impl<'s, T, I, P> DeconvoluteMap<'s, T, P> for I
 where
     T: 's,
     I: Iterator<Item = SpectrumView1D<'s, T, T>>,
@@ -68,7 +74,7 @@ where
     fn deconvolute<D>(
         self,
         deconvoluter: &D,
-    ) -> impl Iterator<Item = Result<Deconvolution<P>, D::Error>>
+    ) -> impl Iterator<Item = Result<Deconvolution<'s, T, P>, D::Error>>
     where
         D: Deconvolute<T, P>,
     {
@@ -79,20 +85,23 @@ where
 /// Extension trait for iterators of spectrum types to deconvolute each item
 /// using a provided parallelized deconvoluter.
 #[cfg(feature = "rayon")]
-pub trait ParDeconvoluteMap<T, P>: IndexedParallelIterator {
+pub trait ParDeconvoluteMap<'s, T, P>: IndexedParallelIterator
+where
+    T: 's,
+{
     /// Applies the provided parallelized deconvoluter to each item in the
     /// iterator.
     fn deconvolute<D>(
         self,
         deconvoluter: &D,
-    ) -> impl IndexedParallelIterator<Item = Result<Deconvolution<P>, D::Error>>
+    ) -> impl IndexedParallelIterator<Item = Result<Deconvolution<'s, T, P>, D::Error>>
     where
         D: ParDeconvolute<T, P> + Send + Sync,
         D::Error: Send;
 }
 
 #[cfg(feature = "rayon")]
-impl<'s, T, I, P> ParDeconvoluteMap<T, P> for I
+impl<'s, T, I, P> ParDeconvoluteMap<'s, T, P> for I
 where
     T: Send + Sync + 's,
     I: IndexedParallelIterator<Item = SpectrumView1D<'s, T, T>>,
@@ -101,7 +110,7 @@ where
     fn deconvolute<D>(
         self,
         deconvoluter: &D,
-    ) -> impl IndexedParallelIterator<Item = Result<Deconvolution<P>, D::Error>>
+    ) -> impl IndexedParallelIterator<Item = Result<Deconvolution<'s, T, P>, D::Error>>
     where
         D: ParDeconvolute<T, P> + Send + Sync,
         D::Error: Send,
@@ -151,7 +160,10 @@ where
 {
     type Error = Error<C1::Error, C2::Error, C3::Error>;
 
-    fn deconvolute(&self, spectrum: SpectrumView1D<T, T>) -> Result<Deconvolution<P>, Self::Error> {
+    fn deconvolute<'s>(
+        &self,
+        spectrum: SpectrumView1D<'s, T, T>,
+    ) -> Result<Deconvolution<'s, T, P>, Self::Error> {
         let len = spectrum.len();
         let len_as_t = T::from(len).expect("conversion from usize to T must never fail");
         let axis = spectrum
@@ -177,13 +189,12 @@ where
             .finder
             .find(spectrum.view(), smoothed.view(), &ignore)
             .map_err(Error::finding)?;
-        let peak_shapes = self
+        let components = self
             .fitter
             .fit(spectrum.view(), smoothed.view(), &peaks, &ignore)
-            .map_err(Error::fitting)?
-            .into_shift_space(axis.axis());
+            .map_err(Error::fitting)?;
 
-        Ok(Deconvolution::new(peak_shapes))
+        Ok(Deconvolution::new(spectrum, components))
     }
 }
 
@@ -198,10 +209,10 @@ where
 {
     type Error = Error<C1::Error, C2::Error, C3::Error>;
 
-    fn par_deconvolute(
+    fn par_deconvolute<'s>(
         &self,
-        spectrum: SpectrumView1D<T, T>,
-    ) -> Result<Deconvolution<P>, Self::Error> {
+        spectrum: SpectrumView1D<'s, T, T>,
+    ) -> Result<Deconvolution<'s, T, P>, Self::Error> {
         let len = spectrum.len();
         let len_as_t = T::from(len).expect("conversion from usize to T must never fail");
         let axis = spectrum
@@ -227,13 +238,12 @@ where
             .finder
             .find(spectrum.view(), smoothed.view(), &ignore)
             .map_err(Error::finding)?;
-        let peak_shapes = self
+        let components = self
             .fitter
             .par_fit(spectrum.view(), smoothed.view(), &peaks, &ignore)
-            .map_err(Error::fitting)?
-            .into_shift_space(axis.axis());
+            .map_err(Error::fitting)?;
 
-        Ok(Deconvolution::new(peak_shapes))
+        Ok(Deconvolution::new(spectrum, components))
     }
 }
 
