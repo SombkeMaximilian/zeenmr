@@ -19,8 +19,6 @@ use crate::intensity_array::iter::{ParArrayElem, ParArrayElemMut, ParLanes, ParL
 use crate::iter::Par;
 
 #[cfg(feature = "serde")]
-use crate::intensity_array::iter::StridedIterKind;
-#[cfg(feature = "serde")]
 use serde::de::Error;
 #[cfg(feature = "serde")]
 use serde::ser::SerializeStruct;
@@ -184,17 +182,17 @@ pub type ArrayRcDyn<T> = Array<Rc<[T]>, DynDim<usize>>;
 pub type ArrayArc<T, D> = Array<Arc<[T]>, D>;
 
 /// Array of rank 1 using atomic reference counted storage.
-pub type ArrayArc1D<T> = Array<Rc<[T]>, StaticDim<usize, 1>>;
+pub type ArrayArc1D<T> = Array<Arc<[T]>, StaticDim<usize, 1>>;
 
 /// Array of rank 2 using atomic reference counted storage.
-pub type ArrayArc2D<T> = Array<Rc<[T]>, StaticDim<usize, 2>>;
+pub type ArrayArc2D<T> = Array<Arc<[T]>, StaticDim<usize, 2>>;
 
 /// Array of rank 3 using atomic reference counted storage.
-pub type ArrayArc3D<T> = Array<Rc<[T]>, StaticDim<usize, 3>>;
+pub type ArrayArc3D<T> = Array<Arc<[T]>, StaticDim<usize, 3>>;
 
 /// Array of a rank determined at runtime using atomic reference counted
 /// storage.
-pub type ArrayArcDyn<T> = Array<Rc<[T]>, DynDim<usize>>;
+pub type ArrayArcDyn<T> = Array<Arc<[T]>, DynDim<usize>>;
 
 /// Array type with arbitrary dimensions.
 #[derive(Clone, Debug)]
@@ -1505,10 +1503,10 @@ where
             .elem_with_order(&order)
             .expect("memory order has the rank of self")
         {
-            StridedIterKind::Strided(iter) => {
+            ArrayElem::Strided(iter) => {
                 array.serialize_field("data", &SerializeIter::new(iter))?;
             }
-            StridedIterKind::Contiguous(iter) => {
+            ArrayElem::Contiguous(iter) => {
                 array.serialize_field("data", &SerializeIter::new(iter))?;
             }
         }
