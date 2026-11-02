@@ -62,7 +62,7 @@ where
 
     /// Returns the deconvoluted peak shapes in fitting grid space.
     pub fn peak_shapes(&self) -> &[P] {
-        &self.components.peak_shapes()
+        self.components.peak_shapes()
     }
 
     /// Returns the fitting grid.
