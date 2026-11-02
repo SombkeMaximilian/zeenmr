@@ -1238,6 +1238,10 @@ where
 
         let geometry = self.layout.lane_at(dim, index)?;
 
+        if !geometry.is_injective() {
+            return None;
+        }
+
         // SAFETY: `RawStorageMut` guarantees the base pointer is non-null and
         // aligned, and the type invariant guarantees every offset the layout
         // addresses is valid. The returned lane borrows `self` mutably, so no
@@ -2605,6 +2609,15 @@ mod tests {
         for dim in (0..array.rank()).map(DimIndex) {
             assert!(array.lanes_memory_order_mut(dim).is_none());
             assert!(array.lanes_memory_order_mut(dim).is_none());
+        }
+
+        for index in array
+            .shape()
+            .indices_lexicographic()
+            .expect("hand verified")
+            .filter(|index| index.get(DimIndex(0)) == Some(0))
+        {
+            assert!(array.lane_at_mut(DimIndex(0), &index).is_none());
         }
     }
 
