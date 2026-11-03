@@ -28,7 +28,10 @@ name = "_zeenmr"
 crate-type = ["cdylib"]
 
 [dependencies]
+zeenmr = { workspace = true, features = ["rayon", "serde"] }
 pyo3 = { version = "0.30.1", features = ["extension-module"] }
+numpy = { version = "0.30.0" }
+num-complex = { workspace = true }
 
 [lints]
 workspace = true
