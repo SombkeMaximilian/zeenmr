@@ -1,3 +1,6 @@
+#![warn(missing_docs)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 //! Build script utilities for the ZeeNMR library.
 
 mod cpu_cache;

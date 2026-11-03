@@ -1,3 +1,6 @@
+#![warn(missing_docs)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 //! Contains shared utilities of the core components of the ZeeNMR library.
 
 mod fma;
