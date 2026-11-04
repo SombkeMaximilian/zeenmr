@@ -704,6 +704,26 @@ where
         Some(self)
     }
 
+    /// Returns the array with its extent along `dim` restricted to 1 at
+    /// `index`.
+    ///
+    /// For owned storage, this clones the entire buffer. Acquiring a view via
+    /// [`Array::view`] or [`Array::slice_view`] and calling this method on the
+    /// result avoids the clone. This operation can also be performed in place
+    /// through [`Array::restrict`].
+    ///
+    /// Returns `None` if `dim` is out of range, or if `index` is not less
+    /// than the extent along `dim`.
+    pub fn restricted(&self, dim: DimIndex, index: usize) -> Option<Self>
+    where
+        Self: Clone,
+    {
+        let mut array = self.clone();
+        array.restrict(dim, index)?;
+
+        Some(array)
+    }
+
     /// Restricts the extent along `dim` to `range`.
     ///
     /// Returns `None` if `dim` is out of range, or if `range` is empty or not
@@ -715,6 +735,26 @@ where
         self.layout.crop(dim, range)?;
 
         Some(self)
+    }
+
+    /// Returns the array with its extent along `dim` restricted to `range`.
+    ///
+    /// For owned storage, this clones the entire buffer. Acquiring a view via
+    /// [`Array::view`] or [`Array::slice_view`] and calling this method on the
+    /// result avoids the clone. This operation can also be performed in place
+    /// with [`Array::crop`].
+    ///
+    /// Returns `None` if `dim` is out of range, or if `range` is empty or not
+    /// contained in `0..extent`.
+    pub fn cropped<R>(&self, dim: DimIndex, range: R) -> Option<Self>
+    where
+        R: RangeBounds<usize>,
+        Self: Clone,
+    {
+        let mut array = self.clone();
+        array.crop(dim, range)?;
+
+        Some(array)
     }
 
     /// Reorders the dimensions according to `order`.
@@ -732,6 +772,92 @@ where
         self.layout.permute(order)?;
 
         Some(self)
+    }
+
+    /// Returns the array with its dimensions reordered according to `order`.
+    ///
+    /// For owned storage, this clones the entire buffer. Acquiring a view via
+    /// [`Array::view`] or [`Array::slice_view`] and calling this method on the
+    /// result avoids the clone. This operation can also be performed in place
+    /// with [`Array::permute`].
+    ///
+    /// Dimension `i` of the result is dimension `order[i]` of `self`, for both
+    /// extents and strides. Permuting by [`Layout::memory_order`] yields the
+    /// layout whose lexicographic traversal is the most sequential one.
+    ///
+    /// Returns `None` if `order` has a different rank than `self`.
+    pub fn permuted<D2>(&self, order: &DimOrder<D2>) -> Option<Self>
+    where
+        D2: Dimension<Elem = usize>,
+        Self: Clone,
+    {
+        let mut array = self.clone();
+        array.permute(order)?;
+
+        Some(array)
+    }
+
+    /// Returns the array with dimensions of extent 1 dropped.
+    ///
+    /// For owned storage, this clones the entire buffer. Converting the array
+    /// to a dynamic one with [`Array::into_dyn`], and then calling
+    /// [`Array::drop_unit_extents`] on the result will avoid the clone.
+    /// Alternatively, acquiring a view via [`Array::view`] or
+    /// [`Array::slice_view`] and calling this method on the result also avoids
+    /// the clone.
+    ///
+    /// [`Array::drop_unit_extents`]: ArrayDyn::drop_unit_extents
+    ///
+    /// The rank of the array reduces by the number of dropped dimensions.
+    /// Every other property of the array remains unchanged.
+    ///
+    /// Note that any `DimIndex` created prior to this method call potentially
+    /// becomes meaningless.
+    pub fn unit_extents_dropped(&self) -> Array<S, DynDim<usize>>
+    where
+        Self: Clone,
+    {
+        let mut array = self.clone().into_dyn();
+        array.drop_unit_extents();
+
+        array
+    }
+
+    /// Returns the array with its layout permuted into `order` with adjacent
+    /// conforming dimensions collapsed.
+    ///
+    /// For owned storage, this clones the entire buffer. Acquiring a view via
+    /// [`Array::view`] or [`Array::slice_view`] and calling this method on the
+    /// result avoids the clone. This operation can also be performed in place
+    /// with [`Array::collapse_layout`] by first converting `self` to a dynamic
+    /// rank with [`Array::into_dyn`].
+    ///
+    /// [`Array::collapse_layout`]: ArrayDyn::collapse_layout
+    ///
+    /// Dimension `i` of the intermediate is dimension `order[i]` of `self`,
+    /// as in [`Layout::permuted`], filtering out any of extent 1. A trailing
+    /// sequence of dimensions is collapsed whenever the stride of the dimension
+    /// earlier in the order equals the product of the extent and stride of the
+    /// later one.
+    ///
+    /// The result always has a rank of at least 1. Its last dimension is always
+    /// a valid lane dimension. That dimension is the longest sequence `order`
+    /// admits, and its lanes are contiguous exactly when the fastest non-unit
+    /// dimension of `self` under `order` has stride 1.
+    ///
+    /// Note that any `DimIndex` created prior to this method call potentially
+    /// becomes meaningless.
+    ///
+    /// Returns `None` if `order` has a different rank than `self`.
+    pub fn layout_collapsed<D2>(&self, order: &DimOrder<D2>) -> Option<Array<S, DynDim<usize>>>
+    where
+        D2: Dimension<Elem = usize>,
+        Self: Clone,
+    {
+        let mut array = self.clone().into_dyn();
+        array.collapse_layout(order)?;
+
+        Some(array)
     }
 
     /// Returns a reference to the element at `index`.
@@ -939,130 +1065,6 @@ where
         self.layout.collapse_compatible(order)?;
 
         Some(self)
-    }
-}
-
-impl<S, D> Array<S, D>
-where
-    S: RawStorage,
-    D: Dimension<Elem = usize>,
-    Array<S, D>: Clone,
-{
-    /// Returns the array with dimensions of extent 1 dropped.
-    ///
-    /// For owned storage, this clones the entire buffer. Converting the array
-    /// to a dynamic one with [`Array::into_dyn`], and then calling
-    /// [`Array::drop_unit_extents`] on the result will avoid the clone.
-    /// Alternatively, acquiring a view via [`Array::view`] or
-    /// [`Array::slice_view`] and calling this method on the result also avoids
-    /// the clone.
-    ///
-    /// [`Array::drop_unit_extents`]: ArrayDyn::drop_unit_extents
-    ///
-    /// The rank of the array reduces by the number of dropped dimensions.
-    /// Every other property of the array remains unchanged.
-    ///
-    /// Note that any `DimIndex` created prior to this method call potentially
-    /// becomes meaningless.
-    pub fn unit_extents_dropped(&self) -> Array<S, DynDim<usize>> {
-        let mut array = self.clone().into_dyn();
-        array.drop_unit_extents();
-
-        array
-    }
-
-    /// Returns the array with its extent along `dim` restricted to 1 at
-    /// `index`.
-    ///
-    /// For owned storage, this clones the entire buffer. Acquiring a view via
-    /// [`Array::view`] or [`Array::slice_view`] and calling this method on the
-    /// result avoids the clone. This operation can also be performed in place
-    /// through [`Array::restrict`].
-    ///
-    /// Returns `None` if `dim` is out of range, or if `index` is not less
-    /// than the extent along `dim`.
-    pub fn restricted(&self, dim: DimIndex, index: usize) -> Option<Self> {
-        let mut array = self.clone();
-        array.restrict(dim, index)?;
-
-        Some(array)
-    }
-
-    /// Returns the array with its extent along `dim` restricted to `range`.
-    ///
-    /// For owned storage, this clones the entire buffer. Acquiring a view via
-    /// [`Array::view`] or [`Array::slice_view`] and calling this method on the
-    /// result avoids the clone. This operation can also be performed in place
-    /// with [`Array::crop`].
-    ///
-    /// Returns `None` if `dim` is out of range, or if `range` is empty or not
-    /// contained in `0..extent`.
-    pub fn cropped<R>(&self, dim: DimIndex, range: R) -> Option<Self>
-    where
-        R: RangeBounds<usize>,
-    {
-        let mut array = self.clone();
-        array.crop(dim, range)?;
-
-        Some(array)
-    }
-
-    /// Returns the array with its dimensions reordered according to `order`.
-    ///
-    /// For owned storage, this clones the entire buffer. Acquiring a view via
-    /// [`Array::view`] or [`Array::slice_view`] and calling this method on the
-    /// result avoids the clone. This operation can also be performed in place
-    /// with [`Array::permute`].
-    ///
-    /// Dimension `i` of the result is dimension `order[i]` of `self`, for both
-    /// extents and strides. Permuting by [`Layout::memory_order`] yields the
-    /// layout whose lexicographic traversal is the most sequential one.
-    ///
-    /// Returns `None` if `order` has a different rank than `self`.
-    pub fn permuted<D2>(&self, order: &DimOrder<D2>) -> Option<Self>
-    where
-        D2: Dimension<Elem = usize>,
-    {
-        let mut array = self.clone();
-        array.permute(order)?;
-
-        Some(array)
-    }
-
-    /// Returns the array with its layout permuted into `order` with adjacent
-    /// conforming dimensions collapsed.
-    ///
-    /// For owned storage, this clones the entire buffer. Acquiring a view via
-    /// [`Array::view`] or [`Array::slice_view`] and calling this method on the
-    /// result avoids the clone. This operation can also be performed in place
-    /// with [`Array::collapse_layout`] by first converting `self` to a dynamic
-    /// rank with [`Array::into_dyn`].
-    ///
-    /// [`Array::collapse_layout`]: ArrayDyn::collapse_layout
-    ///
-    /// Dimension `i` of the intermediate is dimension `order[i]` of `self`,
-    /// as in [`Layout::permuted`], filtering out any of extent 1. A trailing
-    /// sequence of dimensions is collapsed whenever the stride of the dimension
-    /// earlier in the order equals the product of the extent and stride of the
-    /// later one.
-    ///
-    /// The result always has a rank of at least 1. Its last dimension is always
-    /// a valid lane dimension. That dimension is the longest sequence `order`
-    /// admits, and its lanes are contiguous exactly when the fastest non-unit
-    /// dimension of `self` under `order` has stride 1.
-    ///
-    /// Note that any `DimIndex` created prior to this method call potentially
-    /// becomes meaningless.
-    ///
-    /// Returns `None` if `order` has a different rank than `self`.
-    pub fn layout_collapsed<D2>(&self, order: &DimOrder<D2>) -> Option<Array<S, DynDim<usize>>>
-    where
-        D2: Dimension<Elem = usize>,
-    {
-        let mut array = self.clone().into_dyn();
-        array.collapse_layout(order)?;
-
-        Some(array)
     }
 }
 
