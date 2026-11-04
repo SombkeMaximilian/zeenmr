@@ -3,6 +3,10 @@
 
 //! Python bindings for the ZeeNMR project.
 
+#[macro_use]
+mod data_type;
+pub use data_type::DataType;
+
 mod array;
 pub use array::BoundaryArray;
 

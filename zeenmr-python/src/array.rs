@@ -1,5 +1,5 @@
-use num_complex::{Complex32, Complex64};
-use numpy::{Element, PyReadonlyArrayDyn, PyUntypedArrayMethods};
+use crate::DataType;
+use numpy::{PyReadonlyArrayDyn, PyUntypedArrayMethods};
 use pyo3::exceptions::PyValueError;
 use pyo3::intern;
 use pyo3::prelude::*;
@@ -9,40 +9,17 @@ use zeenmr::spectrum::intensity_array::{
     ArrayOwned, ArrayOwnedDyn, ArrayViewDyn, RawStorage, shape,
 };
 
-/// Element type that can be stored in an [`ArrayDispatch`] and exchanged with
-/// NumPy.
-trait ArrayElement: Element + Clone {
-    /// Rust type name, reported by `Array.data_type`.
-    const TYPE_STR: &'static str;
-
-    /// NumPy array interface `typestr`, e.g. `"<f8"`.
-    const NUMPY_STR: &'static str;
-}
-
 /// Defines the array dispatch enum and helper macros.
 ///
 /// Takes any number of `Variant(Type) = "typestr"`. `typestr` is the NumPy
-/// type ID string. For each entry it generates:
-///
-/// - an [`ArrayElement`] impl for `Type`,
-/// - a variant of [`ArrayDispatch`] wrapping `ArrayOwnedDyn<Type>`, with a
-///   matching `From` impl,
-/// - an arm in [`ArrayDispatch::type_str`],
-/// - an arm in the `array_dispatch!` and `py_any_dispatch!` helper macros.
+/// type ID string. For each entry it generates: a variant of [`ArrayDispatch`]
+/// wrapping `ArrayOwnedDyn<Type>`, accompanied by `From` impl, and an arm in
+/// the `array_dispatch!` and `py_any_dispatch!` helper macros.
 macro_rules! define_array_dispatch {
-    ($($V:ident($T:ty) = $T_str:expr),* $(,)?) => {
-        $(
-            impl ArrayElement for $T {
-                const TYPE_STR: &'static str = stringify!($T);
-                const NUMPY_STR: &'static str = $T_str;
-            }
-        )*
-
+    ($($V:ident($T:ty) = $_:expr),* $(,)?) => {
         /// Type-erased owned array.
         ///
-        /// Holds an [`ArrayOwnedDyn`] of one of the supported element types,
-        /// so a single Python-facing class can wrap arrays of any supported
-        /// element type.
+        /// Holds an [`ArrayOwnedDyn`] of one of the supported data types.
         #[derive(Clone, PartialEq, Debug)]
         #[allow(missing_docs)]
         enum ArrayDispatch {
@@ -58,7 +35,7 @@ macro_rules! define_array_dispatch {
         )*
 
         impl ArrayDispatch {
-            /// Returns the Rust name of the element (e.g. `"f64"`, `"u8"`).
+            /// Returns the Rust name of the data type (e.g. `"f64"`, `"u8"`).
             fn type_str(&self) -> &'static str {
                 match self {
                     $(Self::$V(_) => <$T>::TYPE_STR,)*
@@ -70,7 +47,7 @@ macro_rules! define_array_dispatch {
         /// to `$array` and evaluating `$body` for each.
         ///
         /// `$body` is expanded once per variant, so it must compile for every
-        /// element type and evaluate to the same type in each.
+        /// data type and evaluate to the same type in each.
         macro_rules! array_dispatch {
             ($dispatch:expr, $array:ident => $body:expr) => {
                 match $dispatch {
@@ -80,7 +57,7 @@ macro_rules! define_array_dispatch {
         }
 
         /// Extracts an arbitrary Python object as a NumPy array of any
-        /// supported element type, binding the resulting [`PyReadonlyArrayDyn`]
+        /// supported data type, binding the resulting [`PyReadonlyArrayDyn`]
         /// to `$array` and evaluating `$body`.
         ///
         /// Element types are tried in declaration order and the first
@@ -96,32 +73,19 @@ macro_rules! define_array_dispatch {
                     } else
                 )*
                 {
-                    Err(PyValueError::new_err("expected a numpy array of a supported element type"))
+                    Err(PyValueError::new_err("expected a numpy array of a supported data type"))
                 }
             }};
         }
     };
 }
 
-define_array_dispatch!(
-    U8(u8) = "<u1",
-    U16(u16) = "<u2",
-    U32(u32) = "<u4",
-    U64(u64) = "<u8",
-    I8(i8) = "<i1",
-    I16(i16) = "<i2",
-    I32(i32) = "<i4",
-    I64(i64) = "<i8",
-    F32(f32) = "<f4",
-    F64(f64) = "<f8",
-    C32(Complex32) = "<c8",
-    C64(Complex64) = "<c16",
-);
+with_data_types!(define_array_dispatch);
 
 impl ArrayDispatch {
     /// Converts a Python object into an `ArrayDispatch` by copying its data.
     ///
-    /// The object must be a NumPy array of a supported element type; see
+    /// The object must be a NumPy array of a supported data type; see
     /// [`py_any_dispatch!`]. Returns a `ValueError` if the dtype is unsupported
     /// or the array is empty or its shape overflows (see [`import`]).
     fn from_object(object: &Bound<'_, PyAny>) -> PyResult<Self> {
@@ -133,20 +97,20 @@ impl ArrayDispatch {
 ///
 /// This type is the boundary between Python and Rust. Algorithms in `zeenmr`
 /// operate on this type, while everything on the Python side uses the NumPy
-/// interface. Construct one from any NumPy array of a supported element type
+/// interface. Construct one from any NumPy array of a supported data type
 /// with `Array(obj)`, and convert back with `numpy.asarray(array)`.
 ///
 /// Construction copies the data, while returning NumPy views does not.
 #[pyclass(name = "Array", module = "zeenmr", eq)]
 #[derive(Clone, PartialEq, Debug)]
 pub struct BoundaryArray {
-    /// Type-erased storage holding the array data and its element type.
+    /// Type-erased storage holding the array data and its data type.
     dispatch: ArrayDispatch,
 }
 
 #[pymethods]
 impl BoundaryArray {
-    /// Creates an array from a NumPy array of a supported element type, copying
+    /// Creates an array from a NumPy array of a supported data type, copying
     /// the data.
     #[new]
     pub fn new(object: &Bound<'_, PyAny>) -> PyResult<Self> {
@@ -167,7 +131,7 @@ impl BoundaryArray {
         array_dispatch!(&self.dispatch, array => array.rank())
     }
 
-    /// The element type as a Rust type name (e.g., `"f64"`, `"u8"`).
+    /// The data type as a Rust type name (e.g., `"f64"`, `"u8"`).
     #[getter]
     pub fn data_type(&self) -> &str {
         self.dispatch.type_str()
@@ -279,7 +243,7 @@ impl BoundaryArray {
 /// Returns a `ValueError` if the array is empty or its shape overflows.
 fn import<T>(array: PyReadonlyArrayDyn<'_, T>) -> PyResult<ArrayOwnedDyn<T>>
 where
-    T: ArrayElement,
+    T: DataType,
 {
     let shape = shape(array.shape());
     let data = match array.as_slice() {
@@ -300,7 +264,7 @@ where
 /// tuple fails.
 fn export<'py, 's, T>(py: Python<'py>, array: ArrayViewDyn<'s, T>) -> PyResult<Bound<'py, PyDict>>
 where
-    T: ArrayElement,
+    T: DataType,
 {
     let (storage, layout) = array.into_parts();
     let shape = layout.shape().as_slice().iter();
