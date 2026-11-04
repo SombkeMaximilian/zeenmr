@@ -355,14 +355,6 @@ impl<'s, T> RawAccess<'s, T> {
         }
     }
 
-    /// Returns an access pointer of the same storage borrowing `self`.
-    pub(crate) fn reborrow(&self) -> RawAccess<'_, T> {
-        Self {
-            ptr: self.ptr,
-            lifetime: PhantomData,
-        }
-    }
-
     /// Returns the base pointer of the allocation.
     pub(crate) fn as_ptr(&self) -> *const T {
         self.ptr.as_ptr()
@@ -524,11 +516,6 @@ impl<'s, T> Access<'s, T> {
     pub unsafe fn from_raw(base: *const T) -> Self {
         // SAFETY: the caller guarantees that `base` is non-null and aligned.
         Self(unsafe { RawAccess::from_raw(base) })
-    }
-
-    /// Returns an access pointer of the same storage borrowing `self`.
-    pub fn reborrow(&mut self) -> Access<'_, T> {
-        Access(self.0.reborrow())
     }
 }
 
