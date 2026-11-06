@@ -213,6 +213,16 @@ pub struct Spectrum<A, S, D> {
     intensities: Array<S, D>,
 }
 
+impl<A1, A2, S1, S2, D1, D2> PartialEq<Spectrum<A2, S2, D2>> for Spectrum<A1, S1, D1>
+where
+    Axes<A1>: PartialEq<Axes<A2>>,
+    Array<S1, D1>: PartialEq<Array<S2, D2>>,
+{
+    fn eq(&self, other: &Spectrum<A2, S2, D2>) -> bool {
+        self.axes.eq(&other.axes) && self.intensities.eq(&other.intensities)
+    }
+}
+
 impl<A, S, D> Spectrum<A, S, D>
 where
     D: Dimension<Elem = usize>,

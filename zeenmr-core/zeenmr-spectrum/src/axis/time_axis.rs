@@ -34,6 +34,9 @@ pub struct TimeAxis<T> {
     dwell: T,
 }
 
+// we banished NaNs so this is okay as per Rust's Eq docs.
+impl<T> Eq for TimeAxis<T> where T: Float {}
+
 impl<T> Axis for TimeAxis<T> {
     type Discrete<'a>
         = DiscreteTimeAxis<'a, T>

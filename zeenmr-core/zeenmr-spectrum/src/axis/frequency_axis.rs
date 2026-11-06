@@ -176,6 +176,16 @@ where
         Self::new(T::zero(), freq)
     }
 
+    /// Returns the chemical shift.
+    pub fn shift(&self) -> T {
+        self.shift
+    }
+
+    /// Returns the frequency anchor.
+    pub fn freq(&self) -> T {
+        self.freq
+    }
+
     /// Returns the offset to apply to chemical shift values.
     ///
     /// Returns `None` if the calculation below produces a non-finite offset.
@@ -278,6 +288,9 @@ pub struct FrequencyAxis<T> {
     /// Chemical shift reference.
     reference: ShiftReference<T>,
 }
+
+// we banished NaNs so this is okay as per Rust's Eq docs.
+impl<T> Eq for FrequencyAxis<T> where T: Float {}
 
 impl<T> Axis for FrequencyAxis<T> {
     type Discrete<'a>
