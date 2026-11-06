@@ -149,10 +149,9 @@ where
     ///
     /// Maps the provided frequency to the provided chemical shift.
     ///
-    /// Returns `None` if either input is `NaN` or one of the infinities, or if
-    /// `frequency` is negative.
+    /// Returns `None` if either input is `NaN` or one of the infinities.
     pub fn new(shift: T, freq: T) -> Option<Self> {
-        if !(shift.is_finite() && freq.is_finite() && freq >= T::zero()) {
+        if !(shift.is_finite() && freq.is_finite()) {
             return None;
         }
 
@@ -172,8 +171,7 @@ where
     ///
     /// Maps the provided frequency to zero on the chemical shift scale.
     ///
-    /// Returns `None` if `frequency` is negative, `NaN`, or one of the
-    /// infinities.
+    /// Returns `None` if `frequency` is `NaN` or one of the infinities.
     pub fn from_freq(freq: T) -> Option<Self> {
         Self::new(T::zero(), freq)
     }
