@@ -7,6 +7,9 @@
 mod data_type;
 pub use data_type::DataType;
 
+mod axis;
+pub use axis::{BoundaryFrequencyAxis, BoundaryShiftReference};
+
 mod array;
 pub use array::BoundaryArray;
 
@@ -27,5 +30,5 @@ mod _zeenmr {
     }
 
     #[pymodule_export]
-    use crate::BoundaryArray;
+    use crate::{BoundaryArray, BoundaryFrequencyAxis, BoundaryShiftReference};
 }
