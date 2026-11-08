@@ -1,9 +1,9 @@
-use crate::DataType;
+use crate::{DataType, Reduce, into_reduce};
 use numpy::{PyReadonlyArrayDyn, PyUntypedArrayMethods};
 use pyo3::exceptions::PyValueError;
 use pyo3::intern;
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyIterator, PyTuple, PyType};
+use pyo3::types::{PyDict, PyIterator, PyTuple};
 use std::fmt::Write;
 use zeenmr::spectrum::intensity_array::{
     ArrayOwned, ArrayOwnedDyn, ArrayViewDyn, RawStorage, shape,
@@ -93,6 +93,9 @@ impl ArrayDispatch {
     }
 }
 
+/// Constructor arguments.
+type ArrayArgs<'py> = (Bound<'py, PyAny>,);
+
 /// Array type used internally by the library's algorithms.
 ///
 /// This type is the boundary between Python and Rust. Algorithms in `zeenmr`
@@ -133,7 +136,7 @@ impl BoundaryArray {
 
     /// The data type as a Rust type name (e.g., `"f64"`, `"u8"`).
     #[getter]
-    pub fn data_type(&self) -> &str {
+    pub fn data_type(&self) -> &'static str {
         self.dispatch.type_str()
     }
 
@@ -229,10 +232,8 @@ impl BoundaryArray {
 
     /// Supports pickling and copying by reconstructing the array from its
     /// NumPy data.
-    pub fn __reduce__<'py>(
-        slf: &Bound<'py, Self>,
-    ) -> PyResult<(Bound<'py, PyType>, (Bound<'py, PyAny>,))> {
-        Ok((slf.get_type(), (Self::data(slf)?,)))
+    pub fn __reduce__<'py>(slf: &Bound<'py, Self>) -> Reduce<'py, ArrayArgs<'py>> {
+        into_reduce(slf.get_type(), (Self::data(slf)?,))
     }
 }
 

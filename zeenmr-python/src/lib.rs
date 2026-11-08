@@ -7,6 +7,9 @@
 mod data_type;
 pub use data_type::DataType;
 
+mod reduce;
+pub use reduce::{Reduce, into_reduce};
+
 mod axis;
 pub use axis::{BoundaryFrequencyAxis, BoundaryShiftReference};
 

@@ -1,6 +1,7 @@
+use crate::{Reduce, into_reduce};
+use num_traits::{AsPrimitive, Float};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyTuple, PyType};
 use zeenmr::spectrum::axis::range::{FiniteBounds, FrequencyRange};
 use zeenmr::spectrum::axis::{FrequencyAxis, Larmor, ShiftReference};
 
@@ -13,6 +14,33 @@ enum ShiftReferenceDispatch {
     F32(ShiftReference<f32>),
     F64(ShiftReference<f64>),
 }
+
+/// Matches on a [`ShiftReferenceDispatch`], binding the inner
+/// [`ShiftReference`] to `$reference` and evaluating `$body` for each.
+///
+/// `$body` is expanded once per variant, so it must compile for every
+/// data type and evaluate to the same type in each.
+macro_rules! shift_reference_dispatch {
+    ($dispatch:expr, $reference:ident => $body:expr) => {
+        match $dispatch {
+            ShiftReferenceDispatch::F32($reference) => $body,
+            ShiftReferenceDispatch::F64($reference) => $body,
+        }
+    };
+}
+
+/// Converts a chemical shift reference from one float type to another.
+fn convert_shift_reference<T1, T2>(reference: ShiftReference<T1>) -> PyResult<ShiftReference<T2>>
+where
+    T1: Float + AsPrimitive<T2>,
+    T2: Float + 'static,
+{
+    ShiftReference::new(reference.shift().as_(), reference.freq().as_())
+        .ok_or_else(|| PyValueError::new_err("values must not saturate to +-inf during conversion"))
+}
+
+/// Constructor arguments.
+type ShiftReferenceArgs<'py> = (f64, f64, &'static str);
 
 /// Chemical shift reference for spectral frequency axes.
 ///
@@ -46,39 +74,46 @@ impl BoundaryShiftReference {
     ///
     /// Anchors `shift` ppm to `freq` Hz.
     #[new]
-    pub fn new(shift: f64, freq: f64) -> PyResult<Self> {
-        ShiftReference::new(shift, freq)
-            .ok_or_else(|| PyValueError::new_err("values must not be NaN or one of the infinities"))
-            .map(Into::into)
+    #[pyo3(signature = (shift, freq, data_type="f64"))]
+    pub fn new(shift: f64, freq: f64, data_type: &str) -> PyResult<Self> {
+        let err = || PyValueError::new_err("values must be finite in the data type");
+
+        match data_type {
+            "f32" => ShiftReference::new(shift as f32, freq as f32)
+                .ok_or_else(err)
+                .map(Into::into),
+            "f64" => ShiftReference::new(shift, freq)
+                .ok_or_else(err)
+                .map(Into::into),
+            _ => Err(PyValueError::new_err("data_type must be 'f32' or 'f64'")),
+        }
     }
 
     /// Creates a chemical shift reference from a chemical shift.
     ///
     /// Anchors `shift` to 0 Hz.
     #[staticmethod]
-    pub fn from_shift(shift: f64) -> PyResult<Self> {
-        Self::new(shift, 0_f64)
+    #[pyo3(signature = (shift, data_type="f64"))]
+    pub fn from_shift(shift: f64, data_type: &str) -> PyResult<Self> {
+        Self::new(shift, 0_f64, data_type)
     }
 
     /// Creates a chemical shift reference from a frequency.
     ///
     /// Anchors 0 ppm to `freq` Hz.
     #[staticmethod]
-    pub fn from_freq(freq: f64) -> PyResult<Self> {
-        Self::new(0_f64, freq)
+    #[pyo3(signature = (freq, data_type="f64"))]
+    pub fn from_freq(freq: f64, data_type: &str) -> PyResult<Self> {
+        Self::new(0_f64, freq, data_type)
     }
 
     /// Returns a copy of the chemical shift reference using `f32` as the data
     /// type.
     pub fn to_f32(&self) -> PyResult<Self> {
-        match &self.dispatch {
-            ShiftReferenceDispatch::F32(inner) => Ok((*inner).into()),
+        match self.dispatch {
+            ShiftReferenceDispatch::F32(inner) => Ok(inner.into()),
             ShiftReferenceDispatch::F64(inner) => {
-                ShiftReference::new(inner.shift() as f32, inner.freq() as f32)
-                    .ok_or_else(|| {
-                        PyValueError::new_err("values must not saturate to +-inf during conversion")
-                    })
-                    .map(Into::into)
+                convert_shift_reference::<_, f32>(inner).map(Into::into)
             }
         }
     }
@@ -86,37 +121,29 @@ impl BoundaryShiftReference {
     /// Returns a copy of the chemical shift reference using `f64` as the data
     /// type.
     pub fn to_f64(&self) -> Self {
-        match &self.dispatch {
-            ShiftReferenceDispatch::F32(inner) => {
-                ShiftReference::new(inner.shift() as f64, inner.freq() as f64)
-                    .expect("valid f32 values cannot saturate f64")
-                    .into()
-            }
-            ShiftReferenceDispatch::F64(inner) => (*inner).into(),
+        match self.dispatch {
+            ShiftReferenceDispatch::F32(inner) => convert_shift_reference::<_, f64>(inner)
+                .expect("valid f32 values cannot saturate f64")
+                .into(),
+            ShiftReferenceDispatch::F64(inner) => inner.into(),
         }
     }
 
     /// The chemical shift of this reference.
     #[getter]
     pub fn shift(&self) -> f64 {
-        match self.dispatch {
-            ShiftReferenceDispatch::F32(inner) => inner.shift() as f64,
-            ShiftReferenceDispatch::F64(inner) => inner.shift(),
-        }
+        shift_reference_dispatch!(self.dispatch, inner => inner.shift().as_())
     }
 
     /// The frequency this reference anchors its chemical shift to.
     #[getter]
     pub fn freq(&self) -> f64 {
-        match self.dispatch {
-            ShiftReferenceDispatch::F32(inner) => inner.freq() as f64,
-            ShiftReferenceDispatch::F64(inner) => inner.freq(),
-        }
+        shift_reference_dispatch!(self.dispatch, inner => inner.freq().as_())
     }
 
     /// The data type as a Rust type name (`"f32"` or `"f64"`).
     #[getter]
-    pub fn data_type(&self) -> &str {
+    pub fn data_type(&self) -> &'static str {
         match self.dispatch {
             ShiftReferenceDispatch::F32(_) => "f32",
             ShiftReferenceDispatch::F64(_) => "f64",
@@ -126,18 +153,13 @@ impl BoundaryShiftReference {
     /// Sets the chemical shift of this reference.
     #[setter]
     pub fn set_shift(&mut self, shift: f64) -> PyResult<()> {
-        *self = match self.dispatch {
-            ShiftReferenceDispatch::F32(inner) => ShiftReference::new(shift as f32, inner.freq())
-                .ok_or_else(|| {
-                    PyValueError::new_err("shift must not be NaN or one of the infinities")
-                })?
-                .into(),
-            ShiftReferenceDispatch::F64(inner) => ShiftReference::new(shift, inner.freq())
-                .ok_or_else(|| {
-                    PyValueError::new_err("shift must not be NaN or one of the infinities")
-                })?
-                .into(),
-        };
+        let err = || PyValueError::new_err("shift must be finite");
+
+        *self = shift_reference_dispatch!(self.dispatch, inner => {
+            ShiftReference::new(shift.as_(), inner.freq())
+                .ok_or_else(err)?
+                .into()
+        });
 
         Ok(())
     }
@@ -145,18 +167,13 @@ impl BoundaryShiftReference {
     /// Sets the frequency this reference anchors its chemical shift to.
     #[setter]
     pub fn set_freq(&mut self, freq: f64) -> PyResult<()> {
-        *self = match self.dispatch {
-            ShiftReferenceDispatch::F32(inner) => ShiftReference::new(inner.shift(), freq as f32)
-                .ok_or_else(|| {
-                    PyValueError::new_err("freq must not be NaN or one of the infinities")
-                })?
-                .into(),
-            ShiftReferenceDispatch::F64(inner) => ShiftReference::new(inner.shift(), freq)
-                .ok_or_else(|| {
-                    PyValueError::new_err("freq must not be NaN or one of the infinities")
-                })?
-                .into(),
-        };
+        let err = || PyValueError::new_err("freq must be finite");
+
+        *self = shift_reference_dispatch!(self.dispatch, inner => {
+            ShiftReference::new(inner.shift(), freq.as_())
+                .ok_or_else(err)?
+                .into()
+        });
 
         Ok(())
     }
@@ -165,32 +182,22 @@ impl BoundaryShiftReference {
     ///
     /// For example, `ShiftReference(0 ppm at 3000 Hz, type='f64')`
     pub fn __repr__(&self) -> String {
-        let (shift, freq) = match self.dispatch {
-            ShiftReferenceDispatch::F32(inner) => (inner.shift() as f64, inner.freq() as f64),
-            ShiftReferenceDispatch::F64(inner) => (inner.shift(), inner.freq()),
-        };
-
-        format!(
-            "ShiftReference({} ppm at {} Hz, type = {})",
-            shift,
-            freq,
-            self.data_type()
-        )
+        shift_reference_dispatch!(self.dispatch, inner => format!(
+            "ShiftReference({} ppm at {} Hz, type='{}')",
+            inner.shift(),
+            inner.freq(),
+            self.data_type(),
+        ))
     }
 
     /// Supports pickling and copying.
-    pub fn __reduce__<'py>(
-        slf: &Bound<'py, Self>,
-    ) -> PyResult<(Bound<'py, PyType>, (Bound<'py, PyAny>,))> {
-        let shift_reference = *(slf.borrow());
+    pub fn __reduce__<'py>(slf: &Bound<'py, Self>) -> Reduce<'py, ShiftReferenceArgs<'py>> {
+        let reference = *(slf.borrow());
 
-        Ok((
+        into_reduce(
             slf.get_type(),
-            (
-                PyTuple::new(slf.py(), [shift_reference.shift(), shift_reference.freq()])?
-                    .into_any(),
-            ),
-        ))
+            (reference.shift(), reference.freq(), reference.data_type()),
+        )
     }
 }
 
@@ -203,6 +210,52 @@ enum FrequencyAxisDispatch {
     F32(FrequencyAxis<f32>),
     F64(FrequencyAxis<f64>),
 }
+
+/// Matches on a [`FrequencyAxisDispatch`], binding the inner
+/// [`FrequencyAxis`] to `$axis` and evaluating `$body` for each.
+///
+/// `$body` is expanded once per variant, so it must compile for every
+/// data type and evaluate to the same type in each.
+macro_rules! frequency_axis_dispatch {
+    ($dispatch:expr, $axis:ident => $body:expr) => {
+        match $dispatch {
+            FrequencyAxisDispatch::F32($axis) => $body,
+            FrequencyAxisDispatch::F64($axis) => $body,
+        }
+    };
+}
+
+/// Converts a frequency axis from one float type to another.
+fn convert_frequency_axis<T1, T2>(axis: FrequencyAxis<T1>) -> PyResult<FrequencyAxis<T2>>
+where
+    T1: Float + AsPrimitive<T2>,
+    T2: Float + 'static,
+{
+    let range = FrequencyRange::new(
+        axis.freq_range().start().as_(),
+        axis.freq_range().end().as_(),
+    )
+    .ok_or_else(|| {
+        PyValueError::new_err("range bounds must not saturate to +-inf during conversion")
+    })?;
+    let larmor = Larmor::new(axis.larmor().get().as_()).ok_or_else(|| {
+        PyValueError::new_err("larmor must not saturate to +-inf during conversion")
+    })?;
+    let shift_reference = convert_shift_reference::<_, T2>(axis.reference())?;
+
+    FrequencyAxis::new(range, larmor, shift_reference)
+        .ok_or_else(|| PyValueError::new_err(
+            "larmor is incompatible with the reference, or frequency range bounds map to non-finite chemical shifts"
+        ))
+}
+
+/// Constructor arguments.
+type FrequencyAxisArgs<'py> = (
+    (f64, f64),
+    f64,
+    Bound<'py, BoundaryShiftReference>,
+    &'static str,
+);
 
 /// Spectral frequency axis.
 ///
@@ -232,129 +285,101 @@ impl From<FrequencyAxis<f64>> for BoundaryFrequencyAxis {
     }
 }
 
+impl BoundaryFrequencyAxis {
+    /// Creates a type-erased frequency axis using `T` as its data type.
+    fn new_with_static_type<T>(
+        range: (f64, f64),
+        larmor: f64,
+        reference: ShiftReferenceDispatch,
+    ) -> PyResult<Self>
+    where
+        T: Float + 'static,
+        f32: AsPrimitive<T>,
+        f64: AsPrimitive<T>,
+        FrequencyAxis<T>: Into<BoundaryFrequencyAxis>,
+    {
+        let range = FrequencyRange::new(range.0.as_(), range.1.as_())
+            .ok_or_else(|| PyValueError::new_err("range bounds must be finite"))?;
+        let larmor = Larmor::new(larmor.as_()).ok_or_else(|| {
+            PyValueError::new_err("larmor must not be zero, NaN, or one of the infinities")
+        })?;
+        let reference = shift_reference_dispatch!(
+            reference,
+            inner => convert_shift_reference::<_, T>(inner)?
+        );
+
+        FrequencyAxis::new(range, larmor, reference)
+            .ok_or_else(|| PyValueError::new_err(
+                "larmor is incompatible with the reference, or frequency range bounds map to non-finite chemical shifts"
+            ))
+            .map(Into::into)
+    }
+}
+
 #[pymethods]
 impl BoundaryFrequencyAxis {
     /// Creates a frequency axis from a frequency range, larmor frequency, and
     /// chemical shift reference.
     #[new]
+    #[pyo3(signature = (range, larmor, reference, data_type="f64"))]
     pub fn new<'py>(
         range: (f64, f64),
         larmor: f64,
         reference: &Bound<'py, BoundaryShiftReference>,
+        data_type: &str,
     ) -> PyResult<Self> {
-        let range = FrequencyRange::new(range.0, range.1).ok_or_else(|| {
-            PyValueError::new_err("range bounds must not be NaN or one of the infinities")
-        })?;
-        let larmor = Larmor::new(larmor).ok_or_else(|| {
-            PyValueError::new_err("larmor must not be zero, NaN, or one of the infinities")
-        })?;
-        let reference = match reference.borrow().to_f64().dispatch {
-            ShiftReferenceDispatch::F32(_) => unreachable!(),
-            ShiftReferenceDispatch::F64(inner) => inner,
-        };
+        let reference = reference.borrow().dispatch;
 
-        FrequencyAxis::new(range, larmor, reference).ok_or_else(|| {
-            PyValueError::new_err("larmor is incompatible with the reference, or frequency range bounds map to non-finite chemical shifts")
-        })
-        .map(Into::into)
+        match data_type {
+            "f32" => Self::new_with_static_type::<f32>(range, larmor, reference),
+            "f64" => Self::new_with_static_type::<f64>(range, larmor, reference),
+            _ => Err(PyValueError::new_err("data_type must be 'f32' or 'f64'")),
+        }
     }
 
     /// Returns a copy of the frequency axis using `f32` as the data type.
     pub fn to_f32(&self) -> PyResult<Self> {
-        match &self.dispatch {
-            FrequencyAxisDispatch::F32(inner) => Ok((*inner).into()),
+        match self.dispatch {
+            FrequencyAxisDispatch::F32(inner) => Ok(inner.into()),
             FrequencyAxisDispatch::F64(inner) => {
-                let range = FrequencyRange::new(
-                    inner.freq_range().start() as f32,
-                    inner.freq_range().end() as f32,
-                )
-                .ok_or_else(|| {
-                    PyValueError::new_err(
-                        "range bounds must not saturate to +-inf during conversion",
-                    )
-                })?;
-                let larmor = Larmor::new(inner.larmor().get() as f32).ok_or_else(|| {
-                    PyValueError::new_err("larmor must not saturate to +-inf during conversion")
-                })?;
-                let shift_reference = ShiftReference::new(
-                    inner.reference().shift() as f32,
-                    inner.reference().freq() as f32,
-                )
-                .ok_or_else(|| {
-                    PyValueError::new_err(
-                        "shift reference must not saturate to +-inf during conversion",
-                    )
-                })?;
-
-                FrequencyAxis::new(range, larmor, shift_reference)
-                    .ok_or_else(|| PyValueError::new_err(
-                        "larmor is incompatible with the reference, or frequency range bounds map to non-finite chemical shifts"
-                    ))
-                    .map(Into::into)
+                convert_frequency_axis::<_, f32>(inner).map(Into::into)
             }
         }
     }
 
     /// Returns a copy of the frequency axis using `f64` as the data type.
     pub fn to_f64(&self) -> Self {
-        match &self.dispatch {
-            FrequencyAxisDispatch::F32(inner) => {
-                let range = FrequencyRange::new(
-                    inner.freq_range().start() as f64,
-                    inner.freq_range().end() as f64,
-                )
-                .expect("valid f32 values cannot saturate f64");
-                let larmor = Larmor::new(inner.larmor().get() as f64)
-                    .expect("valid f32 values cannot saturate f64");
-                let shift_reference = ShiftReference::new(
-                    inner.reference().shift() as f64,
-                    inner.reference().freq() as f64,
-                )
-                .expect("valid f32 values cannot saturate f64");
-
-                FrequencyAxis::new(range, larmor, shift_reference)
-                    .expect("valid f32 values cannot saturate f64")
-                    .into()
-            }
-            FrequencyAxisDispatch::F64(inner) => (*inner).into(),
+        match self.dispatch {
+            FrequencyAxisDispatch::F32(inner) => convert_frequency_axis::<_, f64>(inner)
+                .expect("valid f32 values cannot saturate f64")
+                .into(),
+            FrequencyAxisDispatch::F64(inner) => inner.into(),
         }
     }
 
     /// The frequency range of this axis.
     #[getter]
     pub fn range(&self) -> (f64, f64) {
-        match self.dispatch {
-            FrequencyAxisDispatch::F32(inner) => (
-                inner.freq_range().start() as f64,
-                inner.freq_range().end() as f64,
-            ),
-            FrequencyAxisDispatch::F64(inner) => {
-                (inner.freq_range().start(), inner.freq_range().end())
-            }
-        }
+        frequency_axis_dispatch!(self.dispatch, inner => {
+            (inner.freq_range().start().as_(), inner.freq_range().end().as_())
+        })
     }
 
     /// The larmor frequency of this axis.
     #[getter]
     pub fn larmor(&self) -> f64 {
-        match self.dispatch {
-            FrequencyAxisDispatch::F32(inner) => inner.larmor().get() as f64,
-            FrequencyAxisDispatch::F64(inner) => inner.larmor().get(),
-        }
+        frequency_axis_dispatch!(self.dispatch, inner => inner.larmor().get().as_())
     }
 
     /// The chemical shift reference of this axis.
     #[getter]
     pub fn shift_reference(&self) -> BoundaryShiftReference {
-        match self.dispatch {
-            FrequencyAxisDispatch::F32(inner) => inner.reference().into(),
-            FrequencyAxisDispatch::F64(inner) => inner.reference().into(),
-        }
+        frequency_axis_dispatch!(self.dispatch, inner => inner.reference().into())
     }
 
     /// The data type as a Rust type name (`"f32"` or `"f64"`).
     #[getter]
-    pub fn data_type(&self) -> &str {
+    pub fn data_type(&self) -> &'static str {
         match self.dispatch {
             FrequencyAxisDispatch::F32(_) => "f32",
             FrequencyAxisDispatch::F64(_) => "f64",
@@ -367,44 +392,18 @@ impl BoundaryFrequencyAxis {
         &mut self,
         reference: &Bound<'py, BoundaryShiftReference>,
     ) -> PyResult<()> {
-        *self = match (self.dispatch, reference.borrow().dispatch) {
-            (FrequencyAxisDispatch::F32(axis), ShiftReferenceDispatch::F32(reference)) => {
-                axis.with_reference(reference)
-                    .ok_or_else(|| PyValueError::new_err(
-                        "larmor is incompatible with the reference, or frequency range bounds map to non-finite chemical shifts"
-                    ))?
-                    .into()
-            },
-            (FrequencyAxisDispatch::F32(axis), ShiftReferenceDispatch::F64(reference)) => {
-                axis.with_reference(
-                    ShiftReference::new(reference.shift() as f32, reference.freq() as f32)
-                        .ok_or_else(|| PyValueError::new_err(
-                        "shift reference must not saturate to +-inf during conversion"
-                        ))?
-                )
+        *self = frequency_axis_dispatch!(self.dispatch, axis => {
+            let reference = shift_reference_dispatch!(
+                reference.borrow().dispatch,
+                inner => convert_shift_reference(inner)?
+            );
+
+            axis.with_reference(reference)
                 .ok_or_else(|| PyValueError::new_err(
                     "larmor is incompatible with the reference, or frequency range bounds map to non-finite chemical shifts"
                 ))?
                 .into()
-            },
-            (FrequencyAxisDispatch::F64(axis), ShiftReferenceDispatch::F32(reference)) => {
-                axis.with_reference(ShiftReference::new(
-                    reference.shift() as f64,
-                    reference.shift() as f64,
-                ).expect("valid f32 values cannot saturate f64"))
-                    .ok_or_else(|| PyValueError::new_err(
-                        "larmor is incompatible with the reference, or frequency range bounds map to non-finite chemical shifts"
-                    ))?
-                    .into()
-            },
-            (FrequencyAxisDispatch::F64(axis), ShiftReferenceDispatch::F64(reference)) => {
-                axis.with_reference(reference)
-                    .ok_or_else(|| PyValueError::new_err(
-                        "larmor is incompatible with the reference, or frequency range bounds map to non-finite chemical shifts"
-                    ))?
-                    .into()
-            },
-        };
+        });
 
         Ok(())
     }
@@ -418,38 +417,31 @@ impl BoundaryFrequencyAxis {
     ///               reference=(0 ppm at 3000 Hz), type='f64')
     /// ```
     pub fn __repr__(&self) -> String {
-        let (start, end) = self.range();
-        let larmor = self.larmor();
-        let (shift, freq) = match self.shift_reference().dispatch {
-            ShiftReferenceDispatch::F32(inner) => (inner.shift() as f64, inner.freq() as f64),
-            ShiftReferenceDispatch::F64(inner) => (inner.shift(), inner.freq()),
-        };
+        frequency_axis_dispatch!(self.dispatch, axis => {
+            let range = axis.freq_range();
+            let larmor = axis.larmor().get();
+            let reference = axis.reference();
 
-        format!(
-            "FrequencyAxis(range=({} Hz, {} Hz), larmor={} MHz, reference=({} ppm at {} Hz), type={})",
-            start,
-            end,
-            larmor,
-            shift,
-            freq,
-            self.data_type()
-        )
+            format!(
+                "FrequencyAxis(range=({} Hz, {} Hz), larmor={} MHz, reference=({} ppm at {} Hz), type='{}')",
+                range.start(),
+                range.end(),
+                larmor,
+                reference.shift(),
+                reference.freq(),
+                self.data_type(),
+            )
+        })
     }
 
     /// Supports pickling and copying.
-    pub fn __reduce__<'py>(
-        slf: &Bound<'py, Self>,
-    ) -> PyResult<(Bound<'py, PyType>, (Bound<'py, PyAny>,))> {
-        let (start, end) = slf.borrow().range();
-        let larmor = slf.borrow().larmor();
-        let (shift, freq) = match slf.borrow().shift_reference().dispatch {
-            ShiftReferenceDispatch::F32(inner) => (inner.shift() as f64, inner.freq() as f64),
-            ShiftReferenceDispatch::F64(inner) => (inner.shift(), inner.freq()),
-        };
+    pub fn __reduce__<'py>(slf: &Bound<'py, Self>) -> Reduce<'py, FrequencyAxisArgs<'py>> {
+        let axis = slf.borrow();
+        let reference = Bound::new(slf.py(), axis.shift_reference())?;
 
-        Ok((
+        into_reduce(
             slf.get_type(),
-            (PyTuple::new(slf.py(), [start, end, larmor, shift, freq])?.into_any(),),
-        ))
+            (axis.range(), axis.larmor(), reference, axis.data_type()),
+        )
     }
 }
