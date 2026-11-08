@@ -1,8 +1,33 @@
 import numpy as np
 
-from typing import Any, Iterator
+from typing import Any, ClassVar, Iterator, final
 
 __version__: str
+
+
+@final
+class DataType:
+    U8: ClassVar[DataType]
+    U16: ClassVar[DataType]
+    U32: ClassVar[DataType]
+    U64: ClassVar[DataType]
+    I8: ClassVar[DataType]
+    I16: ClassVar[DataType]
+    I32: ClassVar[DataType]
+    I64: ClassVar[DataType]
+    F32: ClassVar[DataType]
+    F64: ClassVar[DataType]
+    C32: ClassVar[DataType]
+    C64: ClassVar[DataType]
+    DEFAULT: ClassVar[DataType]
+
+    @property
+    def type_str(self) -> str:
+        ...
+
+    @property
+    def numpy_str(self) -> str:
+        ...
 
 
 class ShiftReference:

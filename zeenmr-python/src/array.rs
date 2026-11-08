@@ -16,7 +16,7 @@ use zeenmr::spectrum::intensity_array::{
 /// wrapping `ArrayOwnedDyn<Type>`, accompanied by `From` impl, and an arm in
 /// the `array_dispatch!` and `py_any_dispatch!` helper macros.
 macro_rules! define_array_dispatch {
-    ($($V:ident($T:ty) = $_:expr),* $(,)?) => {
+    ($($V:ident($T:ty)),* $(,)?) => {
         /// Type-erased owned array.
         ///
         /// Holds an [`ArrayOwnedDyn`] of one of the supported data types.

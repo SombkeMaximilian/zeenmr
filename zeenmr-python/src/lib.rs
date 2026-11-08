@@ -5,7 +5,7 @@
 
 #[macro_use]
 mod data_type;
-pub use data_type::DataType;
+pub use data_type::{BoundaryDataType, DataType, c32, c64};
 
 mod reduce;
 pub use reduce::{Reduce, into_reduce};
@@ -33,5 +33,5 @@ mod _zeenmr {
     }
 
     #[pymodule_export]
-    use crate::{BoundaryArray, BoundaryFrequencyAxis, BoundaryShiftReference};
+    use crate::{BoundaryArray, BoundaryDataType, BoundaryFrequencyAxis, BoundaryShiftReference};
 }

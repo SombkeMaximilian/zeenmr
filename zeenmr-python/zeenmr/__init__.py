@@ -1,5 +1,6 @@
 from ._zeenmr import (
     Array,
+    DataType,
     FrequencyAxis,
     ShiftReference,
     __version__,
@@ -8,6 +9,7 @@ from ._zeenmr import (
 __all__ = [
     "__version__",
     "Array",
+    "DataType",
     "FrequencyAxis",
     "ShiftReference",
 ]
