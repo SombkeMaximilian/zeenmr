@@ -92,6 +92,9 @@ with_data_types!(define_boundary_data_type);
 /// Type string using Rust-like names or NumPy `typestr` if `NUMPY` is `true`.
 ///
 /// `KIND` should be either `b'u'`, `b'i'`, `b'f'`, or `b'c'`, where `'c'` is
+/// special-cased to only consider how many bytes the complex parts contain
+/// individually. That is, e.g., `c64` takes up 16 bytes (8 for the real, 8 for
+/// the imaginary part).
 const fn type_str<const KIND: u8, const BYTES: usize, const NUMPY: bool>() -> &'static str {
     if BYTES == 0 {
         panic!("ZST not supported");
