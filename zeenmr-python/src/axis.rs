@@ -48,9 +48,7 @@ impl BoundaryShiftReference {
     #[new]
     pub fn new(shift: f64, freq: f64) -> PyResult<Self> {
         ShiftReference::new(shift, freq)
-            .ok_or_else(|| {
-                PyValueError::new_err("values must not be NaN or one of the infinities")
-            })
+            .ok_or_else(|| PyValueError::new_err("values must not be NaN or one of the infinities"))
             .map(Into::into)
     }
 
@@ -429,12 +427,19 @@ impl BoundaryFrequencyAxis {
 
         format!(
             "FrequencyAxis(range=({} Hz, {} Hz), larmor={} MHz, reference=({} ppm at {} Hz), type={})",
-            start, end, larmor, shift, freq, self.data_type()
+            start,
+            end,
+            larmor,
+            shift,
+            freq,
+            self.data_type()
         )
     }
 
     /// Supports pickling and copying.
-    pub fn __reduce__<'py>(slf: &Bound<'py, Self>) -> PyResult<(Bound<'py, PyType>, (Bound<'py, PyAny>,))> {
+    pub fn __reduce__<'py>(
+        slf: &Bound<'py, Self>,
+    ) -> PyResult<(Bound<'py, PyType>, (Bound<'py, PyAny>,))> {
         let (start, end) = slf.borrow().range();
         let larmor = slf.borrow().larmor();
         let (shift, freq) = match slf.borrow().shift_reference().dispatch {
@@ -444,10 +449,7 @@ impl BoundaryFrequencyAxis {
 
         Ok((
             slf.get_type(),
-            (
-                PyTuple::new(slf.py(), [start, end, larmor, shift, freq])?
-                    .into_any(),
-            )
+            (PyTuple::new(slf.py(), [start, end, larmor, shift, freq])?.into_any(),),
         ))
     }
 }
