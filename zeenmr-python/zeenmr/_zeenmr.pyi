@@ -1,6 +1,6 @@
 import numpy as np
 
-from typing import Any, ClassVar, Iterator, final
+from typing import Any, ClassVar, Iterator, List, final
 
 __version__: str
 
@@ -112,19 +112,19 @@ class Array:
         ...
 
     @property
-    def shape(self) -> tuple[int, ...]:
-        ...
-
-    @property
     def rank(self) -> int:
         ...
 
     @property
-    def data_type(self) -> DataType:
+    def shape(self) -> tuple[int, ...]:
         ...
 
     @property
     def data(self) -> np.ndarray:
+        ...
+
+    @property
+    def data_type(self) -> DataType:
         ...
 
     def layout(self) -> dict:
@@ -150,6 +150,42 @@ class Array:
         ...
 
     def __reduce__(self):
+        ...
+
+    def __eq__(self, other):
+        ...
+
+
+class Spectrum:
+    def __init__(self, axes: List[FrequencyAxis], intensities: Array) -> None:
+        ...
+
+    def rank(self) -> int:
+        ...
+
+    def shape(self) -> tuple[int, ...]:
+        ...
+
+    def axes(self) -> list[FrequencyAxis]:
+        ...
+
+    def intensities(self) -> np.ndarray:
+        ...
+
+    def data_type(self) -> tuple[DataType, DataType]:
+        ...
+
+    @property
+    def __array_interface__(self):
+        ...
+
+    def __array__(self):
+        ...
+
+    def __len__(self):
+        ...
+
+    def __repr__(self):
         ...
 
     def __eq__(self, other):

@@ -10,7 +10,7 @@ use zeenmr::spectrum::axis::{FrequencyAxis, Larmor, ShiftReference};
 /// Holds a [`ShiftReference`] of one of the floating point data types.
 #[derive(Copy, Clone, PartialEq, Debug)]
 #[allow(missing_docs)]
-enum ShiftReferenceDispatch {
+pub(crate) enum ShiftReferenceDispatch {
     F32(ShiftReference<f32>),
     F64(ShiftReference<f64>),
 }
@@ -23,8 +23,8 @@ enum ShiftReferenceDispatch {
 macro_rules! shift_reference_dispatch {
     ($dispatch:expr, $reference:ident => $body:expr) => {
         match $dispatch {
-            ShiftReferenceDispatch::F32($reference) => $body,
-            ShiftReferenceDispatch::F64($reference) => $body,
+            $crate::axis::ShiftReferenceDispatch::F32($reference) => $body,
+            $crate::axis::ShiftReferenceDispatch::F64($reference) => $body,
         }
     };
 }
@@ -72,6 +72,10 @@ impl FromPyObject<'_, '_> for BoundaryShiftReference {
     type Error = PyErr;
 
     fn extract(object: Borrowed<'_, '_, PyAny>) -> Result<Self, Self::Error> {
+        if let Ok(reference) = object.cast::<Self>() {
+            return Ok(*reference.borrow());
+        }
+
         let data_type = object
             .getattr("data_type")?
             .extract::<BoundaryDataType>()
@@ -101,6 +105,20 @@ impl FromPyObject<'_, '_> for BoundaryShiftReference {
             }
             _ => unreachable!(),
         }
+    }
+}
+
+impl BoundaryShiftReference {
+    /// Returns the inner chemical shift reference, converting it to `f32` if
+    /// needed.
+    pub fn to_inner_f32(&self) -> PyResult<ShiftReference<f32>> {
+        shift_reference_dispatch!(self.dispatch, inner => convert_shift_reference::<_, f32>(inner))
+    }
+
+    /// Returns the inner chemical shift reference, converting it to `f64` if
+    /// needed.
+    pub fn to_inner_f64(&self) -> PyResult<ShiftReference<f64>> {
+        shift_reference_dispatch!(self.dispatch, inner => convert_shift_reference::<_, f64>(inner))
     }
 }
 
@@ -177,7 +195,7 @@ impl BoundaryShiftReference {
         shift_reference_dispatch!(self.dispatch, inner => inner.freq().as_())
     }
 
-    /// The data type as a Rust type name (`"f32"` or `"f64"`).
+    /// The data type (`"f32"` or `"f64"`).
     #[getter]
     pub fn data_type(&self) -> BoundaryDataType {
         match self.dispatch {
@@ -242,7 +260,7 @@ impl BoundaryShiftReference {
 /// Holds a [`FrequencyAxis`] of one of the floating point data types.
 #[derive(Copy, Clone, PartialEq, Debug)]
 #[allow(missing_docs)]
-enum FrequencyAxisDispatch {
+pub(crate) enum FrequencyAxisDispatch {
     F32(FrequencyAxis<f32>),
     F64(FrequencyAxis<f64>),
 }
@@ -255,8 +273,8 @@ enum FrequencyAxisDispatch {
 macro_rules! frequency_axis_dispatch {
     ($dispatch:expr, $axis:ident => $body:expr) => {
         match $dispatch {
-            FrequencyAxisDispatch::F32($axis) => $body,
-            FrequencyAxisDispatch::F64($axis) => $body,
+            $crate::axis::FrequencyAxisDispatch::F32($axis) => $body,
+            $crate::axis::FrequencyAxisDispatch::F64($axis) => $body,
         }
     };
 }
@@ -325,6 +343,10 @@ impl FromPyObject<'_, '_> for BoundaryFrequencyAxis {
     type Error = PyErr;
 
     fn extract(object: Borrowed<'_, '_, PyAny>) -> Result<Self, Self::Error> {
+        if let Ok(axis) = object.cast::<Self>() {
+            return Ok(*axis.borrow());
+        }
+
         let range = object.getattr("range")?.extract::<(f64, f64)>()?;
         let larmor = object.getattr("larmor")?.extract::<f64>()?;
         let reference = object
@@ -379,6 +401,16 @@ impl BoundaryFrequencyAxis {
                 "larmor is incompatible with the reference, or frequency range bounds map to non-finite chemical shifts"
             ))
             .map(Into::into)
+    }
+
+    /// Returns the inner frequency axis, converting it to `f32` if needed.
+    pub fn to_inner_f32(&self) -> PyResult<FrequencyAxis<f32>> {
+        frequency_axis_dispatch!(self.dispatch, inner => convert_frequency_axis::<_, f32>(inner))
+    }
+
+    /// Returns the inner frequency axis, converting it to `f64` if needed.
+    pub fn to_inner_f64(&self) -> PyResult<FrequencyAxis<f64>> {
+        frequency_axis_dispatch!(self.dispatch, inner => convert_frequency_axis::<_, f64>(inner))
     }
 }
 
@@ -443,7 +475,7 @@ impl BoundaryFrequencyAxis {
         frequency_axis_dispatch!(self.dispatch, inner => inner.reference().into())
     }
 
-    /// The data type as a Rust type name (`"f32"` or `"f64"`).
+    /// The data type (`"f32"` or `"f64"`).
     #[getter]
     pub fn data_type(&self) -> BoundaryDataType {
         match self.dispatch {

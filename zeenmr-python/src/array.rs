@@ -22,7 +22,7 @@ macro_rules! define_array_dispatch {
         /// Holds an [`ArrayOwnedDyn`] of one of the supported data types.
         #[derive(Clone, PartialEq, Debug)]
         #[allow(missing_docs)]
-        enum ArrayDispatch {
+        pub(crate) enum ArrayDispatch {
             $($V(ArrayOwnedDyn<$T>),)*
         }
 
@@ -36,7 +36,7 @@ macro_rules! define_array_dispatch {
 
         impl ArrayDispatch {
             /// Returns the data type.
-            fn data_type(&self) -> BoundaryDataType {
+            pub(crate) fn data_type(&self) -> BoundaryDataType {
                 match self {
                     $(Self::$V(_) => BoundaryDataType::$V,)*
                 }
@@ -51,7 +51,7 @@ macro_rules! define_array_dispatch {
         macro_rules! array_dispatch {
             ($dispatch:expr, $array:ident => $body:expr) => {
                 match $dispatch {
-                    $(ArrayDispatch::$V($array) => $body,)*
+                    $($crate::array::ArrayDispatch::$V($array) => $body,)*
                 }
             };
         }
@@ -68,12 +68,14 @@ macro_rules! define_array_dispatch {
                 let object = $object;
 
                 $(
-                    if let Ok($array) = object.extract::<PyReadonlyArrayDyn<$T>>() {
+                    if let Ok($array) = object.extract::<numpy::PyReadonlyArrayDyn<$T>>() {
                         $body
                     } else
                 )*
                 {
-                    Err(PyValueError::new_err("expected a numpy array of a supported data type"))
+                    Err(pyo3::exceptions::PyValueError::new_err(
+                        "expected a numpy array of a supported data type"
+                    ))
                 }
             }};
         }
@@ -108,7 +110,7 @@ type ArrayArgs<'py> = (Bound<'py, PyAny>,);
 #[derive(Clone, PartialEq, Debug)]
 pub struct BoundaryArray {
     /// Type-erased storage holding the array data and its data type.
-    dispatch: ArrayDispatch,
+    pub(crate) dispatch: ArrayDispatch,
 }
 
 impl<T> From<ArrayOwnedDyn<T>> for BoundaryArray
@@ -126,6 +128,10 @@ impl FromPyObject<'_, '_> for BoundaryArray {
     type Error = PyErr;
 
     fn extract(object: Borrowed<'_, '_, PyAny>) -> Result<Self, Self::Error> {
+        if let Ok(array) = object.cast::<Self>() {
+            return Ok(array.borrow().clone());
+        }
+
         Ok(Self {
             dispatch: ArrayDispatch::from_object(&object)?,
         })
@@ -138,15 +144,7 @@ impl BoundaryArray {
     /// the data.
     #[new]
     pub fn new(object: &Bound<'_, PyAny>) -> PyResult<Self> {
-        Ok(Self {
-            dispatch: ArrayDispatch::from_object(object)?,
-        })
-    }
-
-    /// The extent of the array in each dimension.
-    #[getter]
-    pub fn shape<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
-        array_dispatch!(&self.dispatch, array => PyTuple::new(py, array.shape().as_slice().iter()))
+        object.extract()
     }
 
     /// The number of dimensions.
@@ -155,10 +153,10 @@ impl BoundaryArray {
         array_dispatch!(&self.dispatch, array => array.rank())
     }
 
-    /// The data type as a Rust type name (e.g., `"f64"`, `"u8"`).
+    /// The extent of the array in each dimension.
     #[getter]
-    pub fn data_type(&self) -> BoundaryDataType {
-        self.dispatch.data_type()
+    pub fn shape<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
+        array_dispatch!(&self.dispatch, array => PyTuple::new(py, array.shape().as_slice().iter()))
     }
 
     /// A NumPy view of this array.
@@ -167,6 +165,12 @@ impl BoundaryArray {
     #[getter]
     pub fn data<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyAny>> {
         Self::__array__(slf)
+    }
+
+    /// The data type (e.g., `"f64"`, `"u8"`).
+    #[getter]
+    pub fn data_type(&self) -> BoundaryDataType {
+        self.dispatch.data_type()
     }
 
     /// Returns a dict containing the array's layout information.
@@ -200,7 +204,7 @@ impl BoundaryArray {
             .call_method1(intern!(slf.py(), "asarray"), (slf,))
     }
 
-    /// Returns the number of elements in the array.
+    /// The number of elements in the array.
     pub fn __len__(&self) -> usize {
         array_dispatch!(&self.dispatch, array => array.len())
     }
@@ -222,7 +226,7 @@ impl BoundaryArray {
         Self::data(slf)?.try_iter()
     }
 
-    /// Returns basic information about the array.
+    /// Basic information about the array.
     ///
     /// For example, `Array(shape=[2, 3], type='f64')`.
     pub fn __repr__(&self) -> String {
@@ -263,7 +267,7 @@ impl BoundaryArray {
 /// # Errors
 ///
 /// Returns a `ValueError` if the array is empty or its shape overflows.
-fn import<T>(array: PyReadonlyArrayDyn<'_, T>) -> PyResult<ArrayOwnedDyn<T>>
+pub(crate) fn import<T>(array: PyReadonlyArrayDyn<'_, T>) -> PyResult<ArrayOwnedDyn<T>>
 where
     T: DataType,
 {
@@ -284,7 +288,10 @@ where
 ///
 /// Returns an error if adding elements to a dictionary or creating a Python
 /// tuple fails.
-fn export<'py, 's, T>(py: Python<'py>, array: ArrayViewDyn<'s, T>) -> PyResult<Bound<'py, PyDict>>
+pub(crate) fn export<'py, 's, T>(
+    py: Python<'py>,
+    array: ArrayViewDyn<'s, T>,
+) -> PyResult<Bound<'py, PyDict>>
 where
     T: DataType,
 {

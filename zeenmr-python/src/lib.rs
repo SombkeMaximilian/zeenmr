@@ -10,11 +10,17 @@ pub use data_type::{BoundaryDataType, DataType, c32, c64};
 mod reduce;
 pub use reduce::{Reduce, into_reduce};
 
+#[macro_use]
 mod axis;
 pub use axis::{BoundaryFrequencyAxis, BoundaryShiftReference};
 
+#[macro_use]
 mod array;
 pub use array::BoundaryArray;
+
+#[macro_use]
+mod spectrum;
+pub use spectrum::BoundarySpectrum;
 
 /// Version string matching the Rust crate's version.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -33,5 +39,8 @@ mod _zeenmr {
     }
 
     #[pymodule_export]
-    use crate::{BoundaryArray, BoundaryDataType, BoundaryFrequencyAxis, BoundaryShiftReference};
+    use crate::{
+        BoundaryArray, BoundaryDataType, BoundaryFrequencyAxis, BoundaryShiftReference,
+        BoundarySpectrum,
+    };
 }

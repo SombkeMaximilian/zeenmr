@@ -1,9 +1,10 @@
 from ._zeenmr import (
+    __version__,
     Array,
     DataType,
     FrequencyAxis,
     ShiftReference,
-    __version__,
+    Spectrum,
 )
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "DataType",
     "FrequencyAxis",
     "ShiftReference",
+    "Spectrum",
 ]

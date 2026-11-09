@@ -303,6 +303,11 @@ where
         self.axes.get(index)
     }
 
+    /// Returns the frequency axes of the spectrum.
+    pub fn axes(&self) -> &Axes<A> {
+        &self.axes
+    }
+
     /// Returns a discrete frequency axis of the spectrum at `index`.
     pub fn discrete_axis(&self, index: DimIndex) -> Option<DiscreteFrequencyAxis<'_, F>> {
         let extent = self.intensities.shape().get(index)?;
@@ -312,7 +317,8 @@ where
             .map(|axis| axis.discrete(extent))
     }
 
-    /// Returns the discrete axes of the spectrum with their respective extents.
+    /// Returns the discrete frequency axes of the spectrum with their
+    /// respective extents.
     pub fn discrete_axes<'a, G>(&'a self) -> DiscreteAxes<G>
     where
         F: 'a,
