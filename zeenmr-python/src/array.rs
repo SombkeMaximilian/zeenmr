@@ -1,4 +1,4 @@
-use crate::{DataType, Reduce, into_reduce};
+use crate::{BoundaryDataType, DataType, Reduce, into_reduce};
 use numpy::{PyReadonlyArrayDyn, PyUntypedArrayMethods};
 use pyo3::exceptions::PyValueError;
 use pyo3::intern;
@@ -35,10 +35,10 @@ macro_rules! define_array_dispatch {
         )*
 
         impl ArrayDispatch {
-            /// Returns the Rust name of the data type (e.g. `"f64"`, `"u8"`).
-            fn type_str(&self) -> &'static str {
+            /// Returns the data type.
+            fn data_type(&self) -> BoundaryDataType {
                 match self {
-                    $(Self::$V(_) => <$T>::TYPE_STR,)*
+                    $(Self::$V(_) => BoundaryDataType::$V,)*
                 }
             }
         }
@@ -136,8 +136,8 @@ impl BoundaryArray {
 
     /// The data type as a Rust type name (e.g., `"f64"`, `"u8"`).
     #[getter]
-    pub fn data_type(&self) -> &'static str {
-        self.dispatch.type_str()
+    pub fn data_type(&self) -> BoundaryDataType {
+        self.dispatch.data_type()
     }
 
     /// A NumPy view of this array.

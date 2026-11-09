@@ -31,15 +31,15 @@ class DataType:
 
 
 class ShiftReference:
-    def __init__(self, shift: float | int, freq: float | int) -> None:
+    def __init__(self, shift: float | int, freq: float | int, data_type: DataType | np.dtype | str = "f64") -> None:
         ...
 
     @staticmethod
-    def from_shift(shift: float | int) -> ShiftReference:
+    def from_shift(shift: float | int, data_type: DataType | np.dtype | str = "f64") -> ShiftReference:
         ...
 
     @staticmethod
-    def from_freq(freq: float | int) -> ShiftReference:
+    def from_freq(freq: float | int, data_type: DataType | np.dtype | str = "f64") -> ShiftReference:
         ...
 
     def to_f32(self) -> ShiftReference:
@@ -57,7 +57,7 @@ class ShiftReference:
         ...
 
     @property
-    def data_type(self) -> str:
+    def data_type(self) -> DataType:
         ...
 
     def __repr__(self):
@@ -71,7 +71,8 @@ class ShiftReference:
 
 
 class FrequencyAxis:
-    def __init__(self, range: tuple[float | int, float | int], larmor: float | int, reference: ShiftReference) -> None:
+    def __init__(self, range: tuple[float | int, float | int], larmor: float | int, reference: ShiftReference,
+                 data_type: DataType | np.dtype | str = "f64") -> None:
         ...
 
     def to_f32(self) -> ShiftReference:
@@ -90,6 +91,10 @@ class FrequencyAxis:
 
     @property
     def reference(self) -> ShiftReference:
+        ...
+
+    @property
+    def data_type(self) -> DataType:
         ...
 
     def __repr__(self):
@@ -115,7 +120,7 @@ class Array:
         ...
 
     @property
-    def data_type(self) -> str:
+    def data_type(self) -> DataType:
         ...
 
     @property

@@ -1,4 +1,4 @@
-use crate::{Reduce, into_reduce};
+use crate::{BoundaryDataType, Reduce, into_reduce};
 use num_traits::{AsPrimitive, Float};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -40,7 +40,7 @@ where
 }
 
 /// Constructor arguments.
-type ShiftReferenceArgs<'py> = (f64, f64, &'static str);
+type ShiftReferenceArgs<'py> = (f64, f64, BoundaryDataType);
 
 /// Chemical shift reference for spectral frequency axes.
 ///
@@ -74,15 +74,15 @@ impl BoundaryShiftReference {
     ///
     /// Anchors `shift` ppm to `freq` Hz.
     #[new]
-    #[pyo3(signature = (shift, freq, data_type="f64"))]
-    pub fn new(shift: f64, freq: f64, data_type: &str) -> PyResult<Self> {
+    #[pyo3(signature = (shift, freq, data_type=BoundaryDataType::F64))]
+    pub fn new(shift: f64, freq: f64, data_type: BoundaryDataType) -> PyResult<Self> {
         let err = || PyValueError::new_err("values must be finite in the data type");
 
         match data_type {
-            "f32" => ShiftReference::new(shift as f32, freq as f32)
+            BoundaryDataType::F32 => ShiftReference::new(shift as f32, freq as f32)
                 .ok_or_else(err)
                 .map(Into::into),
-            "f64" => ShiftReference::new(shift, freq)
+            BoundaryDataType::F64 => ShiftReference::new(shift, freq)
                 .ok_or_else(err)
                 .map(Into::into),
             _ => Err(PyValueError::new_err("data_type must be 'f32' or 'f64'")),
@@ -93,8 +93,8 @@ impl BoundaryShiftReference {
     ///
     /// Anchors `shift` to 0 Hz.
     #[staticmethod]
-    #[pyo3(signature = (shift, data_type="f64"))]
-    pub fn from_shift(shift: f64, data_type: &str) -> PyResult<Self> {
+    #[pyo3(signature = (shift, data_type=BoundaryDataType::F64))]
+    pub fn from_shift(shift: f64, data_type: BoundaryDataType) -> PyResult<Self> {
         Self::new(shift, 0_f64, data_type)
     }
 
@@ -102,8 +102,8 @@ impl BoundaryShiftReference {
     ///
     /// Anchors 0 ppm to `freq` Hz.
     #[staticmethod]
-    #[pyo3(signature = (freq, data_type="f64"))]
-    pub fn from_freq(freq: f64, data_type: &str) -> PyResult<Self> {
+    #[pyo3(signature = (freq, data_type=BoundaryDataType::F64))]
+    pub fn from_freq(freq: f64, data_type: BoundaryDataType) -> PyResult<Self> {
         Self::new(0_f64, freq, data_type)
     }
 
@@ -143,10 +143,10 @@ impl BoundaryShiftReference {
 
     /// The data type as a Rust type name (`"f32"` or `"f64"`).
     #[getter]
-    pub fn data_type(&self) -> &'static str {
+    pub fn data_type(&self) -> BoundaryDataType {
         match self.dispatch {
-            ShiftReferenceDispatch::F32(_) => "f32",
-            ShiftReferenceDispatch::F64(_) => "f64",
+            ShiftReferenceDispatch::F32(_) => BoundaryDataType::F32,
+            ShiftReferenceDispatch::F64(_) => BoundaryDataType::F64,
         }
     }
 
@@ -254,7 +254,7 @@ type FrequencyAxisArgs<'py> = (
     (f64, f64),
     f64,
     Bound<'py, BoundaryShiftReference>,
-    &'static str,
+    BoundaryDataType,
 );
 
 /// Spectral frequency axis.
@@ -321,18 +321,18 @@ impl BoundaryFrequencyAxis {
     /// Creates a frequency axis from a frequency range, larmor frequency, and
     /// chemical shift reference.
     #[new]
-    #[pyo3(signature = (range, larmor, reference, data_type="f64"))]
+    #[pyo3(signature = (range, larmor, reference, data_type=BoundaryDataType::F64))]
     pub fn new<'py>(
         range: (f64, f64),
         larmor: f64,
         reference: &Bound<'py, BoundaryShiftReference>,
-        data_type: &str,
+        data_type: BoundaryDataType,
     ) -> PyResult<Self> {
         let reference = reference.borrow().dispatch;
 
         match data_type {
-            "f32" => Self::new_with_static_type::<f32>(range, larmor, reference),
-            "f64" => Self::new_with_static_type::<f64>(range, larmor, reference),
+            BoundaryDataType::F32 => Self::new_with_static_type::<f32>(range, larmor, reference),
+            BoundaryDataType::F64 => Self::new_with_static_type::<f64>(range, larmor, reference),
             _ => Err(PyValueError::new_err("data_type must be 'f32' or 'f64'")),
         }
     }
@@ -379,10 +379,10 @@ impl BoundaryFrequencyAxis {
 
     /// The data type as a Rust type name (`"f32"` or `"f64"`).
     #[getter]
-    pub fn data_type(&self) -> &'static str {
+    pub fn data_type(&self) -> BoundaryDataType {
         match self.dispatch {
-            FrequencyAxisDispatch::F32(_) => "f32",
-            FrequencyAxisDispatch::F64(_) => "f64",
+            FrequencyAxisDispatch::F32(_) => BoundaryDataType::F32,
+            FrequencyAxisDispatch::F64(_) => BoundaryDataType::F64,
         }
     }
 

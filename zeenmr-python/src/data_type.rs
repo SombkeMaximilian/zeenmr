@@ -1,4 +1,5 @@
 use numpy::Element;
+use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 
 /// 32-bit complex type.
@@ -88,6 +89,66 @@ macro_rules! define_boundary_data_type {
 }
 
 with_data_types!(define_boundary_data_type);
+
+impl FromPyObject<'_, '_> for BoundaryDataType {
+    type Error = PyErr;
+
+    fn extract(object: Borrowed<'_, '_, PyAny>) -> Result<Self, Self::Error> {
+        if let Ok(data_type) = object.extract::<PyRef<Self>>() {
+            return Ok(*data_type);
+        }
+
+        if let Ok(data_type) = object.extract::<&str>().map(str::trim) {
+            macro_rules! lookup {
+                ($($V:ident($T:ty)),* $(,)?) => {
+                    $(if data_type == <$T>::TYPE_STR || data_type == stringify!($V) { return Ok(Self::$V) })*
+                };
+            }
+            with_data_types!(lookup);
+        }
+
+        let numpy_type = object
+            .py()
+            .import("numpy")?
+            .getattr("dtype")?
+            .call1((object,))?;
+        let kind = numpy_type.getattr("kind")?.extract::<char>()?;
+        let size = numpy_type
+            .getattr("itemsize")?
+            .extract::<usize>()?;
+        let byte_order = numpy_type
+            .getattr("byteorder")?
+            .extract::<char>()?;
+        let native = if cfg!(target_endian = "little") {
+            '<'
+        } else {
+            '>'
+        };
+
+        if !(byte_order == '=' || byte_order == '|') && byte_order != native {
+            return Err(PyTypeError::new_err("non-native byte order not supported"));
+        }
+
+        let numpy_str = format!("={kind}{size}");
+
+        macro_rules! lookup {
+            ($($V:ident($T:ty)),* $(,)?) => {
+                $(if numpy_str == <$T>::NUMPY_STR { return Ok(Self::$V) })*
+            };
+        }
+        with_data_types!(lookup);
+
+        Err(PyTypeError::new_err(format!(
+            "unsupported numpy dtype: {numpy_type}"
+        )))
+    }
+}
+
+impl std::fmt::Display for BoundaryDataType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.type_str())
+    }
+}
 
 /// Type string using Rust-like names or NumPy `typestr` if `NUMPY` is `true`.
 ///
