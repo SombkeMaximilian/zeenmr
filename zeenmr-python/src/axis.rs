@@ -1,6 +1,6 @@
 use crate::{BoundaryDataType, Reduce, into_reduce};
 use num_traits::{AsPrimitive, Float};
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use zeenmr::spectrum::axis::range::{FiniteBounds, FrequencyRange};
 use zeenmr::spectrum::axis::{FrequencyAxis, Larmor, ShiftReference};
@@ -64,6 +64,42 @@ impl From<ShiftReference<f64>> for BoundaryShiftReference {
     fn from(value: ShiftReference<f64>) -> Self {
         Self {
             dispatch: ShiftReferenceDispatch::F64(value),
+        }
+    }
+}
+
+impl FromPyObject<'_, '_> for BoundaryShiftReference {
+    type Error = PyErr;
+
+    fn extract(object: Borrowed<'_, '_, PyAny>) -> Result<Self, Self::Error> {
+        let data_type = object
+            .getattr("data_type")?
+            .extract::<BoundaryDataType>()
+            .unwrap_or(BoundaryDataType::F64);
+
+        if !matches!(data_type, BoundaryDataType::F32 | BoundaryDataType::F64) {
+            return Err(PyTypeError::new_err("data_type must be 'f32' or 'f64'"));
+        }
+        let err = || PyValueError::new_err("values must be finite in the data type");
+
+        match data_type {
+            BoundaryDataType::F32 => {
+                let shift = object.getattr("shift")?.extract::<f32>()?;
+                let freq = object.getattr("freq")?.extract::<f32>()?;
+
+                ShiftReference::new(shift, freq)
+                    .ok_or_else(err)
+                    .map(Into::into)
+            }
+            BoundaryDataType::F64 => {
+                let shift = object.getattr("shift")?.extract::<f64>()?;
+                let freq = object.getattr("freq")?.extract::<f64>()?;
+
+                ShiftReference::new(shift, freq)
+                    .ok_or_else(err)
+                    .map(Into::into)
+            }
+            _ => unreachable!(),
         }
     }
 }
@@ -281,6 +317,36 @@ impl From<FrequencyAxis<f64>> for BoundaryFrequencyAxis {
     fn from(value: FrequencyAxis<f64>) -> Self {
         Self {
             dispatch: FrequencyAxisDispatch::F64(value),
+        }
+    }
+}
+
+impl FromPyObject<'_, '_> for BoundaryFrequencyAxis {
+    type Error = PyErr;
+
+    fn extract(object: Borrowed<'_, '_, PyAny>) -> Result<Self, Self::Error> {
+        let range = object.getattr("range")?.extract::<(f64, f64)>()?;
+        let larmor = object.getattr("larmor")?.extract::<f64>()?;
+        let reference = object
+            .getattr("shift_reference")?
+            .extract::<BoundaryShiftReference>()?;
+        let data_type = object
+            .getattr("data_type")?
+            .extract::<BoundaryDataType>()
+            .unwrap_or(reference.data_type());
+
+        if !matches!(data_type, BoundaryDataType::F32 | BoundaryDataType::F64) {
+            return Err(PyTypeError::new_err("data_type must be 'f32' or 'f64'"));
+        }
+
+        match data_type {
+            BoundaryDataType::F32 => {
+                Self::new_with_static_type::<f32>(range, larmor, reference.dispatch)
+            }
+            BoundaryDataType::F64 => {
+                Self::new_with_static_type::<f64>(range, larmor, reference.dispatch)
+            }
+            _ => unreachable!(),
         }
     }
 }

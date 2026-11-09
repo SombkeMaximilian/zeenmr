@@ -111,6 +111,27 @@ pub struct BoundaryArray {
     dispatch: ArrayDispatch,
 }
 
+impl<T> From<ArrayOwnedDyn<T>> for BoundaryArray
+where
+    ArrayDispatch: From<ArrayOwnedDyn<T>>,
+{
+    fn from(value: ArrayOwnedDyn<T>) -> Self {
+        Self {
+            dispatch: value.into(),
+        }
+    }
+}
+
+impl FromPyObject<'_, '_> for BoundaryArray {
+    type Error = PyErr;
+
+    fn extract(object: Borrowed<'_, '_, PyAny>) -> Result<Self, Self::Error> {
+        Ok(Self {
+            dispatch: ArrayDispatch::from_object(&object)?,
+        })
+    }
+}
+
 #[pymethods]
 impl BoundaryArray {
     /// Creates an array from a NumPy array of a supported data type, copying
