@@ -113,6 +113,17 @@ pub struct BoundaryArray {
     pub(crate) dispatch: ArrayDispatch,
 }
 
+impl Default for BoundaryArray {
+    fn default() -> Self {
+        Self {
+            dispatch: ArrayDispatch::U8(
+                ArrayOwned::new(Box::new([0]), shape(Vec::new()))
+                    .expect("empty array is valid")
+            ),
+        }
+    }
+}
+
 impl<T> From<ArrayOwnedDyn<T>> for BoundaryArray
 where
     ArrayDispatch: From<ArrayOwnedDyn<T>>,

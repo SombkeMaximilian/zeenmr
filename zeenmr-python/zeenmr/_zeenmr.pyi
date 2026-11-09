@@ -157,7 +157,7 @@ class Array:
 
 
 class Spectrum:
-    def __init__(self, axes: List[FrequencyAxis], intensities: Array) -> None:
+    def __init__(self, axes: List[FrequencyAxis], intensities: Array, copy_intensities: bool = False) -> None:
         ...
 
     def rank(self) -> int:

@@ -119,8 +119,16 @@ where
 impl BoundarySpectrum {
     /// Creates a spectrum from a list of frequency axes and a NumPy array
     /// containing the intensities.
+    ///
+    /// If `copy_intensities` is set to `false`, the passed array will be
+    /// replaced with an empty one.
     #[new]
-    pub fn new<'py>(axes: &Bound<'py, PyList>, intensities: BoundaryArray) -> PyResult<Self> {
+    #[pyo3(signature = (axes, intensities, copy_intensities=false))]
+    pub fn new<'py>(
+        axes: &Bound<'py, PyList>,
+        mut intensities: PyRefMut<'py, BoundaryArray>,
+        copy_intensities: bool,
+    ) -> PyResult<Self> {
         let intensities_rank = array_dispatch!(&intensities.dispatch, array => array.rank());
         let axes_rank = axes.len();
 
@@ -130,6 +138,11 @@ impl BoundarySpectrum {
             ));
         }
 
+        let intensities = if copy_intensities {
+            intensities.clone()
+        } else {
+            std::mem::take(&mut *intensities)
+        };
         let axes = axes
             .iter()
             .map(|axis| axis.extract::<BoundaryFrequencyAxis>())
