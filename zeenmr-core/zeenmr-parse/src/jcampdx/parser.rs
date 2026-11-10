@@ -869,10 +869,10 @@ mod tests {
             .join("..")
     }
 
-    fn value_is_not_owned(value: &Value) -> bool {
+    fn contains_no_owned_string(value: &Value) -> bool {
         match value {
             Value::String(value) => matches!(value, Cow::Borrowed(_)),
-            Value::Array(array) => array.iter().all(value_is_not_owned),
+            Value::Array(array) => array.iter().all(contains_no_owned_string),
             _ => true,
         }
     }
@@ -900,12 +900,12 @@ mod tests {
                 // parser should be zero-copy
                 for (key, value) in parsed.parameters.iter() {
                     assert!(matches!(key, Cow::Borrowed(_)));
-                    assert!(value_is_not_owned(value));
+                    assert!(contains_no_owned_string(value));
                 }
                 for data_parameters in parsed.data_parameters.iter() {
                     for (key, value) in data_parameters.iter() {
                         assert!(matches!(key, Cow::Borrowed(_)));
-                        assert!(value_is_not_owned(value));
+                        assert!(contains_no_owned_string(value));
                     }
                 }
             }
