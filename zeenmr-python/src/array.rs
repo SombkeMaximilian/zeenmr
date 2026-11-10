@@ -117,8 +117,7 @@ impl Default for BoundaryArray {
     fn default() -> Self {
         Self {
             dispatch: ArrayDispatch::U8(
-                ArrayOwned::new(Box::new([0]), shape(Vec::new()))
-                    .expect("empty array is valid")
+                ArrayOwned::new(Box::new([0]), shape(Vec::new())).expect("rank-zero, scalar array"),
             ),
         }
     }
