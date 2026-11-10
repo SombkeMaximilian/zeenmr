@@ -42,6 +42,17 @@ enum KeyExit {
     NextKey,
 }
 
+/// Automatic concatenation state.
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+enum Concatenation {
+    /// Nothing seen since the last comma, key, or opening delimiter.
+    NonValue,
+    /// A value was seen.
+    NonString,
+    /// A string was seen, starting at this source index.
+    String(usize),
+}
+
 /// Marker for normal parser mode.
 #[derive(Debug)]
 pub(crate) struct Normal;
@@ -64,7 +75,7 @@ pub(crate) struct Parser<'source, M> {
     /// Stack for values bounded by delimiters.
     bounded_stack: Stack<Delimiter, Value<'source>>,
     /// Concatenate consecutive strings.
-    auto_concatenate: bool,
+    auto_concatenate: Concatenation,
     /// Parsing mode.
     mode: PhantomData<M>,
 }
@@ -77,7 +88,7 @@ impl<'source> From<&'source str> for Parser<'source, Normal> {
             current_key: None,
             current_value: Value::Empty,
             bounded_stack: Stack::new(),
-            auto_concatenate: false,
+            auto_concatenate: Concatenation::NonValue,
             mode: PhantomData,
         }
     }
@@ -91,7 +102,7 @@ impl<'source, M> From<Lexer<'source, Token>> for Parser<'source, M> {
             current_key: None,
             current_value: Value::Empty,
             bounded_stack: Stack::new(),
-            auto_concatenate: false,
+            auto_concatenate: Concatenation::NonValue,
             mode: PhantomData,
         }
     }
@@ -330,7 +341,6 @@ where
     /// [`Title`]: Token::Title
     fn parse_values(&mut self) -> Result<JcampDxDataset<'source>> {
         while let Some(token) = self.lexer.next().transpose()? {
-            let reset_auto_concatenate = token != Token::Comma;
             match token {
                 Token::Key => {
                     let exit_status = loop {
@@ -364,9 +374,6 @@ where
                 | Token::GroupedBlock
                 | Token::AmbiguousBlock
                 | Token::End => self.string(),
-            }
-            if reset_auto_concatenate {
-                self.auto_concatenate = true;
             }
         }
         self.insert_parameter();
@@ -408,6 +415,7 @@ where
             self.end_bounded(top.delimiter)
                 .expect("should always get the right delimiter");
         }
+        self.auto_concatenate = Concatenation::NonValue;
         self.insert_parameter();
         let key_start = self.lexer.span().start;
         let label_start = self.lexer.span().end;
@@ -492,9 +500,7 @@ where
     /// [`Empty`]: Value::Empty
     /// [`Comma`]: Token::Comma
     fn comma(&mut self) {
-        if self.auto_concatenate {
-            self.auto_concatenate = false;
-        } else {
+        if self.auto_concatenate == Concatenation::NonValue {
             if let Some(top) = self.bounded_stack.top_mut() {
                 top.values.push(Value::Empty);
             } else {
@@ -508,6 +514,7 @@ where
                 }
             }
         }
+        self.auto_concatenate = Concatenation::NonValue;
     }
 
     /// Adds a [`Frame`] to the [`Stack`] with the encountered delimiter kind.
@@ -516,6 +523,7 @@ where
     fn start_bounded(&mut self, delimiter: Delimiter) {
         self.bounded_stack
             .push(delimiter, self.lexer.span().into());
+        self.auto_concatenate = Concatenation::NonValue;
     }
 
     /// Finalizes the [`Frame`] at the top of the [`Stack`].
@@ -555,6 +563,7 @@ where
                 _ => self.current_value = Value::Array(vec![self.take_current_value(), value]),
             }
         }
+        self.auto_concatenate = Concatenation::NonString;
 
         Ok(())
     }
@@ -596,6 +605,7 @@ where
                 _ => self.current_value = Value::Array(vec![self.take_current_value(), value]),
             }
         }
+        self.auto_concatenate = Concatenation::NonString;
     }
 
     /// Handles [`String`] tokens.
@@ -610,14 +620,10 @@ where
         let value = self.lexer.slice();
         let push_string = |values: &mut Vec<Value<'source>>| {
             if let Some(Value::String(previous)) = values.last_mut()
-                && self.auto_concatenate
+                && let Concatenation::String(start) = self.auto_concatenate
             {
-                let mut owned = previous.clone().into_owned();
-                if !owned.is_empty() {
-                    owned.push(' ');
-                }
-                owned.push_str(value);
-                *previous = Cow::Owned(owned);
+                let end = self.lexer.span().end;
+                *previous = Cow::from(&self.lexer.source()[start..end]);
             } else {
                 values.push(Value::from(value));
             }
@@ -627,13 +633,11 @@ where
         } else {
             match self.current_value {
                 Value::Empty => self.current_value = Value::from(value),
-                Value::String(ref mut previous) if self.auto_concatenate => {
-                    let mut owned = previous.clone().into_owned();
-                    if !owned.is_empty() {
-                        owned.push(' ');
-                    }
-                    owned.push_str(value);
-                    *previous = Cow::Owned(owned);
+                Value::String(ref mut previous)
+                    if let Concatenation::String(start) = self.auto_concatenate =>
+                {
+                    let end = self.lexer.span().end;
+                    *previous = Cow::from(&self.lexer.source()[start..end]);
                 }
                 Value::Array(ref mut array) => push_string(array),
                 _ => {
@@ -641,6 +645,9 @@ where
                         Value::Array(vec![self.take_current_value(), Value::from(value)]);
                 }
             }
+        }
+        if !matches!(self.auto_concatenate, Concatenation::String(_)) {
+            self.auto_concatenate = Concatenation::String(self.lexer.span().start);
         }
     }
 
@@ -862,6 +869,14 @@ mod tests {
             .join("..")
     }
 
+    fn value_is_not_owned(value: &Value) -> bool {
+        match value {
+            Value::String(value) => matches!(value, Cow::Borrowed(_)),
+            Value::Array(array) => array.iter().all(value_is_not_owned),
+            _ => true,
+        }
+    }
+
     macro_rules! file_test {
         ($name:ident, $version:tt, $file:tt) => {
             #[test]
@@ -877,9 +892,21 @@ mod tests {
                     .parse_source()
                     .unwrap();
 
+                // should parse without errors
                 assert!(parsed.errors.is_empty());
-                for child in parsed.children {
+                for child in parsed.children.iter() {
                     assert!(child.errors.is_empty());
+                }
+                // parser should be zero-copy
+                for (key, value) in parsed.parameters.iter() {
+                    assert!(matches!(key, Cow::Borrowed(_)));
+                    assert!(value_is_not_owned(value));
+                }
+                for data_parameters in parsed.data_parameters.iter() {
+                    for (key, value) in data_parameters.iter() {
+                        assert!(matches!(key, Cow::Borrowed(_)));
+                        assert!(value_is_not_owned(value));
+                    }
                 }
             }
         };

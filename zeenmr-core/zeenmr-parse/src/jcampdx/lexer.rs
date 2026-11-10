@@ -2,7 +2,7 @@ use crate::jcampdx::error::Error;
 use logos::{Lexer, Logos};
 
 /// JCAMP-DX lexer.
-#[derive(Clone, PartialEq, Debug, Logos)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Logos)]
 #[logos(error(Error, invalid_literal))]
 #[logos(subpattern newline = r"\n|\r\n|\r")]
 #[logos(skip r"(?&newline)")]

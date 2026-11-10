@@ -2,7 +2,7 @@ use crate::jcampdx::tabulation::error::Error;
 use logos::{Lexer, Logos};
 
 /// JCAMP-DX grouped block lexer.
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, Logos)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Logos)]
 #[logos(error(Error, invalid_literal))]
 #[logos(subpattern newline = r"\n|\r\n|\r")]
 #[logos(subpattern space = r"[ \t]")]
