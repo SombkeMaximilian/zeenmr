@@ -1,6 +1,6 @@
 use crate::bruker::error::{Error, Result};
 use crate::data::{Column, DataTable, Dataset, ParameterTable, Value};
-use crate::jcampdx::parse_jcamp_dx;
+use crate::jcampdx::parse_jcampdx;
 use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
 use std::path::Path;
 use std::{fs, io};
@@ -82,7 +82,7 @@ where
     let exp_root = root.as_ref();
     let acqus_path = exp_root.join("acqus");
     let acqus_src = fs::read_to_string(acqus_path)?;
-    let mut parsed = parse_jcamp_dx(&acqus_src)?;
+    let mut parsed = parse_jcampdx(&acqus_src)?;
     parsed.parameters.set_id("acqus");
     dataset.parameters = parsed.parameters.into_owned();
     dataset
@@ -95,7 +95,7 @@ where
         let next_acqus_path = exp_root.join(&next_acqus_name);
         let parameters = match fs::read_to_string(next_acqus_path) {
             Ok(acqus_src) => {
-                let mut parsed = parse_jcamp_dx(&acqus_src)?;
+                let mut parsed = parse_jcampdx(&acqus_src)?;
                 dataset
                     .errors
                     .extend(parsed.errors.into_iter().map(Error::from));
@@ -159,7 +159,7 @@ where
     let proc_root = root.as_ref();
     let procs_path = proc_root.join("procs");
     let procs_src = fs::read_to_string(procs_path)?;
-    let mut parsed = parse_jcamp_dx(&procs_src)?;
+    let mut parsed = parse_jcampdx(&procs_src)?;
     parsed.parameters.set_id("procs");
     dataset.parameters = parsed.parameters.into_owned();
     dataset
@@ -172,7 +172,7 @@ where
         let next_procs_path = proc_root.join(&next_procs_name);
         let parameters = match fs::read_to_string(next_procs_path) {
             Ok(procs_src) => {
-                let mut parsed = parse_jcamp_dx(&procs_src)?;
+                let mut parsed = parse_jcampdx(&procs_src)?;
                 dataset
                     .errors
                     .extend(parsed.errors.into_iter().map(Error::from));

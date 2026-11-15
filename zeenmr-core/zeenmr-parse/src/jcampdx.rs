@@ -16,7 +16,7 @@ use parser::Parser;
 pub type JcampDxDataset<'source> = Dataset<'source, Error>;
 
 /// Parses a JCAMP-DX source string into a dataset.
-pub fn parse_jcamp_dx(source: &str) -> Result<JcampDxDataset<'_>> {
+pub fn parse_jcampdx(source: &str) -> Result<JcampDxDataset<'_>> {
     // this allows changes to the parser without being a breaking change
     Parser::from(source).parse_source()
 }
