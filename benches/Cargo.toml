@@ -16,6 +16,11 @@ zeenmr = { workspace = true, features = ["rayon", "detect-cpu-features"] }
 workspace = true
 
 [[bench]]
+name = "parse"
+path = "parse.rs"
+harness = false
+
+[[bench]]
 name = "superposition"
 path = "superposition.rs"
 harness = false
